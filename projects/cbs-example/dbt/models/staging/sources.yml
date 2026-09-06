@@ -1,0 +1,7 @@
+sources:
+  - name: ducklake_main
+    database: ducklake
+    schema: main
+    tables:
+      - name: raw_population
+        description: Population per Dutch province and age bracket, written by the Polars pipeline.

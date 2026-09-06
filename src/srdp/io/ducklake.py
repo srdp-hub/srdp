@@ -7,7 +7,16 @@ from pathlib import Path
 import duckdb
 import polars as pl
 import psycopg2
-from dagster import InitResourceContext, InputContext, IOManager, OutputContext, io_manager
+from dagster import (
+    InitResourceContext,
+    InputContext,
+    IOManager,
+    MetadataValue,
+    OutputContext,
+    TableColumn,
+    TableSchema,
+    io_manager,
+)
 from psycopg2 import sql
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -77,6 +86,7 @@ class LocalStorageBackend(StorageBackend):
     """
 
     def __init__(self, base_path: str) -> None:
+        """See class docstring for `base_path`."""
         self._base_path = Path(base_path).resolve()
         self._base_path.mkdir(parents=True, exist_ok=True)
 
@@ -239,6 +249,30 @@ def setup_ducklake(
 # ---------------------------------------------------------------------------
 
 
+def asset_key_path_to_table_ref(asset_key_path: list[str]) -> str:
+    """Derive a fully-qualified DuckLake table reference from an asset key path.
+
+    The single naming convention every DuckLake consumer (the IO manager, the
+    OpenLineage bridge) must share:
+
+    - ``["orders"]``              → ``ducklake.main.orders``
+    - ``["raw", "orders"]``       → ``ducklake.raw.orders``
+    - ``["raw", "eu", "orders"]`` → ``ducklake.raw.eu_orders``
+
+    Args:
+        asset_key_path: Asset key path segments, e.g. ``["raw", "orders"]``.
+
+    Returns:
+        Fully-qualified reference like ``ducklake.raw.orders``.
+    """
+    if len(asset_key_path) == 1:
+        schema, table = _DEFAULT_SCHEMA, asset_key_path[0]
+    else:
+        schema = asset_key_path[0]
+        table = "_".join(asset_key_path[1:])
+    return f"{_CATALOG}.{schema}.{table}"
+
+
 class DuckLakeIOManager(IOManager):
     """Dagster IO manager that persists asset outputs as DuckLake tables.
 
@@ -254,23 +288,11 @@ class DuckLakeIOManager(IOManager):
     """
 
     def __init__(self, conn: duckdb.DuckDBPyConnection) -> None:
+        """Wrap an already-connected DuckDB connection with the `ducklake` catalog attached."""
         self._conn = conn
 
     def _table_ref(self, asset_key_path: list[str]) -> str:
-        """Derive a fully-qualified DuckLake table reference from an asset key path.
-
-        Args:
-            asset_key_path: Asset key path segments, e.g. ``["raw", "orders"]``.
-
-        Returns:
-            Fully-qualified reference like ``ducklake.raw.orders``.
-        """
-        if len(asset_key_path) == 1:
-            schema, table = _DEFAULT_SCHEMA, asset_key_path[0]
-        else:
-            schema = asset_key_path[0]
-            table = "_".join(asset_key_path[1:])
-        return f"{_CATALOG}.{schema}.{table}"
+        return asset_key_path_to_table_ref(asset_key_path)
 
     def _ensure_schema(self, schema: str) -> None:
         """Create the DuckLake schema if it does not already exist.
@@ -287,6 +309,13 @@ class DuckLakeIOManager(IOManager):
         DuckDB evaluates the query plan internally, so data never fully
         materialises in Python memory.
 
+        Attaches schema and row-count metadata to the output automatically, for
+        every asset that goes through this IO manager, regardless of what the
+        asset function itself returns — this is the "automatic" half of the
+        platform's lineage/observability story; column lineage is the opt-in half
+        (see ``srdp.lineage``), since it needs the producing expressions, which
+        this method never sees, only the resulting frame.
+
         Args:
             context: Dagster output context containing the asset key.
             obj: The Polars DataFrame or LazyFrame to persist.
@@ -298,8 +327,27 @@ class DuckLakeIOManager(IOManager):
         self._conn.register("_data", obj)
         self._conn.execute(f"CREATE OR REPLACE TABLE {ref} AS SELECT * FROM _data")  # noqa: S608
         self._conn.unregister("_data")
+
+        described = self._conn.sql(f"DESCRIBE {ref}").fetchall()
         row_count = self._conn.sql(f"SELECT COUNT(*) FROM {ref}").fetchone()  # noqa: S608
-        logger.info("Wrote %d rows to %s.", row_count[0] if row_count else 0, ref)
+        row_count = row_count[0] if row_count else 0
+
+        column_names = [col_name for col_name, *_ in described]
+        quoted = [name.replace('"', '""') for name in column_names]
+        null_count_exprs = ", ".join(f'COUNT(*) FILTER (WHERE "{q}" IS NULL)' for q in quoted)
+        null_counts_row = self._conn.sql(f"SELECT {null_count_exprs} FROM {ref}").fetchone()  # noqa: S608
+        null_counts = dict(zip(column_names, null_counts_row, strict=True)) if null_counts_row else {}
+
+        context.add_output_metadata(
+            {
+                "dagster/row_count": row_count,
+                "dagster/column_schema": TableSchema(
+                    columns=[TableColumn(name=col_name, type=col_type) for col_name, col_type, *_ in described],
+                ),
+                "null_counts": MetadataValue.json(null_counts),
+            },
+        )
+        logger.info("Wrote %d rows to %s.", row_count, ref)
 
     def load_input(self, context: InputContext) -> pl.LazyFrame:
         """Load a DuckLake table as a Polars LazyFrame.

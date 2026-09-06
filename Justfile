@@ -21,12 +21,12 @@ scaleway *args:
 # Generate mkcert TLS certs for the local Docker Compose stack
 docker-tls:
 	mkdir -p deploy/docker/certs
-	mkcert -cert-file deploy/docker/certs/selfsigned.crt -key-file deploy/docker/certs/selfsigned.key "auth.local.dev" "marimo.local.dev" "quarto.local.dev" "dagster.local.dev"
+	mkcert -cert-file deploy/docker/certs/selfsigned.crt -key-file deploy/docker/certs/selfsigned.key "srdp.localhost" "auth.srdp.localhost" "marimo.srdp.localhost" "quarto.srdp.localhost" "dagster.srdp.localhost" "streamlit.srdp.localhost" "marquez.srdp.localhost" "api.srdp.localhost" "duckdb.srdp.localhost"
 
 # Generate mkcert TLS certs and create the k8s TLS secret
 local-tls:
 	mkdir -p deploy/kubernetes/certs
-	mkcert -cert-file deploy/kubernetes/certs/selfsigned.crt -key-file deploy/kubernetes/certs/selfsigned.key "auth.local.dev" "marimo.local.dev" "quarto.local.dev" "dagster.local.dev"
+	mkcert -cert-file deploy/kubernetes/certs/selfsigned.crt -key-file deploy/kubernetes/certs/selfsigned.key "srdp.localhost" "auth.srdp.localhost" "marimo.srdp.localhost" "quarto.srdp.localhost" "dagster.srdp.localhost" "streamlit.srdp.localhost" "marquez.srdp.localhost" "api.srdp.localhost" "duckdb.srdp.localhost"
 	kubectl create namespace {{namespace}} --dry-run=client -o yaml | kubectl apply -f -
 	kubectl create secret tls custom-ingress-cert --namespace {{namespace}} --key deploy/kubernetes/certs/selfsigned.key --cert deploy/kubernetes/certs/selfsigned.crt --dry-run=client -o yaml | kubectl apply -f -
 
@@ -40,9 +40,9 @@ local-delete:
 	helm uninstall srdp -n {{namespace}} || true
 	kubectl delete pvc --all -n {{namespace}} || true
 
-# Start the Docker Compose stack (local dev)
-docker-up:
-	cd deploy/docker && docker compose up --build
+# Start the Docker Compose stack (local dev). Attached by default; pass -d to detach.
+docker-up *args:
+	cd deploy/docker && docker compose up --build {{args}}
 
 # Stop the Docker Compose stack
 docker-down:

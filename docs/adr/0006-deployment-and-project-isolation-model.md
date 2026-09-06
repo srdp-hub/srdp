@@ -43,7 +43,7 @@ Inside a deployment, data is divided into projects. A project is a team's workin
 - its own storage prefix (for example `DATA_PATH/sales/`),
 - its own lifecycle: it can be created, granted, backed up, and retired independently.
 
-A project maps onto a Dagster code location. Client projects live in their own repositories and import `srdp` as a dependency (see [ADR-0001](./0001-platform-architecture-and-distribution.md)); `projects/default-etl/` in the srdp repo is a reference example, not where client code lives. Each project's IO manager resource is configured with that project's catalog, so the catalog is supplied by the code location, not encoded in every asset key.
+A project maps onto a Dagster code location. Client projects live in their own repositories and import `srdp` as a dependency (see [ADR-0001](./0001-platform-architecture-and-distribution.md)); `projects/cbs-example/` in the srdp repo is a reference example, not where client code lives. Each project's IO manager resource is configured with that project's catalog, so the catalog is supplied by the code location, not encoded in every asset key.
 
 ### Mapping onto DuckDB three-level naming
 
@@ -55,7 +55,7 @@ DuckDB supports exactly three levels: `catalog.schema.table`. The model uses all
 | schema | medallion layer | `raw` |
 | table | entity | `orders` |
 
-So a fully qualified table is `project.layer.entity`, for example `sales.raw.orders`. The asset-key-to-`schema.table` mapping in [ADR-0004](./0004-data-organization-and-ingestion.md) is unchanged; the catalog dimension is added from the project's code location and IO manager configuration rather than from the asset key. A single-project deployment (such as the `projects/default-etl/` reference) is just one catalog.
+So a fully qualified table is `project.layer.entity`, for example `sales.raw.orders`. The asset-key-to-`schema.table` mapping in [ADR-0004](./0004-data-organization-and-ingestion.md) is unchanged; the catalog dimension is added from the project's code location and IO manager configuration rather than from the asset key. A single-project deployment (such as the `projects/cbs-example/` reference) is just one catalog.
 
 ### Multiple catalogs
 

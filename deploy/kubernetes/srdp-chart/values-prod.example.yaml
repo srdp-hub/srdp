@@ -14,7 +14,7 @@ traefik:
     runAsGroup: 65532
     runAsNonRoot: true
     runAsUser: 65532
-  
+
   # Enable Let's Encrypt ACME
   certResolver: "le"
   additionalArguments:
@@ -36,7 +36,7 @@ traefik:
         volumeMounts:
           - name: data
             mountPath: /data
-  
+
   # Persistence for certificates (so they survive pod restarts)
   persistence:
     enabled: true
@@ -165,16 +165,16 @@ oauth2-proxy:
     clientSecret: "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" # CHANGE THIS
     # Generate a random string: python3 -c 'import os,base64; print(base64.b64encode(os.urandom(16)).decode())'
     cookieSecret: "CHANGE_ME_OAUTH_COOKIE_SECRET_32" # Must be 32 characters
-  
+
   extraArgs:
     cookie-domain: ".LOAD_BALANCER_IP.nip.io" # CHANGE THIS
     whitelist-domain: ".LOAD_BALANCER_IP.nip.io" # CHANGE THIS
     oidc-issuer-url: "https://auth.LOAD_BALANCER_IP.nip.io" # CHANGE THIS
     cookie-secure: "false"
-  
+
   customRequestHeaders:
     - "Host:auth.LOAD_BALANCER_IP.nip.io"
-  
+
   # Remove hardcoded local aliases
   hostAliases: []
 

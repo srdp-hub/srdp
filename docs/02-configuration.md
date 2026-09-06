@@ -117,9 +117,9 @@ kubectl create secret tls custom-ingress-cert \
 The Helm chart references three application images. For local development the pull policy is set to `Never`, so the images must exist in your local Docker/containerd cache:
 
 ```bash
-docker build -t rg.nl-ams.scw.cloud/srdp-registry/marimo:v1.0 services/marimo
+docker build -t rg.nl-ams.scw.cloud/srdp-registry/marimo:v1.0 -f projects/cbs-example/notebooks/Dockerfile .
 docker build -t rg.nl-ams.scw.cloud/srdp-registry/quarto:v1.0 services/quarto
-docker build -t rg.nl-ams.scw.cloud/srdp-registry/srdp-etl:v1.0 -f projects/default-etl/Dockerfile .
+docker build -t rg.nl-ams.scw.cloud/srdp-registry/srdp-etl:v1.0 -f projects/cbs-example/Dockerfile .
 ```
 
 ### 5) Fill in secrets and local values
@@ -157,10 +157,10 @@ OAuth2-Proxy needs an OIDC client registered in Zitadel. Zitadel creates its fir
 
 ### 1) Sign in to the Zitadel console
 
-Open `https://auth.local.dev` and sign in as the first-instance admin. Zitadel derives the default admin login name from the configured `ExternalDomain`, so for the local stack it is:
+Open `https://auth.srdp.localhost` and sign in as the first-instance admin. Zitadel derives the default admin login name from the configured `ExternalDomain`, so for the local stack it is:
 
-- Login name: `zitadel-admin@zitadel.auth.local.dev`
-- Password: `srdpTest123!` for the Kubernetes chart (set in `values.yaml`). The Docker Compose stack does not override the admin password, so Zitadel's default for a fresh instance applies; set `ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD` in the compose environment if you want a known value.
+- Login name: `zitadel-admin@zitadel.auth.srdp.localhost`
+- Password: `srdpTest123!` for the Kubernetes chart (set in `values.yaml`). The Docker Compose stack requires `ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD` to be set in `deploy/docker/.env` (see `.env.example`), Zitadel's own complexity rule applies: uppercase, lowercase, a digit, and a symbol.
 
 If the login name differs, check it under **Users** in the Zitadel console.
 
@@ -169,9 +169,10 @@ If the login name differs, check it under **Users** in the Zitadel console.
 1. Create (or open) a project, then add an application of type **Web**.
 2. Use the **Code** authentication flow (client ID + secret).
 3. Add a redirect URI for each protected service:
-   - `https://marimo.local.dev/oauth2/callback`
-   - `https://quarto.local.dev/oauth2/callback`
-   - `https://dagster.local.dev/oauth2/callback`
+   - `https://marimo.srdp.localhost/oauth2/callback`
+   - `https://quarto.srdp.localhost/oauth2/callback`
+   - `https://dagster.srdp.localhost/oauth2/callback`
+   - `https://streamlit.srdp.localhost/oauth2/callback`
 
 Zitadel then shows a **Client ID** and **Client Secret**.
 

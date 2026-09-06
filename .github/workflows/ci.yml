@@ -1,0 +1,19 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      # The local `ty` hook shells out to `uv run ty check`, which needs the
+      # project's own env synced first, pre-commit's own hook envs (ruff,
+      # gitleaks, terraform, yamllint) install themselves.
+      - run: uv sync --group dev
+      - run: uv run pre-commit run --all-files --show-diff-on-failure

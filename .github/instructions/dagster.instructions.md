@@ -46,5 +46,5 @@ Import from `srdp.resources.k8s` — never redefine inline:
 
 - Client assets live in `projects/<name>/src/etl/assets/`.
 - The module is loaded via `-m etl.definitions`.
-- To add a new client: copy `projects/default-etl/` and rename.
+- To add a new client: copy `projects/cbs-example/` and rename.
 - Reusable platform code belongs in `src/srdp/`, not in a project.

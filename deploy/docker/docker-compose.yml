@@ -7,7 +7,11 @@ services:
     image: postgres:17-alpine
     container_name: srdp-postgres
     environment:
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      # Read by initdb/01-create-databases.sh on first boot only, to create the
+      # zitadel/dagster roles without a literal password committed there.
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: "${ZITADEL_DATABASE_POSTGRES_USER_PASSWORD}"
+      DAGSTER_PG_PASSWORD: "${DAGSTER_PG_PASSWORD}"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -44,7 +48,7 @@ services:
     networks:
       app:
         aliases:
-          - auth.local.dev
+          - auth.srdp.localhost
     depends_on:
       zitadel:
         condition: service_healthy
@@ -84,11 +88,12 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      ZITADEL_EXTERNALDOMAIN: auth.local.dev
+      ZITADEL_EXTERNALDOMAIN: auth.srdp.localhost
       ZITADEL_LOGSTORE_ACCESS_STDOUT_ENABLED: true
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: false
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: "${ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD}"
       ZITADEL_DATABASE_POSTGRES_HOST: postgres
-      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: zitadel_pw
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: "${ZITADEL_DATABASE_POSTGRES_USER_PASSWORD}"
       ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH: /current-dir/login-client.pat
       ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME: login-client
       ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_NAME: Automatically Initialized IAM Login Client
@@ -112,7 +117,7 @@ services:
       - ZITADEL_API_URL=https://zitadel:8080
       - NEXT_PUBLIC_BASE_PATH=/ui/v2/login
       - ZITADEL_SERVICE_USER_TOKEN_FILE=/current-dir/login-client.pat
-      - CUSTOM_REQUEST_HEADERS=Host:auth.local.dev
+      - CUSTOM_REQUEST_HEADERS=Host:auth.srdp.localhost
       - NODE_TLS_REJECT_UNAUTHORIZED=0
     volumes:
       - '.:/current-dir:ro'
@@ -139,19 +144,24 @@ services:
       - --reverse-proxy=true
       - --pass-host-header=true
       - --proxy-prefix=/oauth2
-      - --whitelist-domain=.local.dev
+      - --whitelist-domain=.srdp.localhost
       - --set-xauthrequest=true
       - --provider-display-name=ZITADEL
-      - --oidc-issuer-url=https://auth.local.dev
+      - --oidc-issuer-url=https://auth.srdp.localhost
       - --insecure-oidc-skip-issuer-verification=true
       - --ssl-insecure-skip-verify
       - --skip-provider-button
       - --cookie-name=_oauth2_proxy
-      - --cookie-domain=.local.dev
+      - --cookie-domain=.srdp.localhost
       - --cookie-secure=true
       - --cookie-samesite=lax
       - --pass-authorization-header=false
       - --pass-access-token=true
+      # Lets a request that already carries a valid Bearer token (e.g. the
+      # access token this same session hands the user via /token) skip the
+      # cookie/redirect flow entirely, for calling the API outside a browser.
+      - --skip-jwt-bearer-tokens=true
+      - --extra-jwt-issuers=https://auth.srdp.localhost=${OIDC_CLIENT_ID}
     environment:
       OAUTH2_PROXY_CLIENT_ID: "${OIDC_CLIENT_ID}"
       OAUTH2_PROXY_CLIENT_SECRET: "${OIDC_CLIENT_SECRET}"
@@ -161,11 +171,11 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=srdp-app"
-      - "traefik.http.routers.oauth2-proxy.rule=(Host(`auth.local.dev`) || Host(`quarto.local.dev`) || Host(`marimo.local.dev`) || Host(`dagster.local.dev`)) && PathPrefix(`/oauth2/`)"
+      - "traefik.http.routers.oauth2-proxy.rule=(Host(`auth.srdp.localhost`) || Host(`quarto.srdp.localhost`) || Host(`marimo.srdp.localhost`) || Host(`dagster.srdp.localhost`) || Host(`streamlit.srdp.localhost`) || Host(`srdp.localhost`) || Host(`marquez.srdp.localhost`) || Host(`api.srdp.localhost`) || Host(`duckdb.srdp.localhost`)) && PathPrefix(`/oauth2/`)"
       - "traefik.http.services.oauth2-proxy.loadbalancer.server.port=4180"
       - "traefik.http.middlewares.zitadel-auth.forwardauth.address=http://oauth2-proxy:4180/oauth2/auth"
       - "traefik.http.middlewares.zitadel-auth.forwardauth.trustForwardHeader=true"
-      - "traefik.http.middlewares.zitadel-auth.forwardauth.authResponseHeaders=X-Auth-Request-User, X-Auth-Request-Email"
+      - "traefik.http.middlewares.zitadel-auth.forwardauth.authResponseHeaders=X-Auth-Request-User, X-Auth-Request-Email, X-Auth-Request-Access-Token"
       - "traefik.http.middlewares.zitadel-errors.errors.status=401,402,403"
       - "traefik.http.middlewares.zitadel-errors.errors.statusRewrites.401=302"
       - "traefik.http.middlewares.zitadel-errors.errors.service=oauth2-proxy@docker"
@@ -188,7 +198,7 @@ services:
       DAGSTER_HOME: /app/config/dagster
       DAGSTER_PG_HOST: postgres
       DAGSTER_PG_USER: dagster
-      DAGSTER_PG_PASSWORD: dagster_pw
+      DAGSTER_PG_PASSWORD: "${DAGSTER_PG_PASSWORD}"
       DAGSTER_PG_DB: dagster
     networks:
       - app
@@ -208,7 +218,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=srdp-app"
-      - "traefik.http.routers.dagster.rule=Host(`dagster.local.dev`)"
+      - "traefik.http.routers.dagster.rule=Host(`dagster.srdp.localhost`)"
       - "traefik.http.routers.dagster.service=dagster@docker"
       - "traefik.http.services.dagster.loadbalancer.server.port=3000"
       - "traefik.http.routers.dagster.middlewares=zitadel-errors@docker,zitadel-auth@docker"
@@ -222,7 +232,7 @@ services:
       DAGSTER_HOME: /app/config/dagster
       DAGSTER_PG_HOST: postgres
       DAGSTER_PG_USER: dagster
-      DAGSTER_PG_PASSWORD: dagster_pw
+      DAGSTER_PG_PASSWORD: "${DAGSTER_PG_PASSWORD}"
       DAGSTER_PG_DB: dagster
     networks:
       - db
@@ -238,14 +248,20 @@ services:
   dagster-code:
     build:
       context: ../../
-      dockerfile: projects/default-etl/Dockerfile
+      dockerfile: projects/cbs-example/Dockerfile
     container_name: srdp-dagster-code
     environment:
       DAGSTER_PG_HOST: postgres
       DAGSTER_PG_USER: dagster
-      DAGSTER_PG_PASSWORD: dagster_pw
+      DAGSTER_PG_PASSWORD: "${DAGSTER_PG_PASSWORD}"
       DAGSTER_PG_DB: dagster
       DAGSTER_CURRENT_IMAGE: srdp-dagster-code
+      DUCKLAKE_PG_HOST: postgres
+      DUCKLAKE_PG_USER: postgres
+      DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
+      DUCKLAKE_PG_DB: ducklake
+      DUCKLAKE_DATA_PATH: /data/ducklake
+      MARQUEZ_URL: http://marquez:5000
     healthcheck:
       test: ["CMD", "uv", "run", "dagster", "api", "grpc-health-check", "-p", "3030"]
       interval: 5s
@@ -254,6 +270,8 @@ services:
       retries: 10
     networks:
       - db
+    volumes:
+      - ducklake-data:/data/ducklake
     depends_on:
       postgres:
         condition: service_healthy
@@ -269,14 +287,25 @@ services:
   # Marimo App
   # ---------------------------------------------
   marimo:
-    build: ../../services/marimo
+    build:
+      context: ../../
+      dockerfile: projects/cbs-example/notebooks/Dockerfile
     container_name: srdp-marimo
+    environment:
+      DUCKLAKE_PG_HOST: postgres
+      DUCKLAKE_PG_USER: postgres
+      DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
+      DUCKLAKE_PG_DB: ducklake
+      DUCKLAKE_DATA_PATH: /data/ducklake
     networks:
       - app
+      - db
+    volumes:
+      - ducklake-data:/data/ducklake:ro
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=srdp-app"
-      - "traefik.http.routers.marimo.rule=Host(`marimo.local.dev`)"
+      - "traefik.http.routers.marimo.rule=Host(`marimo.srdp.localhost`)"
       - "traefik.http.routers.marimo.service=marimo@docker"
       - "traefik.http.services.marimo.loadbalancer.server.port=8000"
       - "traefik.http.routers.marimo.middlewares=zitadel-errors@docker,zitadel-auth@docker"
@@ -284,7 +313,12 @@ services:
   # ---------------------------------------------
   # Quarto Static Site
   # ---------------------------------------------
+  # Off by default: its base image bundles a full Pandoc/TinyTeX/Deno toolchain
+  # sized for scientific publishing, heavy for a single static page, and it has
+  # crashed the local Docker daemon on memory-constrained dev VMs. Opt in with
+  # `docker compose --profile optional up quarto` when actually needed.
   quarto:
+    profiles: ["optional"]
     build:
       context: ../../services/quarto
       dockerfile: Dockerfile
@@ -294,10 +328,169 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=srdp-app"
-      - "traefik.http.routers.quarto.rule=Host(`quarto.local.dev`)"
+      - "traefik.http.routers.quarto.rule=Host(`quarto.srdp.localhost`)"
       - "traefik.http.routers.quarto.service=quarto@docker"
       - "traefik.http.services.quarto.loadbalancer.server.port=80"
       - "traefik.http.routers.quarto.middlewares=zitadel-errors@docker,zitadel-auth@docker"
+
+  # ---------------------------------------------
+  # Streamlit Dashboard
+  # ---------------------------------------------
+  streamlit:
+    build:
+      context: ../../
+      dockerfile: projects/cbs-example/streamlit/Dockerfile
+    container_name: srdp-streamlit
+    environment:
+      DUCKLAKE_PG_HOST: postgres
+      DUCKLAKE_PG_USER: postgres
+      DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
+      DUCKLAKE_PG_DB: ducklake
+      DUCKLAKE_DATA_PATH: /data/ducklake
+    networks:
+      - app
+      - db
+    volumes:
+      - ducklake-data:/data/ducklake:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=srdp-app"
+      - "traefik.http.routers.streamlit.rule=Host(`streamlit.srdp.localhost`)"
+      - "traefik.http.routers.streamlit.service=streamlit@docker"
+      - "traefik.http.services.streamlit.loadbalancer.server.port=8000"
+      - "traefik.http.routers.streamlit.middlewares=zitadel-errors@docker,zitadel-auth@docker"
+
+  # ---------------------------------------------
+  # FastAPI — basic read-only info on the catalog and Dagster
+  # ---------------------------------------------
+  api:
+    build:
+      context: ../../
+      dockerfile: projects/cbs-example/api/Dockerfile
+    container_name: srdp-api
+    environment:
+      DUCKLAKE_PG_HOST: postgres
+      DUCKLAKE_PG_USER: postgres
+      DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
+      DUCKLAKE_PG_DB: ducklake
+      DUCKLAKE_DATA_PATH: /data/ducklake
+      DAGSTER_GRAPHQL_URL: http://dagster-webserver:3000/graphql
+    networks:
+      - app
+      - db
+    volumes:
+      - ducklake-data:/data/ducklake:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=srdp-app"
+      - "traefik.http.routers.api.rule=Host(`api.srdp.localhost`)"
+      - "traefik.http.routers.api.service=api@docker"
+      - "traefik.http.services.api.loadbalancer.server.port=8000"
+      - "traefik.http.routers.api.middlewares=zitadel-errors@docker,zitadel-auth@docker"
+
+  # ---------------------------------------------
+  # DuckDB UI — ad hoc queries against the DuckLake catalog
+  # ---------------------------------------------
+  duckdb-ui:
+    build:
+      context: ../../
+      dockerfile: services/duckdb-ui/Dockerfile
+    container_name: srdp-duckdb-ui
+    environment:
+      DUCKLAKE_PG_HOST: postgres
+      DUCKLAKE_PG_USER: postgres
+      DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
+      DUCKLAKE_PG_DB: ducklake
+      DUCKLAKE_DATA_PATH: /data/ducklake
+    networks:
+      - app
+      - db
+    volumes:
+      - ducklake-data:/data/ducklake:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=srdp-app"
+      - "traefik.http.routers.duckdb-ui.rule=Host(`duckdb.srdp.localhost`)"
+      - "traefik.http.routers.duckdb-ui.service=duckdb-ui@docker"
+      - "traefik.http.services.duckdb-ui.loadbalancer.server.port=4213"
+      - "traefik.http.routers.duckdb-ui.middlewares=zitadel-errors@docker,zitadel-auth@docker"
+      # DuckDB UI's frontend makes its own background API calls (/localToken,
+      # /ddb/run, /ddb/interrupt, /ddb/tokenize, /localEvents — all confirmed by
+      # reading its own bundle) that can legitimately return their own 401 from
+      # DuckDB's server, unrelated to SSO. zitadel-errors rewrites ANY 401 in the
+      # response chain into a login redirect, which hijacks these and breaks them
+      # with a CORS error a background fetch() can't follow. This more specific
+      # router (Traefik favors the longer/more specific rule automatically, no
+      # explicit priority needed) keeps the real auth check (zitadel-auth) but
+      # skips the rewrite for DuckDB's own API surface. /localEvents is a
+      # long-lived EventSource (SSE) stream, not request/response — see
+      # haproxy.cfg's timeout tunnel for why that matters too.
+      - "traefik.http.routers.duckdb-ui-internal.rule=Host(`duckdb.srdp.localhost`) && (Path(`/localToken`) || Path(`/localEvents`) || PathPrefix(`/ddb/`))"
+      - "traefik.http.routers.duckdb-ui-internal.service=duckdb-ui@docker"
+      - "traefik.http.routers.duckdb-ui-internal.middlewares=zitadel-auth@docker"
+
+  # ---------------------------------------------
+  # Marquez (OpenLineage backend + UI)
+  # ---------------------------------------------
+  marquez:
+    image: marquezproject/marquez:latest
+    container_name: srdp-marquez
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      SEARCH_ENABLED: false
+    networks:
+      - app
+      - db
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  marquez-web:
+    image: marquezproject/marquez-web:latest
+    container_name: srdp-marquez-web
+    environment:
+      MARQUEZ_HOST: marquez
+      MARQUEZ_PORT: 5000
+      WEB_PORT: 3000
+    networks:
+      - app
+    depends_on:
+      - marquez
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=srdp-app"
+      - "traefik.http.routers.marquez.rule=Host(`marquez.srdp.localhost`)"
+      - "traefik.http.routers.marquez.service=marquez-web@docker"
+      - "traefik.http.services.marquez-web.loadbalancer.server.port=3000"
+      - "traefik.http.routers.marquez.middlewares=zitadel-errors@docker,zitadel-auth@docker"
+
+  # ---------------------------------------------
+  # Hub — static landing page linking the other services
+  # ---------------------------------------------
+  # Gated behind SSO like every other service, so who's landing on it is known too.
+  # Plain nginx + static HTML, deliberately: no generator, no toolchain, nothing to
+  # crash — see the Quarto service above for what happens when that's skipped.
+  hub:
+    build:
+      context: ../../services/hub
+      dockerfile: Dockerfile
+    container_name: srdp-hub
+    networks:
+      - app
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=srdp-app"
+      - "traefik.http.routers.hub.rule=Host(`srdp.localhost`)"
+      - "traefik.http.routers.hub.service=hub@docker"
+      - "traefik.http.services.hub.loadbalancer.server.port=80"
+      - "traefik.http.routers.hub.middlewares=zitadel-errors@docker,zitadel-auth@docker"
 
 networks:
   app:
@@ -310,3 +503,5 @@ volumes:
     name: srdp-pgdata
   dagster-compute-logs:
     name: srdp-dagster-compute-logs
+  ducklake-data:
+    name: srdp-ducklake-data

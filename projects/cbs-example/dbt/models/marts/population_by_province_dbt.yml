@@ -1,0 +1,11 @@
+models:
+  - name: population_by_province_dbt
+    description: Total population per province, aggregated in dbt as a validated cross-check against the Polars pipeline's population_by_province.
+    columns:
+      - name: province
+        tests:
+          - not_null
+          - unique
+      - name: total_population
+        tests:
+          - not_null

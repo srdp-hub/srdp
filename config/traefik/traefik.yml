@@ -31,13 +31,13 @@ http:
       entryPoints:
         - "websecure"
       service: "zitadel"
-      rule: '(Host(`auth.local.dev`) && !PathPrefix(`/ui/v2/login`) && !PathPrefix(`/oauth2/`))'
+      rule: '(Host(`auth.srdp.localhost`) && !PathPrefix(`/ui/v2/login`) && !PathPrefix(`/oauth2/`))'
       tls: {}
     zitadel-login:
       entryPoints:
         - "websecure"
       service: "zitadel-login"
-      rule: '(Host(`auth.local.dev`) && PathPrefix(`/ui/v2/login`))'
+      rule: '(Host(`auth.srdp.localhost`) && PathPrefix(`/ui/v2/login`))'
       tls: {}
   services:
     zitadel:

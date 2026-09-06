@@ -7,7 +7,7 @@ authors = [
     { name = "Yannick Vinkesteijn" },
 ]
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "dagster>=1.12.17",
     "polars>=1.32.3",
@@ -20,15 +20,30 @@ infra = [
     "dagster-webserver>=1.12.17",
     "dagster-graphql>=1.12.17",
 ]
+dagster-postgres = [
+    "dagster-postgres>=0.28.17",
+]
 ducklake = [
     "duckdb>=1.4.0",
     "psycopg2-binary>=2.9.0",
     "pydantic-settings>=2.9.0",
     "pyarrow>=23.0.0",
 ]
+openlineage = [
+    "openlineage-python>=1.53.0",
+]
+api = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "httpx>=0.27.0",
+]
 azure = [
     "azure-identity>=1.25.0",
     "azure-storage-blob>=12.28.0",
+]
+dbt = [
+    "dagster-dbt>=0.29.20",
+    "dbt-duckdb>=1.11.0",
 ]
 
 [project.urls]
@@ -57,7 +72,7 @@ security = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.10.0,<0.11.0"]
+requires = ["uv_build>=0.11.28,<0.12.0"]
 build-backend = "uv_build"
 
 # ---------------------------------------------------------------------------
@@ -119,6 +134,18 @@ strict = true
 ]
 "projects/**/*.py" = [
     "INP001",  # implicit namespace package
+]
+"**/notebooks/*.py" = [
+    # Marimo's own required syntax, not a style choice: every cell is a function
+    # literally named `__`, its dependencies are untyped parameters, its output
+    # is a bare trailing expression, and its imports live inside the cell rather
+    # than at module level.
+    "N807",     # dunder cell function names
+    "ANN001", "ANN202",  # untyped cell parameters/returns
+    "B018",     # bare expression as cell output
+    "PLC0415",  # imports inside cell functions
+    "N806", "N803",  # constants-as-locals/params inside cell functions
+    "PLR0913", # cells can have many upstream-cell dependencies
 ]
 
 [tool.ruff.format]

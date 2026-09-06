@@ -1,0 +1,40 @@
+models:
+  - name: stg_population
+    description: Population per province and age bracket, read from the Polars-written DuckLake table (checks/validation layer).
+    columns:
+      - name: province
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Groningen
+                  - Fryslân
+                  - Drenthe
+                  - Overijssel
+                  - Flevoland
+                  - Gelderland
+                  - Utrecht
+                  - Noord-Holland
+                  - Zuid-Holland
+                  - Zeeland
+                  - Noord-Brabant
+                  - Limburg
+      - name: age_bracket
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - "0-15"
+                  - "15-25"
+                  - "25-45"
+                  - "45-65"
+                  - "65-80"
+                  - "80+"
+      - name: population
+        tests:
+          - not_null
+      - name: period
+        tests:
+          - not_null

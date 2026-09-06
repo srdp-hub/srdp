@@ -1,0 +1,14 @@
+cbs_example:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: ":memory:"
+      extensions:
+        - ducklake
+      attach:
+        - path: "ducklake:postgres:host={{ env_var('DUCKLAKE_PG_HOST', 'localhost') }} port={{ env_var('DUCKLAKE_PG_PORT', '5432') }} dbname={{ env_var('DUCKLAKE_PG_DB', 'ducklake') }} user={{ env_var('DUCKLAKE_PG_USER', 'postgres') }} password={{ env_var('DUCKLAKE_PG_PASSWORD') }}"
+          alias: ducklake
+          options:
+            data_path: "{{ env_var('DUCKLAKE_DATA_PATH', '.data/ducklake') }}"
+            override_data_path: true
