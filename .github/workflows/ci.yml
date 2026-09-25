@@ -14,6 +14,10 @@ jobs:
           enable-cache: true
       # The local `ty` hook shells out to `uv run ty check`, which needs the
       # project's own env synced first, pre-commit's own hook envs (ruff,
-      # gitleaks, terraform, yamllint) install themselves.
-      - run: uv sync --group dev
+      # gitleaks, terraform, yamllint) install themselves. The extras below
+      # are every optional dependency group src/srdp/ actually imports
+      # (duckdb/psycopg2/pydantic-settings, openlineage-python, fastapi),
+      # without them ty can't resolve those imports and reports them as
+      # errors instead of checking the code that uses them.
+      - run: uv sync --group dev --extra ducklake --extra openlineage --extra api
       - run: uv run pre-commit run --all-files --show-diff-on-failure
