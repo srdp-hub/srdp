@@ -6,8 +6,12 @@ global:
 traefik:
   enabled: true
   service:
-    spec:
-      clusterIP: 10.96.0.50
+    spec: {}
+  # clusterIP is intentionally not pinned here: it must fall inside the
+  # cluster's actual service CIDR, which varies by cluster (kind/Docker
+  # Desktop default to 10.96.0.0/12, k3s to 10.43.0.0/16, ...). Kubernetes
+  # assigns one dynamically; `just local-deploy` reads it back and feeds it
+  # into oauth2-proxy.hostAliases below in a second pass.
   ports:
     web:
       nodePort: 30080
@@ -37,6 +41,14 @@ zitadel-db:
           CREATE USER dagster WITH PASSWORD 'srdpTest123';
           CREATE DATABASE dagster OWNER dagster;
           GRANT ALL PRIVILEGES ON DATABASE dagster TO dagster;
+        02-create-marquez.sql: |
+          -- Marquez (OpenLineage backend). Credentials match marquez.dev.yml's
+          -- hardcoded defaults (db.user/db.password = "marquez"), no env-var
+          -- override for those two in the image's default config, only
+          -- POSTGRES_HOST/POSTGRES_PORT are templated. Mirrors
+          -- deploy/docker/initdb's compose equivalent.
+          CREATE USER marquez WITH PASSWORD 'marquez';
+          CREATE DATABASE marquez OWNER marquez;
     persistence:
       enabled: true
       size: 4Gi
@@ -180,8 +192,12 @@ oauth2-proxy:
     - "Host:auth.srdp.localhost"
     - "X-Forwarded-Proto:https"
 
+  # ip is a placeholder, overwritten by `just local-deploy`'s second pass
+  # once Traefik's actual (dynamically-assigned) ClusterIP is known. It must
+  # be syntactically valid but is never meant to resolve anything itself,
+  # see the comment on traefik.service.spec above.
   hostAliases:
-    - ip: "10.96.0.50"
+    - ip: "127.0.0.1"
       hostnames:
         - "auth.srdp.localhost"
 
@@ -221,8 +237,20 @@ dagster:
           pullPolicy: IfNotPresent
         dagsterApiGrpcArgs:
           - "-m"
-          - "definitions"
+          - "etl.definitions"
         port: 3030
+        env:
+          - name: DUCKLAKE_PG_HOST
+            value: db-postgresql
+          - name: DUCKLAKE_PG_USER
+            value: postgres
+          - name: DUCKLAKE_PG_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: db-postgresql
+                key: postgres-password
+          - name: DUCKLAKE_PG_DB
+            value: ducklake
 
 # Marimo app
 marimo:
@@ -233,8 +261,10 @@ marimo:
     pullPolicy: IfNotPresent
 
 # Quarto app
+# Disabled by default: heavy build (Pandoc/TinyTeX/Deno toolchain) for no
+# current use. Flip to true to bring it back, the template stays in place.
 quarto:
-  enabled: true
+  enabled: false
   image:
     repository: rg.nl-ams.scw.cloud/srdp-registry/quarto
     tag: "v1.0"

@@ -15,6 +15,12 @@ spec:
       labels:
         app: marquez
     spec:
+      # Kubernetes injects legacy Docker-links-style env vars for every
+      # Service in the namespace, including this pod's own `marquez`
+      # Service. That clobbers MARQUEZ_PORT with "tcp://<clusterIP>:5000",
+      # which Marquez's own config expects as a plain integer, crashing on
+      # startup. Disable it, nothing here relies on those vars.
+      enableServiceLinks: false
       containers:
         - name: marquez
           image: "{{ .Values.marquez.image.repository }}:{{ .Values.marquez.image.tag }}"
@@ -63,6 +69,10 @@ spec:
       labels:
         app: marquez-web
     spec:
+      # Same reasoning as the marquez Deployment above: this pod currently
+      # survives only because its own MARQUEZ_PORT happens to override the
+      # injected one, don't rely on that ordering.
+      enableServiceLinks: false
       containers:
         - name: marquez-web
           image: "{{ .Values.marquez.web.image.repository }}:{{ .Values.marquez.web.image.tag }}"

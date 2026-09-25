@@ -10,7 +10,11 @@ icon: lucide/life-buoy
 - Make sure the TLS secret `custom-ingress-cert` exists in the `srdp` namespace (`kubectl get secret custom-ingress-cert -n srdp`).
 - For production, Traefik uses Let's Encrypt via the ACME TLS challenge; verify the `certResolver` and ACME email are set in `values-prod.yaml`.
 - Regenerate with `mkcert` if the hostnames or IP changed (local dev).
-- Confirm your hosts file points `auth/marimo/quarto/dagster.<domain>` to the Traefik IP.
+- Confirm your hosts file points `auth/marimo/dagster.<domain>` to the Traefik IP.
+
+### `kind create cluster` fails with "port is already allocated"
+
+- `deploy/kubernetes/kind-config.yaml` deliberately maps host ports 18080/18443, not 80/443/8080, because `deploy/docker/docker-compose.yml` already publishes exactly those three (http, https, the Traefik dashboard), and both stacks are meant to run side by side. If you still hit this error, something else on your machine is already using 18080/18443, check `lsof -i :18443` (or the equivalent) and either free it or pick different ports in `kind-config.yaml`, matching them up with `values.yaml`'s `traefik.ports.*.nodePort`.
 
 ### Pods stuck in `Pending`
 
@@ -43,7 +47,7 @@ icon: lucide/life-buoy
 ### Dagster webserver CrashLoopBackOff with `password authentication failed for user "dagster"`
 
 - Cause: `zitadel-db.primary.initdb.scripts` only run on first PostgreSQL initialization. If you reused an old PVC, the `dagster` role/database may be missing.
-- Quick fix (keeps existing data) — adjust the pod name and password for your environment:
+- Quick fix (keeps existing data), adjust the pod name and password for your environment:
   - Local: `kubectl -n srdp exec -i db-postgresql-0 -- bash -lc "export PGPASSWORD='<your-postgres-password>'; psql -h 127.0.0.1 -U postgres -d postgres"`
   - Production: `kubectl -n srdp exec -i db-postgresql-primary-0 -- bash -lc "export PGPASSWORD='<your-postgres-password>'; psql -h 127.0.0.1 -U postgres -d postgres"`
   - Then run:

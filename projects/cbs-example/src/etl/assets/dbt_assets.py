@@ -1,5 +1,6 @@
 """dbt-defined assets — pure SQL models against the same DuckLake catalog the Polars pipeline writes to."""
 
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,6 @@ class CbsDbtTranslator(DagsterDbtTranslator):
 
 
 @dbt_assets(manifest=cbs_dbt_project.manifest_path, dagster_dbt_translator=CbsDbtTranslator())
-def cbs_dbt_assets(context: AssetExecutionContext, dbt: DbtCliResource):
+def cbs_dbt_assets(context: AssetExecutionContext, dbt: DbtCliResource) -> Iterator[Any]:
     """Run the cbs_example dbt project (models + tests) via `dbt build`."""
     yield from dbt.cli(["build"], context=context).stream()

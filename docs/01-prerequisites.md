@@ -10,21 +10,21 @@ Before you begin, ensure you have the following software installed on your local
 ### Required tools (all deployment methods)
 
 - Git
-- Container runtime (Docker Engine + Docker Compose)
-- [`just`](https://github.com/casey/just) — task runner for common commands
-- [`mkcert`](https://github.com/FiloSottaro/mkcert) — local TLS certificates for `*.srdp.localhost`
+- Container runtime (Docker Engine + Docker Compose). Any Docker-compatible setup works, this repo doesn't assume one, Colima and OrbStack are two that are known to work.
+- [`just`](https://github.com/casey/just), task runner for common commands
+- [`mkcert`](https://github.com/FiloSottaro/mkcert), local TLS certificates for `*.srdp.localhost`
 
-- `kubectl` + a Kubernetes cluster (tested with 1.32+)
-- Helm 3.x
+- `kubectl` + Helm 3.x
+- [`kind`](https://kind.sigs.k8s.io/), for a local Kubernetes cluster (tested with 1.32+). Runs as plain containers on whatever Docker daemon you already have, no separate VM, and works identically on macOS, Linux, and Windows.
 
 ### Additional tools for production
 
-- [OpenTofu](https://opentofu.org/docs/intro/install/) — infrastructure provisioning on Scaleway Kapsule
+- [OpenTofu](https://opentofu.org/docs/intro/install/), infrastructure provisioning on Scaleway Kapsule
 
 ### Tested with
 
-- **macOS**: Docker Engine + Docker Compose + Kubernetes via [Colima](https://github.com/abiosoft/colima)
-- **Linux**: Docker Engine + Docker Compose + Kubernetes (native)
+- Local Kubernetes: `kind`, same setup on macOS and Linux.
+- Docker Compose: any Docker Engine-compatible runtime.
 
 ### Notes
 

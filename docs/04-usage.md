@@ -11,12 +11,11 @@ icon: lucide/circle-play
 
 ### Access services
 - Marimo: `https://marimo.srdp.localhost`
-- Quarto: `https://quarto.srdp.localhost`
 - Dagster: `https://dagster.srdp.localhost`
 - Zitadel: `https://auth.srdp.localhost`
 - Traefik dashboard (if enabled in values): `http://localhost:8080`
 
-All apps (Marimo, Quarto, Dagster) are protected behind OAuth2-Proxy. Accessing any of them will redirect to Zitadel for OIDC login before granting access.
+All apps (Marimo, Dagster) are protected behind OAuth2-Proxy. Accessing any of them will redirect to Zitadel for OIDC login before granting access. Quarto is disabled by default, see `docs/02-configuration.md`.
 
 ### Update or remove the release
 - Re-apply updated values: rerun the `helm upgrade --install ...` command from [02-configuration.md](./02-configuration.md) (or `just local-deploy`).
@@ -38,10 +37,6 @@ Use the following URLs. You will be prompted to authenticate before accessing ea
 *   **Marimo Dashboard:**
     *   URL: [https://marimo.srdp.localhost](https://marimo.srdp.localhost)
     *   You should see an interactive dashboard with a slider.
-
-*   **Quarto Static Site:**
-    *   URL: [https://quarto.srdp.localhost](https://quarto.srdp.localhost)
-    *   You should see a static HTML report titled "My Quarto Report".
 
 *   **Traefik Dashboard (for debugging):**
     *   URL: [http://localhost:8080](http://localhost:8080)

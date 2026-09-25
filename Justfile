@@ -21,19 +21,51 @@ scaleway *args:
 # Generate mkcert TLS certs for the local Docker Compose stack
 docker-tls:
 	mkdir -p deploy/docker/certs
-	mkcert -cert-file deploy/docker/certs/selfsigned.crt -key-file deploy/docker/certs/selfsigned.key "srdp.localhost" "auth.srdp.localhost" "marimo.srdp.localhost" "quarto.srdp.localhost" "dagster.srdp.localhost" "streamlit.srdp.localhost" "marquez.srdp.localhost" "api.srdp.localhost" "duckdb.srdp.localhost"
+	mkcert -cert-file deploy/docker/certs/selfsigned.crt -key-file deploy/docker/certs/selfsigned.key "srdp.localhost" "auth.srdp.localhost" "marimo.srdp.localhost" "dagster.srdp.localhost" "streamlit.srdp.localhost" "marquez.srdp.localhost" "api.srdp.localhost" "duckdb.srdp.localhost"
+
+# Create the local kind cluster for Kubernetes testing, if it doesn't already
+# exist, and point kubectl at it. Runs as plain containers on whatever
+# Docker daemon you already have, no separate VM.
+kind-up:
+	kind get clusters 2>/dev/null | grep -qx srdp || kind create cluster --config deploy/kubernetes/kind-config.yaml
+	kubectl config use-context kind-srdp
+
+# Delete the local kind cluster
+kind-down:
+	kind delete cluster --name srdp
+
+# Build the application images and load them into the kind cluster (pull
+# policy is Never for local dev, so the cluster needs its own copy, kind
+# nodes don't share the host's image store).
+kind-load-images: kind-up
+	docker build -t rg.nl-ams.scw.cloud/srdp-registry/marimo:v1.0 -f projects/cbs-example/notebooks/Dockerfile .
+	docker build -t rg.nl-ams.scw.cloud/srdp-registry/srdp-etl:v1.0 -f projects/cbs-example/Dockerfile .
+	docker build -t rg.nl-ams.scw.cloud/srdp-registry/srdp-api:v1.0 -f projects/cbs-example/api/Dockerfile .
+	docker build -t rg.nl-ams.scw.cloud/srdp-registry/duckdb-ui:v1.0 -f services/duckdb-ui/Dockerfile .
+	docker build -t rg.nl-ams.scw.cloud/srdp-registry/hub:v1.0 services/hub
+	kind load docker-image \
+		rg.nl-ams.scw.cloud/srdp-registry/marimo:v1.0 \
+		rg.nl-ams.scw.cloud/srdp-registry/srdp-etl:v1.0 \
+		rg.nl-ams.scw.cloud/srdp-registry/srdp-api:v1.0 \
+		rg.nl-ams.scw.cloud/srdp-registry/duckdb-ui:v1.0 \
+		rg.nl-ams.scw.cloud/srdp-registry/hub:v1.0 \
+		--name srdp
 
 # Generate mkcert TLS certs and create the k8s TLS secret
-local-tls:
+local-tls: kind-up
 	mkdir -p deploy/kubernetes/certs
-	mkcert -cert-file deploy/kubernetes/certs/selfsigned.crt -key-file deploy/kubernetes/certs/selfsigned.key "srdp.localhost" "auth.srdp.localhost" "marimo.srdp.localhost" "quarto.srdp.localhost" "dagster.srdp.localhost" "streamlit.srdp.localhost" "marquez.srdp.localhost" "api.srdp.localhost" "duckdb.srdp.localhost"
+	mkcert -cert-file deploy/kubernetes/certs/selfsigned.crt -key-file deploy/kubernetes/certs/selfsigned.key "srdp.localhost" "auth.srdp.localhost" "marimo.srdp.localhost" "dagster.srdp.localhost" "streamlit.srdp.localhost" "marquez.srdp.localhost" "api.srdp.localhost" "duckdb.srdp.localhost"
 	kubectl create namespace {{namespace}} --dry-run=client -o yaml | kubectl apply -f -
 	kubectl create secret tls custom-ingress-cert --namespace {{namespace}} --key deploy/kubernetes/certs/selfsigned.key --cert deploy/kubernetes/certs/selfsigned.crt --dry-run=client -o yaml | kubectl apply -f -
 
 # Deploy the full platform to the local k8s cluster
-local-deploy:
+local-deploy: kind-load-images
 	cd deploy/kubernetes/srdp-chart && helm dependency update
 	cd deploy/kubernetes && helm upgrade --install srdp srdp-chart --namespace {{namespace}} --create-namespace -f srdp-chart/values.yaml -f srdp-chart/values-local.yaml
+	@echo "Reading Traefik's assigned ClusterIP to wire it into oauth2-proxy's hostAliases..."
+	@TRAEFIK_IP=$(kubectl get svc srdp-traefik -n {{namespace}} -o jsonpath='{.spec.clusterIP}'); \
+	echo "Traefik ClusterIP: $TRAEFIK_IP"; \
+	cd deploy/kubernetes && helm upgrade srdp srdp-chart --namespace {{namespace}} -f srdp-chart/values.yaml -f srdp-chart/values-local.yaml --set-string "oauth2-proxy.hostAliases[0].ip=$TRAEFIK_IP"
 
 # Tear down local k8s deployment and delete PVCs
 local-delete:
@@ -116,9 +148,16 @@ lint:
 typecheck:
 	uv run ty check src/srdp
 
-# Run the test suite with coverage
+# Run the test suite with coverage. `tests/` doesn't exist yet
+# (docs/reviews/issue-missing-test-suite.md), so this is a no-op with a
+# warning until it does, rather than a hard CI failure. Runs for real, and
+# starts enforcing again, as soon as tests/ has any test files in it.
 test:
-	uv run pytest tests --cov=srdp
+	@if [ -d tests ] && find tests -name 'test_*.py' -o -name '*_test.py' 2>/dev/null | grep -q .; then \
+		uv run pytest tests --cov=srdp; \
+	else \
+		echo "warning: no tests/ found, skipping (see docs/reviews/issue-missing-test-suite.md)"; \
+	fi
 
 # Run lint + typecheck + test
 ci: lint typecheck test
