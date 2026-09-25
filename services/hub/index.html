@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SRDP</title>
+<link rel="icon" href="assets/favicon.png">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Mozilla+Headline:wght@600;700&family=Mozilla+Text:wght@400;500&display=swap');
+
+  :root {
+    --ink: #161616;
+    --paper: #FBFAF6;
+    --sand: #F1ECE1;
+    --sand-deep: #E6DECF;
+    --cyan: #7DEDF6;
+    --blue: #006BD4;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Mozilla Text", system-ui, sans-serif;
+  }
+
+  header {
+    background: var(--ink);
+    padding: 1.5rem 2rem;
+    display: flex;
+    justify-content: center;
+  }
+
+  header img {
+    height: 32px;
+    display: block;
+  }
+
+  main {
+    max-width: 640px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 2.5rem 2rem;
+  }
+
+  .subtitle {
+    color: #555;
+    margin: 0 0 2rem;
+    font-size: 0.95rem;
+  }
+
+  .card {
+    display: block;
+    background: var(--sand);
+    border: 1px solid var(--sand-deep);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 0.75rem;
+    text-decoration: none;
+    color: var(--ink);
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+
+  .card:hover {
+    border-color: var(--blue);
+    background: var(--cyan);
+  }
+
+  .card .name {
+    font-weight: 600;
+    font-size: 1.05rem;
+  }
+
+  .card .desc {
+    color: #444;
+    font-size: 0.88rem;
+    margin-top: 0.15rem;
+  }
+
+  .soon {
+    opacity: 0.5;
+  }
+
+  .soon .card {
+    cursor: default;
+  }
+
+  .soon .card:hover {
+    border-color: var(--sand-deep);
+    background: var(--sand);
+  }
+
+  section + section {
+    margin-top: 1.5rem;
+  }
+
+  h2 {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #777;
+    margin: 0 0 0.75rem;
+  }
+</style>
+</head>
+<body>
+<header>
+  <img src="assets/logo.png" alt="SRDP Hub">
+</header>
+<main>
+  <p class="subtitle">
+    Single Repo Data Platform &mdash; one login via Zitadel SSO covers every
+    service below.
+  </p>
+
+  <section>
+    <h2>Dashboards</h2>
+    <a class="card" href="https://dagster.srdp.localhost">
+      <div class="name">Dagster</div>
+      <div class="desc">Pipelines, asset lineage, dbt-generated asset checks</div>
+    </a>
+    <a class="card" href="https://marimo.srdp.localhost">
+      <div class="name">Marimo</div>
+      <div class="desc">Lakehouse explorer notebook, live queries against DuckLake</div>
+    </a>
+    <a class="card" href="https://streamlit.srdp.localhost">
+      <div class="name">Streamlit</div>
+      <div class="desc">Population dashboard, one example of adding a BI-style app</div>
+    </a>
+    <a class="card" href="https://auth.srdp.localhost">
+      <div class="name">Zitadel console</div>
+      <div class="desc">Identity, users, OIDC applications</div>
+    </a>
+    <a class="card" href="https://marquez.srdp.localhost">
+      <div class="name">Marquez</div>
+      <div class="desc">OpenLineage lineage graph, fed automatically from every pipeline run</div>
+    </a>
+    <a class="card" href="https://duckdb.srdp.localhost">
+      <div class="name">DuckDB UI</div>
+      <div class="desc">Ad hoc lakehouse queries, direct against the DuckLake catalog</div>
+    </a>
+    <a class="card" href="https://api.srdp.localhost/token">
+      <div class="name">SRDP API</div>
+      <div class="desc">Get your access token, then call the catalog and Dagster endpoints</div>
+    </a>
+  </section>
+</main>
+</body>
+</html>

@@ -1,0 +1,101 @@
+{{- if .Values.marquez.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: marquez
+  labels:
+    app: marquez
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: marquez
+  template:
+    metadata:
+      labels:
+        app: marquez
+    spec:
+      # Kubernetes injects legacy Docker-links-style env vars for every
+      # Service in the namespace, including this pod's own `marquez`
+      # Service. That clobbers MARQUEZ_PORT with "tcp://<clusterIP>:5000",
+      # which Marquez's own config expects as a plain integer, crashing on
+      # startup. Disable it, nothing here relies on those vars.
+      enableServiceLinks: false
+      containers:
+        - name: marquez
+          image: "{{ .Values.marquez.image.repository }}:{{ .Values.marquez.image.tag }}"
+          imagePullPolicy: {{ .Values.marquez.image.pullPolicy }}
+          ports:
+            - containerPort: 5000
+            - containerPort: 5001
+          env:
+            - name: POSTGRES_HOST
+              value: db-postgresql
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: SEARCH_ENABLED
+              value: "false"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: marquez
+spec:
+  selector:
+    app: marquez
+  ports:
+    - name: api
+      protocol: TCP
+      port: 5000
+      targetPort: 5000
+    - name: admin
+      protocol: TCP
+      port: 5001
+      targetPort: 5001
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: marquez-web
+  labels:
+    app: marquez-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: marquez-web
+  template:
+    metadata:
+      labels:
+        app: marquez-web
+    spec:
+      # Same reasoning as the marquez Deployment above: this pod currently
+      # survives only because its own MARQUEZ_PORT happens to override the
+      # injected one, don't rely on that ordering.
+      enableServiceLinks: false
+      containers:
+        - name: marquez-web
+          image: "{{ .Values.marquez.web.image.repository }}:{{ .Values.marquez.web.image.tag }}"
+          imagePullPolicy: {{ .Values.marquez.web.image.pullPolicy }}
+          ports:
+            - containerPort: 3000
+          env:
+            - name: MARQUEZ_HOST
+              value: marquez
+            - name: MARQUEZ_PORT
+              value: "5000"
+            - name: WEB_PORT
+              value: "3000"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: marquez-web
+spec:
+  selector:
+    app: marquez-web
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000
+{{- end }}

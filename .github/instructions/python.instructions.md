@@ -6,13 +6,6 @@ applyTo: "**/*.py"
 
 ### Imports
 
-```python
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from dagster import InputContext, OutputContext
-```
-
 - Do NOT add `from __future__ import annotations` — the repo targets Python 3.12+ where native type hints work without it.
 - Group order: stdlib → third-party → first-party (`srdp.*`) → local.
 - No relative imports anywhere. Always absolute.

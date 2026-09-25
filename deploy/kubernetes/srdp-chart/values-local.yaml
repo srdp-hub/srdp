@@ -1,11 +1,8 @@
 traefik:
   service:
     type: LoadBalancer
-  ports:
-    web:
-      nodePort: null
-    websecure:
-      nodePort: null
+  # ports.*.nodePort is inherited from values.yaml (30080/30443, fixed so
+  # kind-config.yaml's host port mapping has something stable to point at).
   tlsStore:
     default:
       defaultCertificate:
@@ -71,3 +68,15 @@ dagster:
           pullPolicy: Never
         dagsterApiGrpcArgs: ["-m", "etl.definitions"]
         port: 3030
+        env:
+          - name: DUCKLAKE_PG_HOST
+            value: db-postgresql
+          - name: DUCKLAKE_PG_USER
+            value: postgres
+          - name: DUCKLAKE_PG_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: db-postgresql
+                key: postgres-password
+          - name: DUCKLAKE_PG_DB
+            value: ducklake

@@ -36,4 +36,17 @@ __pycache__/
 *.pyo
 *.pyd
 
+# dbt
+target/
+dbt_packages/
+logs/
+.user.yml
+
+# DuckLake local storage default (only used outside Docker/k8s, which mount their own path)
+.data/
+
 .agent
+.agents
+
+# Claude Code local overrides (personal, machine-specific — .claude/settings.json is shared)
+.claude/settings.local.json

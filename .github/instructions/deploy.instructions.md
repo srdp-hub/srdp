@@ -42,9 +42,9 @@ Registry: `rg.nl-ams.scw.cloud/srdp-registry/`
 
 | Image | Source | Tag |
 |:---|:---|:---|
-| `marimo` | `services/marimo/` | `v1.0` |
+| `marimo` | `projects/cbs-example/notebooks/` (build context: repo root) | `v1.0` |
 | `quarto` | `services/quarto/` | `v1.0` |
-| `srdp-etl` | `projects/default-etl/` (build context: repo root) | `v1.0` |
+| `srdp-etl` | `projects/cbs-example/` (build context: repo root) | `v1.0` |
 
 Build and push: `just build-and-push`
 

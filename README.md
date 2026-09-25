@@ -63,7 +63,7 @@ applications are deployed via a Helm umbrella chart.
 |:---|:---|
 | `deploy/opentofu/scaleway/` | OpenTofu configuration to provision a **Scaleway Kapsule** managed Kubernetes cluster, VPC, autoscaling node pool, and container registry |
 | `deploy/kubernetes/srdp-chart/` | Helm umbrella chart bundling Traefik, Zitadel, PostgreSQL, OAuth2-Proxy, and Dagster as upstream dependencies, plus custom templates for Marimo, Quarto, and TLS certificate bootstrapping |
-| `projects/default-etl/` | Dagster user code deployment (assets, jobs, schedules) built as a separate container image |
+| `projects/cbs-example/` | Dagster user code deployment (assets, jobs, schedules) built as a separate container image |
 
 A `Justfile` at the repository root provides convenience commands for both targets:
 

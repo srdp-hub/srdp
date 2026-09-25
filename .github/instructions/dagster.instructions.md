@@ -22,16 +22,16 @@ PostgreSQL is the stateful backend. It stores run history, event logs, schedules
 ### Assets
 
 - Use typed return annotations: `Output[pl.DataFrame]`, `Output[str]`.
-- IO manager key for DuckLake persistence: `io_manager_key="ducklake"`.
+- Register `ducklake_io_manager` under the `"io_manager"` key, so it's every asset's default instead of an opt-in. An asset that can't produce a `pl.DataFrame`/`pl.LazyFrame` needs an explicit, differently-named `io_manager_key` to opt out visibly.
 - `defs = Definitions(...)` is the only top-level export in `definitions.py`.
 
 ### K8s resource profiles
 
-Import from `srdp.resources.k8s` — never redefine inline:
+Import from `srdp.resources.k8s`, never redefine inline:
 
-- `BASE_RUN_K8S_CONFIG` — standard workloads
-- `FAST_LANE_K8S_CONFIG` — latency-sensitive
-- `BACKFILL_K8S_CONFIG` — batch processing
+- `BASE_RUN_K8S_CONFIG`: standard workloads
+- `FAST_LANE_K8S_CONFIG`: latency-sensitive
+- `BACKFILL_K8S_CONFIG`: batch processing
 
 ### Priority scheme
 
@@ -46,5 +46,5 @@ Import from `srdp.resources.k8s` — never redefine inline:
 
 - Client assets live in `projects/<name>/src/etl/assets/`.
 - The module is loaded via `-m etl.definitions`.
-- To add a new client: copy `projects/default-etl/` and rename.
+- To add a new client: copy `projects/cbs-example/` and rename.
 - Reusable platform code belongs in `src/srdp/`, not in a project.

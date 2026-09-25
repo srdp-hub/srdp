@@ -150,7 +150,7 @@ spec:
                 --data "$(tr -d '\n' < /secret/${USER}-cert.json)" \
                 > /dev/null || echo "error uploading ${USER} secret: $?"
             }
-        
+
             uploadSecret postgres
             uploadSecret zitadel
         volumeMounts:

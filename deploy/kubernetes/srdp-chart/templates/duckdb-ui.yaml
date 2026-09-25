@@ -1,0 +1,49 @@
+{{- if .Values.duckdbUi.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: duckdb-ui
+  labels:
+    app: duckdb-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: duckdb-ui
+  template:
+    metadata:
+      labels:
+        app: duckdb-ui
+    spec:
+      containers:
+        - name: duckdb-ui
+          image: "{{ .Values.duckdbUi.image.repository }}:{{ .Values.duckdbUi.image.tag }}"
+          imagePullPolicy: {{ .Values.duckdbUi.image.pullPolicy }}
+          ports:
+            - containerPort: 4213
+          env:
+            - name: DUCKLAKE_PG_HOST
+              value: db-postgresql
+            - name: DUCKLAKE_PG_USER
+              value: postgres
+            - name: DUCKLAKE_PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-postgresql
+                  key: postgres-password
+            - name: DUCKLAKE_PG_DB
+              value: ducklake
+          # DUCKLAKE_DATA_PATH / shared storage: same open question as api.yaml.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: duckdb-ui
+spec:
+  selector:
+    app: duckdb-ui
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 4213
+{{- end }}

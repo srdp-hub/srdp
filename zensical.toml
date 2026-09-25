@@ -27,4 +27,10 @@ repo = "fontawesome/brands/github"
 [project.extra]
 homepage = "https://srdphub.com/"
 
+# Mermaid fences render as diagrams rather than syntax-highlighted code blocks.
+[project.markdown_extensions]
+pymdownx.superfences.custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+]
+
 [project.markdown_extensions.footnotes]

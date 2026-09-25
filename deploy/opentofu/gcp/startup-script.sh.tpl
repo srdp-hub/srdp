@@ -51,7 +51,7 @@ mkdir -p certs
 openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
   -keyout certs/selfsigned.key \
   -out certs/selfsigned.crt \
-  -subj "/C=US/ST=State/L=City/O=Organization/OU=OrgUnit/CN=auth.local.dev"
+  -subj "/C=US/ST=State/L=City/O=Organization/OU=OrgUnit/CN=auth.srdp.localhost"
 
 # Create the .env file from secrets and configuration passed by OpenTofu.
 # This file provides environment variables to Docker Compose.
@@ -64,10 +64,10 @@ OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
 OIDC_COOKIE_SECRET=${OIDC_COOKIE_SECRET}
 EOF
 
-# **CRITICAL STEP:** Replace the placeholder 'local.dev' domain with the real
+# **CRITICAL STEP:** Replace the placeholder 'srdp.localhost' domain with the real
 # public domain in ALL relevant configuration files.
 # This command targets both docker-compose.yml and traefik.yml in one pass.
-sed -i "s|local.dev|${DOMAIN_NAME}|g" docker-compose.yml traefik/traefik.yml
+sed -i "s|srdp.localhost|${DOMAIN_NAME}|g" docker-compose.yml traefik/traefik.yml
 
 # Create the directory for persistent storage of Let's Encrypt certificates
 mkdir -p letsencrypt

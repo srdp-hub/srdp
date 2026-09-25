@@ -1,4 +1,4 @@
-{{- if and (index .Values "oauth2-proxy" "enabled") (or .Values.marimo.enabled .Values.quarto.enabled .Values.dagster.enabled) }}
+{{- if and (index .Values "oauth2-proxy" "enabled") (or .Values.marimo.enabled .Values.quarto.enabled .Values.dagster.enabled .Values.api.enabled .Values.duckdbUi.enabled .Values.hub.enabled .Values.marquez.enabled) }}
 # Middlewares
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
@@ -51,6 +51,18 @@ spec:
 {{- if .Values.dagster.enabled }}
         - dagster.{{ .Values.global.domain }}
 {{- end }}
+{{- if .Values.api.enabled }}
+        - api.{{ .Values.global.domain }}
+{{- end }}
+{{- if .Values.duckdbUi.enabled }}
+        - duckdb.{{ .Values.global.domain }}
+{{- end }}
+{{- if .Values.hub.enabled }}
+        - {{ .Values.global.domain }}
+{{- end }}
+{{- if .Values.marquez.enabled }}
+        - marquez.{{ .Values.global.domain }}
+{{- end }}
       {{- if .Values.traefik.certResolver }}
       secretName: {{ .Values.global.domain | replace "." "-" }}-tls
       {{- else }}
@@ -83,6 +95,54 @@ spec:
 {{- end }}
 {{- if .Values.dagster.enabled }}
     - host: dagster.{{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /oauth2
+            pathType: Prefix
+            backend:
+              service:
+                name: srdp-oauth2-proxy
+                port:
+                  number: 80
+{{- end }}
+{{- if .Values.api.enabled }}
+    - host: api.{{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /oauth2
+            pathType: Prefix
+            backend:
+              service:
+                name: srdp-oauth2-proxy
+                port:
+                  number: 80
+{{- end }}
+{{- if .Values.duckdbUi.enabled }}
+    - host: duckdb.{{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /oauth2
+            pathType: Prefix
+            backend:
+              service:
+                name: srdp-oauth2-proxy
+                port:
+                  number: 80
+{{- end }}
+{{- if .Values.hub.enabled }}
+    - host: {{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /oauth2
+            pathType: Prefix
+            backend:
+              service:
+                name: srdp-oauth2-proxy
+                port:
+                  number: 80
+{{- end }}
+{{- if .Values.marquez.enabled }}
+    - host: marquez.{{ .Values.global.domain }}
       http:
         paths:
           - path: /oauth2
@@ -222,6 +282,185 @@ spec:
             backend:
               service:
                 name: {{ .Release.Name }}-dagster-webserver{{- if .Values.dagster.dagsterWebserver.enableReadOnly }}-read-only{{- end }}
+                port:
+                  number: 80
+{{- end }}
+
+{{- if .Values.api.enabled }}
+---
+# Protected SRDP API Routes
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-ingress
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-oauth-errors@kubernetescrd,{{ .Release.Namespace }}-oauth-auth@kubernetescrd
+spec:
+  ingressClassName: srdp-traefik
+  tls:
+    - hosts:
+        - api.{{ .Values.global.domain }}
+      {{- if .Values.traefik.certResolver }}
+      secretName: api-tls-prod
+      {{- else }}
+      secretName: custom-ingress-cert
+      {{- end }}
+  rules:
+    - host: api.{{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 80
+{{- end }}
+
+{{- if .Values.duckdbUi.enabled }}
+---
+# Protected DuckDB UI Routes
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: duckdb-ui-ingress
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-oauth-errors@kubernetescrd,{{ .Release.Namespace }}-oauth-auth@kubernetescrd
+spec:
+  ingressClassName: srdp-traefik
+  tls:
+    - hosts:
+        - duckdb.{{ .Values.global.domain }}
+      {{- if .Values.traefik.certResolver }}
+      secretName: duckdb-ui-tls-prod
+      {{- else }}
+      secretName: custom-ingress-cert
+      {{- end }}
+  rules:
+    - host: duckdb.{{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: duckdb-ui
+                port:
+                  number: 80
+---
+# DuckDB UI's own API surface (/localToken, /localEvents, /ddb/*): keep the
+# real auth check but skip the errors-middleware's 401-rewrite, since these
+# paths can legitimately 401 from DuckDB's own server, not from SSO (see
+# services/duckdb-ui/ and projects/cbs-example/README.md for the full story).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: duckdb-ui-internal-ingress
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-oauth-auth@kubernetescrd
+spec:
+  ingressClassName: srdp-traefik
+  tls:
+    - hosts:
+        - duckdb.{{ .Values.global.domain }}
+      {{- if .Values.traefik.certResolver }}
+      secretName: duckdb-ui-tls-prod
+      {{- else }}
+      secretName: custom-ingress-cert
+      {{- end }}
+  rules:
+    - host: duckdb.{{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /localToken
+            pathType: Exact
+            backend:
+              service:
+                name: duckdb-ui
+                port:
+                  number: 80
+          - path: /localEvents
+            pathType: Exact
+            backend:
+              service:
+                name: duckdb-ui
+                port:
+                  number: 80
+          - path: /ddb/
+            pathType: Prefix
+            backend:
+              service:
+                name: duckdb-ui
+                port:
+                  number: 80
+{{- end }}
+
+{{- if .Values.hub.enabled }}
+---
+# Protected Hub Routes, served on the bare domain
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hub-ingress
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-oauth-errors@kubernetescrd,{{ .Release.Namespace }}-oauth-auth@kubernetescrd
+spec:
+  ingressClassName: srdp-traefik
+  tls:
+    - hosts:
+        - {{ .Values.global.domain }}
+      {{- if .Values.traefik.certResolver }}
+      secretName: hub-tls-prod
+      {{- else }}
+      secretName: custom-ingress-cert
+      {{- end }}
+  rules:
+    - host: {{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hub
+                port:
+                  number: 80
+{{- end }}
+
+{{- if .Values.marquez.enabled }}
+---
+# Protected Marquez Routes (routes to marquez-web, the UI, same as docker-compose)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: marquez-ingress
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-oauth-errors@kubernetescrd,{{ .Release.Namespace }}-oauth-auth@kubernetescrd
+spec:
+  ingressClassName: srdp-traefik
+  tls:
+    - hosts:
+        - marquez.{{ .Values.global.domain }}
+      {{- if .Values.traefik.certResolver }}
+      secretName: marquez-tls-prod
+      {{- else }}
+      secretName: custom-ingress-cert
+      {{- end }}
+  rules:
+    - host: marquez.{{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: marquez-web
                 port:
                   number: 80
 {{- end }}

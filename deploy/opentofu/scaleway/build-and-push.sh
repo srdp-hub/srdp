@@ -15,17 +15,18 @@ echo "Target Registry: $REGISTRY"
 echo "Version: $VERSION"
 
 echo "Building Marimo..."
-docker build --platform linux/amd64 -t "$REGISTRY/marimo:$VERSION" "$REPO_ROOT/services/marimo"
+# Build context is repo root — the Dockerfile needs access to src/ and the
+# CBS-specific notebook under projects/cbs-example/.
+docker build --platform linux/amd64 \
+  -f "$REPO_ROOT/projects/cbs-example/notebooks/Dockerfile" \
+  -t "$REGISTRY/marimo:$VERSION" \
+  "$REPO_ROOT"
 docker push "$REGISTRY/marimo:$VERSION"
-
-echo "Building Quarto..."
-docker build --platform linux/amd64 -t "$REGISTRY/quarto:$VERSION" "$REPO_ROOT/services/quarto"
-docker push "$REGISTRY/quarto:$VERSION"
 
 echo "Building SRDP ETL (Dagster user code)..."
 # Build context is repo root — the Dockerfile needs access to src/ and projects/
 docker build --platform linux/amd64 \
-  -f "$REPO_ROOT/projects/default-etl/Dockerfile" \
+  -f "$REPO_ROOT/projects/cbs-example/Dockerfile" \
   -t "$REGISTRY/srdp-etl:$VERSION" \
   "$REPO_ROOT"
 docker push "$REGISTRY/srdp-etl:$VERSION"

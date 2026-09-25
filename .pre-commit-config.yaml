@@ -7,6 +7,9 @@ repos:
       - id: check-yaml
         # Kubernetes manifests (deploy/gitops) are multi-document files.
         args: [--allow-multiple-documents]
+        # Helm templates are YAML *after* templating, `{{ ... }}` isn't valid YAML
+        # on its own, so a generic parser can't validate them pre-render.
+        exclude: ^deploy/kubernetes/srdp-chart/templates/
       - id: check-toml
       - id: check-added-large-files
       - id: check-merge-conflict

@@ -1,0 +1,30 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      # The terraform_fmt/terraform_tflint hooks below (deploy/scaleway/)
+      # shell out to the `terraform` and `tflint` binaries directly, pre-commit
+      # doesn't install these itself the way it does its Python/JS hook envs.
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - uses: terraform-linters/setup-tflint@v4
+      # The local `ty` hook shells out to `uv run ty check`, which needs the
+      # project's own env synced first, pre-commit's own hook envs (ruff,
+      # gitleaks, terraform, yamllint) install themselves. The extras below
+      # are every optional dependency group src/srdp/ actually imports
+      # (duckdb/psycopg2/pydantic-settings, openlineage-python, fastapi),
+      # without them ty can't resolve those imports and reports them as
+      # errors instead of checking the code that uses them.
+      - run: uv sync --group dev --extra ducklake --extra openlineage --extra api
+      - run: uv run pre-commit run --all-files --show-diff-on-failure

@@ -68,7 +68,7 @@ RUN uv sync
 
 The resulting image contains both the platform library and the client's assets. It slots into the existing Docker Compose or Helm deployment by replacing the default worker image.
 
-`projects/default-etl/` in this repo serves as a reference implementation and starting template for client projects.
+`projects/cbs-example/` in this repo serves as a reference implementation and starting template for client projects.
 
 ### State and persistence
 

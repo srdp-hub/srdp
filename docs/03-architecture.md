@@ -17,10 +17,10 @@ Both deployment targets (Docker Compose and Helm) run the same logical services.
 | `srdp-zitadel` | Identity provider (OIDC) | `ghcr.io/zitadel/zitadel:v4.2.2` | API, console, OIDC endpoints |
 | `srdp-zitadel-login` | Hosted login UI | `ghcr.io/zitadel/zitadel-login:v4.2.2` | Separate Next.js app since Zitadel v4 |
 | `srdp-oauth2-proxy` | Forward-auth middleware | `quay.io/oauth2-proxy/oauth2-proxy:v7.6.0` | |
-| `srdp-dagster-code` | User pipeline code (gRPC) | Built from `projects/default-etl/Dockerfile` | Separate so pipeline code can update independently |
+| `srdp-dagster-code` | User pipeline code (gRPC) | Built from `projects/cbs-example/Dockerfile` | Separate so pipeline code can update independently |
 | `srdp-dagster-webserver` | Orchestration UI | Built from `deploy/docker/dagster-webserver.Dockerfile` | No source code — connects to code server over gRPC |
 | `srdp-dagster-daemon` | Schedule & sensor execution | Same image as webserver | Must be a separate process per Dagster's architecture |
-| `srdp-marimo` | Reactive notebook app | Built from `services/marimo/` | |
+| `srdp-marimo` | Reactive notebook app | Built from `projects/cbs-example/notebooks/` | App content is tenant-owned, unlike quarto's generic runtime |
 | `srdp-quarto` | Static reporting site | Built from `services/quarto/` | |
 
 **Why so many containers?** Zitadel requires a one-time init container and ships its login UI as a separate app since v4. Dagster requires three processes by design: the code server (isolates user code), the webserver (UI), and the daemon (runs schedules/sensors/backfills). These cannot be merged without breaking the tools' architecture.
@@ -307,7 +307,7 @@ Shared across all services. The `initdb/` directory runs SQL scripts on first bo
 Three containers, two images:
 
 - **dagster-webserver** and **dagster-daemon** share an image (`dagster-webserver.Dockerfile`) that installs only the `[infra]` extra — no source code. They connect to the code server over gRPC.
-- **dagster-code** uses the project Dockerfile (`projects/default-etl/Dockerfile`) which installs the full `srdp` package plus project code. It runs `dagster code-server start` to expose definitions over gRPC.
+- **dagster-code** uses the project Dockerfile (`projects/cbs-example/Dockerfile`) which installs the full `srdp` package plus project code. It runs `dagster code-server start` to expose definitions over gRPC.
 - The Helm chart uses `dagsterApiGrpcArgs` to configure the same gRPC server — the Dagster Helm chart manages the command internally, so `code-server` vs `api grpc` only applies to the Docker Compose setup.
 - `dagster.yaml` configures PostgreSQL storage and the run launcher (`DefaultRunLauncher` locally, `K8sRunLauncher` in production).
 - `workspace.yaml` tells the webserver/daemon where to find the code server (`srdp-dagster-code:3030`).
@@ -335,11 +335,11 @@ deploy/
   kubernetes/
     srdp-chart/           # Helm umbrella chart
 projects/
-  default-etl/            # Example Dagster project
+  cbs-example/            # Example Dagster project
     Dockerfile
     src/etl/
+    notebooks/            # Marimo notebook (tenant-owned content)
 services/
-  marimo/
   quarto/
 src/
   srdp/                   # Core platform library

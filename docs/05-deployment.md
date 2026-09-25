@@ -33,7 +33,7 @@ cd deploy/opentofu/scaleway
 source ./secrets.sh
 ./build-and-push.sh
 ```
-This builds and pushes Marimo, Quarto, and srdp-etl (Dagster user code) to `rg.nl-ams.scw.cloud/srdp-registry`.
+This builds and pushes Marimo and srdp-etl (Dagster user code) to `rg.nl-ams.scw.cloud/srdp-registry`. Quarto is disabled by default (`quarto.enabled: false`), see `docs/02-configuration.md`.
 
 ## 3) Provision infrastructure with OpenTofu
 
@@ -110,9 +110,8 @@ just prod-auth-only
 
 ### D. Configure Zitadel apps
 
-- In Zitadel (`https://auth.<LB_IP>.nip.io/`), create OIDC apps for Marimo, Quarto, and Dagster with redirect URIs:
+- In Zitadel (`https://auth.<LB_IP>.nip.io/`), create OIDC apps for Marimo and Dagster with redirect URIs:
   - `https://marimo.<LB_IP>.nip.io/oauth2/callback`
-  - `https://quarto.<LB_IP>.nip.io/oauth2/callback`
   - `https://dagster.<LB_IP>.nip.io/oauth2/callback`
 - Copy the client ID/secret into `values-prod.yaml` (oauth2-proxy config section).
 
