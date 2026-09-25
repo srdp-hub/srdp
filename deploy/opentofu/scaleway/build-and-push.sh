@@ -23,10 +23,6 @@ docker build --platform linux/amd64 \
   "$REPO_ROOT"
 docker push "$REGISTRY/marimo:$VERSION"
 
-echo "Building Quarto..."
-docker build --platform linux/amd64 -t "$REGISTRY/quarto:$VERSION" "$REPO_ROOT/services/quarto"
-docker push "$REGISTRY/quarto:$VERSION"
-
 echo "Building SRDP ETL (Dagster user code)..."
 # Build context is repo root — the Dockerfile needs access to src/ and projects/
 docker build --platform linux/amd64 \
