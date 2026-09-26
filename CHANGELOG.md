@@ -14,12 +14,12 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 
 ### Added
 
-- `src/srdp/io/ducklake.py` — DuckLake IO manager backed by DuckDB and PostgreSQL.
-- `src/srdp/io/storage.py` — Azure Blob Storage IO manager.
-- `src/srdp/resources/k8s.py` — Kubernetes resource definitions for Dagster.
-- `pyproject.toml` — proper monorepo package setup with `uv`.
+- `src/srdp/io/ducklake.py` provides the DuckLake IO manager, backed by DuckDB and PostgreSQL.
+- `src/srdp/io/storage.py` defines the abstract storage backend interface. Only the local filesystem implementation exists so far. Azure and S3 backends are tracked separately.
+- `src/srdp/resources/k8s.py` defines Kubernetes resource definitions for Dagster.
+- `pyproject.toml` sets up a proper monorepo package with `uv`.
 - Architecture decision records (ADRs) in `docs/adr/` covering platform architecture, deployment model, auth, compute, and data organization.
-- `.github/instructions/` — domain-specific coding instructions for Python, Dagster, and deploy targets.
+- `.github/instructions/` holds domain-specific coding instructions for Python, Dagster, and deploy targets.
 - `SECURITY.md`, `CONTRIBUTING.md`, issue templates, and PR template.
 
 ## [0.1.0] - 2024-01-01

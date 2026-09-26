@@ -1,0 +1,32 @@
+name: Release
+
+# Fires on any tag pushed by `just release` (or `scripts/release.sh` directly).
+# GitHub Flow: tags land on main, never on a separate release branch.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create draft GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Drafted, not published: GitHub's auto-generated notes (from merged
+      # PR titles) are a starting point, someone still reviews and edits
+      # them, ideally against the matching CHANGELOG.md section, before
+      # publishing. See the tracking issue for switching this to
+      # git-cliff-generated notes once commit/PR conventions are in place.
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --draft \
+            --generate-notes

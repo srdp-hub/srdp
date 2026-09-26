@@ -166,3 +166,8 @@ ci: lint typecheck test
 fix:
 	uv run ruff check --fix src/ projects/
 	uv run ruff format src/ projects/
+
+# Cut a release: bump version, run CI, commit, tag. E.g. `just release 0.3.0`.
+# Pushing the resulting tag drafts a GitHub Release, see scripts/release.sh.
+release version:
+	./scripts/release.sh {{version}}
