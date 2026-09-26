@@ -1,0 +1,39 @@
+name: Publish to PyPI
+
+# Triggers when a GitHub Release is published, not when the tag is pushed
+# (see release.yml, which drafts it). PyPI publishing is irreversible, a
+# version can't be deleted and re-uploaded, so it waits for the same human
+# confirmation step the release notes already get: someone reviews the
+# draft and explicitly publishes it.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      # Required for PyPI trusted publishing (OIDC), no stored API token.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
