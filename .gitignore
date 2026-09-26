@@ -26,10 +26,6 @@ kubeconfig.yaml
 values-prod.yaml
 charts/
 
-# Local ADR review notes (not committed)
-docs/adr/ADR-REVIEW.md
-docs/reviews
-
 # Python
 __pycache__/
 *.pyc
