@@ -56,6 +56,8 @@ Build and push: `just build-and-push`
 Single in-cluster instance (Bitnami, aliased `zitadel-db`) serves the `zitadel`, `dagster`, `marquez` and `ducklake` databases.
 No password lives in the values files.
 Every consumer reads a Secret with a fixed name: `srdp-postgres`, `srdp-zitadel`, `srdp-oauth2-proxy`, `srdp-dagster-postgresql` and `srdp-marquez` (keys listed in `values.yaml`).
+DuckLake on S3 (`ducklakeStorage.backend: s3`) adds `srdp-ducklake-s3-writer` for Dagster and `srdp-ducklake-s3-reader` for the apps.
+Never give an app the writer Secret, because a SQL console runs with the full authority of its S3 key.
 In kind, `templates/local-secrets.yaml` creates them from `localSecrets` in `values-local.yaml`.
 Elsewhere, External Secrets creates them.
 The Zitadel master key in `srdp-zitadel` must be exactly 32 characters.

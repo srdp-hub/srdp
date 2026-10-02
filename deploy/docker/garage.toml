@@ -1,0 +1,16 @@
+# Garage for DuckLake on S3, only with the s3 Compose profile. Single node,
+# local testing only. GARAGE_RPC_SECRET and GARAGE_ADMIN_TOKEN come from .env,
+# Garage reads both from the environment, so this file holds no secrets.
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+replication_factor = 1
+rpc_bind_addr = "[::]:3901"
+
+[s3_api]
+# Must match DUCKLAKE_S3_REGION, DuckDB signs every request with it.
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+
+[admin]
+api_bind_addr = "[::]:3903"

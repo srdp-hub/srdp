@@ -17,6 +17,16 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 - A shared `ducklake-data` volume in the chart, so the apps read the Parquet files that Dagster run pods write.
 - `global.srdpRegistry` and `global.imagePullSecrets` in the chart.
   `srdp.toml` holds the registry under `[deploy] registry`, and every `Justfile` deploy and build recipe reads it from there.
+- `S3StorageBackend` stores the DuckLake data files in S3-compatible object storage (Scaleway, Hetzner, MinIO) when `DUCKLAKE_STORAGE_BACKEND=s3` is set. Its settings live in their own `S3StorageSettings` (`DUCKLAKE_S3_*`), apart from the Postgres catalog settings. Endpoint, URL style and region are required, with no AWS defaults, and the DuckDB secret is scoped to the lake prefix. The default stays `local`, so nothing changes without the setting. Part of #56.
+- `srdp.io.dbt_plugin`, a dbt-duckdb plugin that attaches DuckLake with the same storage settings as Dagster, so a dbt profile no longer needs its own copy of them.
+- `S3StorageBackend.dlt_filesystem_config()` renders the same bucket, endpoint and key for a dlt filesystem destination.
+- DuckLake on S3 in Compose and the chart. `DUCKLAKE_STORAGE_BACKEND=s3` in `deploy/docker/.env`, or `ducklakeStorage.backend: s3` in the chart, moves the Parquet files to a bucket. Dagster and its run pods get the writer key, and marimo, streamlit, the api and duckdb-ui get a read-only key, so a SQL console cannot write to the lake. Part of #56.
+- Garage serves as the local S3 server for that. Compose starts it with the `s3` profile, and kind with `values-local-s3.yaml` (`just local-deploy -f srdp-chart/values-local-s3.yaml`). An optional Garage step in the `srdp-setup` service creates the bucket and the two keys, and every DuckLake pod in the chart waits until the bucket answers to its own key. MinIO stopped publishing its Docker images, so Garage takes its place.
+- The chart reads the storage choice from one `srdp-ducklake-storage` ConfigMap and the keys from the `srdp-ducklake-s3-writer` and `srdp-ducklake-s3-reader` Secrets, which External Secrets has to create once S3 is on.
+
+### Security
+
+- A DuckLake settings error no longer prints the values it was given, so a misconfigured start cannot write the Postgres password or the S3 secret to the logs.
 
 ### Changed
 
@@ -34,6 +44,9 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 - Marquez loads its own config through `MARQUEZ_CONFIG` and reads its database password from `MARQUEZ_DB_PASSWORD`.
   Its role no longer uses the literal password `marquez`, and its config no longer holds the unused OpenSearch settings.
 - Chart templates read the Postgres host from `global.postgresqlHost`, so production's `db-postgresql-primary` works without template edits.
+- CI installs the `dbt` extra, so `ty` can resolve the dbt-duckdb plugin's imports.
+- The cbs-example dbt profile attaches DuckLake through `srdp.io.dbt_plugin` and holds no storage settings of its own.
+- `just local-deploy` passes extra arguments to both of its `helm` calls.
 - On Kubernetes, each database consumer waits in an init container until it can log in to its own database with its own password.
   The chart templates share the `srdp.waitForDbLogin` helper, and the Dagster values carry literal copies because the subchart can't use it.
 - `srdp-setup` validates its config strictly: unknown keys, database and role names that aren't lowercase Postgres identifiers of at most 63 characters, and the superuser as a role all fail at startup.

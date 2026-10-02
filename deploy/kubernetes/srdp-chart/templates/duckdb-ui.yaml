@@ -19,12 +19,15 @@ spec:
       {{- include "srdp.imagePullSecrets" . | nindent 6 }}
       initContainers:
         {{- include "srdp.waitForDucklakeDb" . | nindent 8 }}
+        {{- include "srdp.waitForDucklakeBucket" "srdp-ducklake-s3-reader" | nindent 8 }}
       containers:
         - name: duckdb-ui
           image: {{ include "srdp.image" (list . .Values.duckdbUi.image) }}
           imagePullPolicy: {{ .Values.duckdbUi.image.pullPolicy }}
           ports:
             - containerPort: 4213
+          envFrom:
+            {{- include "srdp.ducklakeEnvFrom" . | nindent 12 }}
           env:
             {{- include "srdp.ducklakeEnv" . | nindent 12 }}
           volumeMounts:

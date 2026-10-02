@@ -54,6 +54,40 @@ spec:
                 secretKeyRef:
                   name: srdp-marquez
                   key: db-password
+            {{- if .Values.garage.enabled }}
+            # The optional Garage step (src/srdp/setup/garage.py), only with
+            # the bundled Garage. It imports the role Secrets the DuckLake
+            # consumers read, so Garage accepts exactly the keys they get.
+            - name: GARAGE_ADMIN_URL
+              value: "http://garage:3903"
+            - name: GARAGE_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-garage
+                  key: admin-token
+            - name: GARAGE_BUCKET
+              value: {{ required "ducklakeStorage.s3.bucket" .Values.ducklakeStorage.s3.bucket | quote }}
+            - name: GARAGE_WRITER_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-ducklake-s3-writer
+                  key: DUCKLAKE_S3_KEY_ID
+            - name: GARAGE_WRITER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-ducklake-s3-writer
+                  key: DUCKLAKE_S3_SECRET
+            - name: GARAGE_READER_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-ducklake-s3-reader
+                  key: DUCKLAKE_S3_KEY_ID
+            - name: GARAGE_READER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-ducklake-s3-reader
+                  key: DUCKLAKE_S3_SECRET
+            {{- end }}
           volumeMounts:
             - name: setup-config
               mountPath: /etc/srdp

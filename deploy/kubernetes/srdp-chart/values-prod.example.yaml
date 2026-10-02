@@ -16,6 +16,8 @@ global:
 # (srdp-postgres, srdp-zitadel, srdp-oauth2-proxy, srdp-dagster-postgresql,
 # srdp-marquez) before installing, e.g. with External Secrets. srdp-postgres
 # also needs replication-password here, because of architecture: replication.
+# With ducklakeStorage.backend: s3, also create srdp-ducklake-s3-writer and
+# srdp-ducklake-s3-reader, each with DUCKLAKE_S3_KEY_ID and DUCKLAKE_S3_SECRET.
 
 # Traefik
 traefik:
@@ -256,6 +258,52 @@ dagster:
                   secretKeyRef:
                     name: srdp-postgres
                     key: postgres-password
+          - name: wait-for-ducklake-bucket
+            # Same container as srdp.waitForDucklakeBucket in templates/_helpers.tpl,
+            # with the writer key. includeConfigInLaunchedRuns copies it into
+            # every run pod, so no run starts before the bucket exists.
+            image: curlimages/curl:8.22.0
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 100
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: [ALL]
+            envFrom:
+              - configMapRef:
+                  name: srdp-ducklake-storage
+            env:
+              - name: DUCKLAKE_S3_KEY_ID
+                valueFrom:
+                  secretKeyRef:
+                    name: srdp-ducklake-s3-writer
+                    key: DUCKLAKE_S3_KEY_ID
+                    optional: true
+              - name: DUCKLAKE_S3_SECRET
+                valueFrom:
+                  secretKeyRef:
+                    name: srdp-ducklake-s3-writer
+                    key: DUCKLAKE_S3_SECRET
+                    optional: true
+            command:
+              - sh
+              - -c
+              - |
+                if [ "$DUCKLAKE_STORAGE_BACKEND" != "s3" ]; then exit 0; fi
+                scheme=https
+                if [ "$DUCKLAKE_S3_USE_SSL" = "false" ]; then scheme=http; fi
+                url="$scheme://$DUCKLAKE_S3_ENDPOINT/$DUCKLAKE_S3_BUCKET"
+                for i in $(seq 1 60); do
+                  # The key goes in through stdin, so it never shows in the process list.
+                  code=$(printf 'user = "%s:%s"\n' "$DUCKLAKE_S3_KEY_ID" "$DUCKLAKE_S3_SECRET" |
+                    curl -s -o /dev/null -w '%{http_code}' -K - --aws-sigv4 "aws:amz:$DUCKLAKE_S3_REGION:s3" -I "$url")
+                  if [ "$code" = "200" ]; then exit 0; fi
+                  echo "waiting for bucket $DUCKLAKE_S3_BUCKET at $DUCKLAKE_S3_ENDPOINT, HTTP $code ($i/60)..."
+                  sleep 2
+                done
+                echo "bucket $DUCKLAKE_S3_BUCKET still unreachable with this pod's key after 60 attempts, giving up." >&2
+                exit 1
         # See values.yaml: shared DuckLake volume, copied into run pods.
         # A multi-node cluster needs ducklakeData.accessMode: ReadWriteMany.
         volumes:
@@ -265,6 +313,9 @@ dagster:
         volumeMounts:
           - name: ducklake-data
             mountPath: /data/ducklake
+        # DUCKLAKE_STORAGE_BACKEND and the S3 settings, see ducklakeStorage.
+        envConfigMaps:
+          - name: srdp-ducklake-storage
         env:
           - name: DUCKLAKE_PG_HOST
             value: db-postgresql-primary
@@ -279,3 +330,18 @@ dagster:
             value: ducklake
           - name: DUCKLAKE_DATA_PATH
             value: /data/ducklake
+          # The writer key, for DUCKLAKE_STORAGE_BACKEND=s3. Optional, so
+          # local storage needs no such Secret. Only this code location and
+          # its run pods hold it, the apps get the read-only key.
+          - name: DUCKLAKE_S3_KEY_ID
+            valueFrom:
+              secretKeyRef:
+                name: srdp-ducklake-s3-writer
+                key: DUCKLAKE_S3_KEY_ID
+                optional: true
+          - name: DUCKLAKE_S3_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: srdp-ducklake-s3-writer
+                key: DUCKLAKE_S3_SECRET
+                optional: true
