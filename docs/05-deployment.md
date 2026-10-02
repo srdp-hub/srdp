@@ -7,6 +7,9 @@ icon: lucide/cloud-cog
 
 This runbook uses OpenTofu to provision infrastructure and Helm to deploy the chart on Scaleway Kapsule (mutualized). All `just` commands should be run from the **repository root**. Steps that require manual commands specify their working directory explicitly.
 
+If you are new to Kubernetes, read the [Kubernetes primer](09-kubernetes-primer.md) first.
+It explains each concept next to its Docker Compose equivalent.
+
 ## What OpenTofu provisions
 
 OpenTofu creates the following resources on Scaleway (nl-ams region):
@@ -27,13 +30,13 @@ PostgreSQL runs **in-cluster** via the Bitnami Helm chart (not as a Scaleway man
 
 ## 2) Build and push container images
 
-Run the build script after sourcing credentials (it logs into the Scaleway registry):
+Run the build recipe from the repository root. It sources `deploy/opentofu/scaleway/secrets.sh` for the credentials and logs into the registry:
 ```bash
-cd deploy/opentofu/scaleway
-source ./secrets.sh
-./build-and-push.sh
+just build-and-push
 ```
-This builds and pushes Marimo and srdp-etl (Dagster user code) to `rg.nl-ams.scw.cloud/srdp-registry`. Quarto is disabled by default (`quarto.enabled: false`), see `docs/02-configuration.md`.
+This builds and pushes Marimo, srdp-etl (Dagster user code) and srdp-setup to the registry in `srdp.toml` under `[deploy] registry`.
+Quarto is disabled by default (`quarto.enabled: false`).
+`docs/02-configuration.md` explains why.
 
 ## 3) Provision infrastructure with OpenTofu
 
@@ -53,29 +56,27 @@ just prod-use-kubeconfig   # from repo root
 ## 5) Prepare production Helm values
 
 - Copy `deploy/kubernetes/srdp-chart/values-prod.example.yaml` to `deploy/kubernetes/srdp-chart/values-prod.yaml` if you are starting fresh.
-- Fill in:
-  - `global.domain` and `oauth2-proxy` cookie/whitelist domains (use a real domain or `<lb-ip>.nip.io` once you know the load balancer IP).
-  - Zitadel master key, admin/user DB passwords, Dagster DB password, and OAuth2 client credentials.
-  - ACME email for Traefik (Let's Encrypt).
-  - Replace these placeholder values in `values-prod.yaml`:
-    - `CHANGE_ME_POSTGRES_PASS`
-    - `CHANGE_ME_ZITADEL_DB_PASS`
-    - `CHANGE_ME_DAGSTER_DB_PASS`
-    - `CHANGE_ME_ZITADEL_MASTERKEY_32CHARS`
-    - `CHANGE_ME_ZITADEL_ADMIN_PASS`
-    - `CHANGE_ME_OAUTH_COOKIE_SECRET_32`
-    - `XXXXXXXXXXXXXXXXXX` and `XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` for the OAuth2 client ID/secret
-- **Keep DB credentials aligned**:
-  - `CHANGE_ME_POSTGRES_PASS` must be used consistently for:
-    - `zitadel-db.auth.postgresPassword`
-    - `zitadel.zitadel.secretConfig.Database.Postgres.Admin.Password`
-  - `CHANGE_ME_ZITADEL_DB_PASS` must be used consistently for:
-    - `zitadel-db.auth.password`
-    - `zitadel.zitadel.secretConfig.Database.Postgres.User.Password`
-  - `dagster.postgresql.postgresqlPassword` and `marquez.dbPassword` are each set once.
-    The `srdp-setup` Job applies them to their roles on every install and upgrade.
+- Fill in `global.domain`, the `oauth2-proxy` cookie and whitelist domains, and the ACME email for Traefik.
+  Use a real domain or `<lb-ip>.nip.io` once you know the load balancer IP.
+- Set the registry in `srdp.toml` under `[deploy] registry`.
+  The `prod-*` recipes pass it to the chart as `global.srdpRegistry` and as the `srdp-etl` repository.
+- The values files hold no passwords or keys.
+  Before you install, create these Secrets in the `srdp` namespace, for example with External Secrets.
+  Every consumer reads them by these fixed names.
+
+  | Secret | Keys |
+  |:---|:---|
+  | `srdp-postgres` | `postgres-password` (superuser), `password` (zitadel user), `replication-password` (replication only) |
+  | `srdp-zitadel` | `masterkey`, `config-yaml` |
+  | `srdp-oauth2-proxy` | `client-id`, `client-secret`, `cookie-secret` |
+  | `srdp-dagster-postgresql` | `postgresql-password` |
+  | `srdp-marquez` | `db-password` |
+
+- `config-yaml` in `srdp-zitadel` is a Zitadel config fragment with `Database.Postgres.User.Password`, `Database.Postgres.Admin.Password` and `FirstInstance.Org.Human.Password`.
+  The two database passwords must match `password` and `postgres-password` in `srdp-postgres`.
+- The `srdp-setup` Job reads `srdp-dagster-postgresql` and `srdp-marquez` too, and applies them to their roles on every install and upgrade.
 - **Changing an internal password**: these are service-to-service credentials, so change one only as a deliberate rotation.
-  Set the new value, run `helm upgrade`, then restart the services that use it.
+  Change the value in its Secret, run `helm upgrade`, then restart the services that use it.
   Marquez restarts by itself. For Dagster, run `kubectl -n srdp rollout restart deploy/srdp-dagster-webserver deploy/srdp-dagster-webserver-read-only deploy/srdp-dagster-daemon deploy/srdp-dagster-user-deployments-srdp-etl`.
 - **Master key format**: ZITADEL expects a 32-character master key string. Generate one, for example, with `tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32`.
 - **Password complexity**: Zitadel's first human/admin password must include uppercase, lowercase, digits, and at least one symbol. For example, use `SrdpTest123!` rather than `srdpTest123`.
@@ -84,7 +85,7 @@ The production values template enables PostgreSQL replication (`architecture: re
 
 ## 6) Deploy with Helm (staged rollout)
 
-### A. Bring up Traefik only (to get the LB IP)
+### A. Bring up Traefik and the hub page only (to get the LB IP)
 
 ```bash
 just prod-traefik-only
@@ -104,6 +105,8 @@ Replace every occurrence of the old LB IP in `values-prod.yaml` with `<LB_IP>.ni
 - `oauth2-proxy.extraArgs`: `cookie-domain`, `whitelist-domain`, `oidc-issuer-url`, and the `Host:auth.…` header
 
 ### C. Enable Zitadel + OAuth2-Proxy
+
+The apps and the `srdp-setup` Job stay off until the final deploy.
 
 ```bash
 just prod-auth-only
@@ -128,8 +131,8 @@ just prod-full
 # 1. Prepare (first time only, from deploy/opentofu/scaleway/)
 cd deploy/opentofu/scaleway && source ./secrets.sh && tofu init -upgrade
 
-# 2. Build and push container images (from deploy/opentofu/scaleway/)
-cd deploy/opentofu/scaleway && source ./secrets.sh && ./build-and-push.sh
+# 2. Build and push container images (from repo root)
+just build-and-push
 
 # 3. Provision infrastructure (from repo root)
 just prod-apply

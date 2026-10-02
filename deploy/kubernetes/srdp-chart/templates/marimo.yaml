@@ -12,17 +12,25 @@ spec:
       app: marimo
   template:
     metadata:
+      {{- include "srdp.localSecretsChecksum" . | nindent 6 }}
       labels:
         app: marimo
     spec:
+      {{- include "srdp.imagePullSecrets" . | nindent 6 }}
       initContainers:
         {{- include "srdp.waitForDucklakeDb" . | nindent 8 }}
       containers:
         - name: marimo
-          image: "{{ .Values.marimo.image.repository }}:{{ .Values.marimo.image.tag }}"
+          image: {{ include "srdp.image" (list . .Values.marimo.image) }}
           imagePullPolicy: {{ .Values.marimo.image.pullPolicy }}
           ports:
             - containerPort: 8000
+          env:
+            {{- include "srdp.ducklakeEnv" . | nindent 12 }}
+          volumeMounts:
+            {{- include "srdp.ducklakeVolumeMount" . | nindent 12 }}
+      volumes:
+        {{- include "srdp.ducklakeVolume" . | nindent 8 }}
 ---
 apiVersion: v1
 kind: Service

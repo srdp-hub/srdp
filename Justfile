@@ -2,6 +2,24 @@ set shell := ["bash", "-c"]
 set dotenv-load := false
 
 namespace := "srdp"
+# Registry prefix of every image this repo builds, from srdp.toml [deploy]. The
+# deploy recipes pass it to the chart as global.srdpRegistry and as the Dagster
+# code location's repository, a subchart value the chart cannot template.
+registry := `uv run --no-project python -c 'import sys, tomllib; sys.stdout.write(tomllib.load(open("srdp.toml", "rb"))["deploy"]["registry"])'`
+# Helm patches deployments[0] in place only when a -f file defines the list
+# (values.yaml or values-prod.yaml do), otherwise the --set replaces it.
+registry_args := "--set-string 'global.srdpRegistry=" + registry + "' --set-string 'dagster.dagster-user-deployments.deployments[0].image.repository=" + registry + "/srdp-etl'"
+# The chart rolls its own pods when a local Secret changes (srdp.localSecretsChecksum).
+# Subcharts cannot hash the parent's Secrets, so local-deploy passes them a hash of
+# values-local.yaml, which holds every local Secret value.
+local_secrets_sum := `uv run --no-project python -c 'import hashlib, sys; sys.stdout.write(hashlib.sha256(open("deploy/kubernetes/srdp-chart/values-local.yaml", "rb").read()).hexdigest())'`
+local_secrets_args := "--set-string 'oauth2-proxy.podAnnotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'dagster.dagsterWebserver.annotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'dagster.dagsterDaemon.annotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'dagster.dagster-user-deployments.deployments[0].annotations.checksum/local-secrets=" + local_secrets_sum + "'"
+# Staged prod rollout: apps that every partial stage leaves off.
+prod_apps_off := "--set dagster.enabled=false --set marimo.enabled=false --set quarto.enabled=false --set streamlit.enabled=false --set api.enabled=false --set duckdbUi.enabled=false --set marquez.enabled=false --set setup.enabled=false"
+# Traefik and the hub page only, to get the first LoadBalancer IP.
+prod_traefik_only_args := "--set zitadel.enabled=false --set zitadel-db.enabled=false --set oauth2-proxy.enabled=false " + prod_apps_off
+# Traefik, the hub page and the auth stack (Zitadel, its database, OAuth2-Proxy).
+prod_auth_only_args := "--set zitadel.enabled=true --set oauth2-proxy.enabled=true " + prod_apps_off
 kubeconfig := justfile_directory() + "/deploy/opentofu/scaleway/kubeconfig.yaml"
 
 default: help
@@ -34,19 +52,21 @@ kind-down:
 
 # Build all images and load them into kind
 kind-load-images: kind-up
-	docker build -t rg.nl-ams.scw.cloud/srdp-registry/marimo:v1.0 -f projects/cbs-example/notebooks/Dockerfile .
-	docker build -t rg.nl-ams.scw.cloud/srdp-registry/srdp-etl:v1.0 -f projects/cbs-example/Dockerfile .
-	docker build -t rg.nl-ams.scw.cloud/srdp-registry/srdp-api:v1.0 -f projects/cbs-example/api/Dockerfile .
-	docker build -t rg.nl-ams.scw.cloud/srdp-registry/duckdb-ui:v1.0 -f services/duckdb-ui/Dockerfile .
-	docker build -t rg.nl-ams.scw.cloud/srdp-registry/hub:v1.0 services/hub
-	docker build -t rg.nl-ams.scw.cloud/srdp-registry/srdp-setup:v1.0 -f deploy/docker/srdp-setup.Dockerfile .
+	docker build -t {{registry}}/marimo:v1.0 -f projects/cbs-example/notebooks/Dockerfile .
+	docker build -t {{registry}}/srdp-etl:v1.0 -f projects/cbs-example/Dockerfile .
+	docker build -t {{registry}}/srdp-api:v1.0 -f projects/cbs-example/api/Dockerfile .
+	docker build -t {{registry}}/duckdb-ui:v1.0 -f services/duckdb-ui/Dockerfile .
+	docker build -t {{registry}}/hub:v1.0 services/hub
+	docker build -t {{registry}}/streamlit:v1.0 -f projects/cbs-example/streamlit/Dockerfile .
+	docker build -t {{registry}}/srdp-setup:v1.0 -f deploy/docker/srdp-setup.Dockerfile .
 	kind load docker-image \
-		rg.nl-ams.scw.cloud/srdp-registry/marimo:v1.0 \
-		rg.nl-ams.scw.cloud/srdp-registry/srdp-etl:v1.0 \
-		rg.nl-ams.scw.cloud/srdp-registry/srdp-api:v1.0 \
-		rg.nl-ams.scw.cloud/srdp-registry/duckdb-ui:v1.0 \
-		rg.nl-ams.scw.cloud/srdp-registry/hub:v1.0 \
-		rg.nl-ams.scw.cloud/srdp-registry/srdp-setup:v1.0 \
+		{{registry}}/marimo:v1.0 \
+		{{registry}}/srdp-etl:v1.0 \
+		{{registry}}/srdp-api:v1.0 \
+		{{registry}}/duckdb-ui:v1.0 \
+		{{registry}}/hub:v1.0 \
+		{{registry}}/srdp-setup:v1.0 \
+		{{registry}}/streamlit:v1.0 \
 		--name srdp
 
 # Generate local TLS certs for the kind stack
@@ -56,18 +76,28 @@ local-tls: kind-up
 	kubectl create namespace {{namespace}} --dry-run=client -o yaml | kubectl apply -f -
 	kubectl create secret tls custom-ingress-cert --namespace {{namespace}} --key deploy/kubernetes/certs/selfsigned.key --cert deploy/kubernetes/certs/selfsigned.crt --dry-run=client -o yaml | kubectl apply -f -
 
+# Fetch the subcharts pinned in Chart.lock into srdp-chart/charts/
+chart-deps:
+	cd deploy/kubernetes/srdp-chart && \
+		awk '$2 == "name:" {name = $3} $1 == "repository:" {print name, $2}' Chart.yaml | \
+		while read -r name url; do helm repo add --force-update "srdp-$name" "$url" >/dev/null; done && \
+		helm dependency build
+
 # Deploy the full stack to local kind via Helm
-local-deploy: kind-load-images
-	cd deploy/kubernetes/srdp-chart && helm dependency update
-	cd deploy/kubernetes && helm upgrade --install srdp srdp-chart --namespace {{namespace}} --create-namespace -f srdp-chart/values.yaml -f srdp-chart/values-local.yaml
+local-deploy: kind-load-images chart-deps
+	cd deploy/kubernetes && helm upgrade --install srdp srdp-chart --namespace {{namespace}} --create-namespace -f srdp-chart/values.yaml -f srdp-chart/values-local.yaml {{registry_args}} {{local_secrets_args}}
 	@echo "Reading Traefik's assigned ClusterIP to wire it into oauth2-proxy's hostAliases..."
 	@TRAEFIK_IP=$(kubectl get svc srdp-traefik -n {{namespace}} -o jsonpath='{.spec.clusterIP}'); \
 	echo "Traefik ClusterIP: $TRAEFIK_IP"; \
-	cd deploy/kubernetes && helm upgrade srdp srdp-chart --namespace {{namespace}} -f srdp-chart/values.yaml -f srdp-chart/values-local.yaml --set-string "oauth2-proxy.hostAliases[0].ip=$TRAEFIK_IP"
+	cd deploy/kubernetes && helm upgrade srdp srdp-chart --namespace {{namespace}} -f srdp-chart/values.yaml -f srdp-chart/values-local.yaml {{registry_args}} {{local_secrets_args}} --set-string "oauth2-proxy.hostAliases[0].ip=$TRAEFIK_IP"
 
 # Uninstall the local Helm release and its PVCs
 local-delete:
 	helm uninstall srdp -n {{namespace}} || true
+	# Dagster run Jobs are created by the run launcher, not by Helm, and their
+	# pods keep the ducklake-data PVC in Terminating until they are gone. The
+	# srdp-setup hook Job also outlives helm uninstall (no hook-succeeded).
+	kubectl delete jobs --all -n {{namespace}} || true
 	kubectl delete pvc --all -n {{namespace}} || true
 
 # Start the Docker Compose stack (local dev). Attached by default; pass -d to detach.
@@ -99,26 +129,26 @@ prod-get-values:
 	@if [ ! -f "{{kubeconfig}}" ]; then echo "kubeconfig not found, run 'just prod-use-kubeconfig' first"; exit 1; fi
 	@KUBECONFIG="{{kubeconfig}}" kubectl get svc srdp-traefik -n {{namespace}} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' | xargs -I{} printf "LOAD_BALANCER_IP:\t%s\n" "{}"
 
-# Deploy only Traefik, to get the first LoadBalancer IP
+# Deploy only Traefik and the hub page, to get the first LoadBalancer IP
 prod-traefik-only:
 	cd deploy/kubernetes && \
 		if [ ! -f "{{kubeconfig}}" ]; then echo "kubeconfig not found, run 'just prod-use-kubeconfig' first"; exit 1; fi; \
 		export KUBECONFIG="{{kubeconfig}}"; \
-		helm upgrade --install srdp srdp-chart --namespace {{namespace}} --create-namespace -f srdp-chart/values-prod.yaml --set zitadel.enabled=false --set oauth2-proxy.enabled=false --set dagster.enabled=false --set marimo.enabled=false --set quarto.enabled=false
+		helm upgrade --install srdp srdp-chart --namespace {{namespace}} --create-namespace -f srdp-chart/values-prod.yaml {{registry_args}} {{prod_traefik_only_args}}
 
 # Deploy Traefik plus the auth stack only
 prod-auth-only:
 	cd deploy/kubernetes && \
 		if [ ! -f "{{kubeconfig}}" ]; then echo "kubeconfig not found, run 'just prod-use-kubeconfig' first"; exit 1; fi; \
 		export KUBECONFIG="{{kubeconfig}}"; \
-		helm upgrade srdp srdp-chart --namespace {{namespace}} --reset-values -f srdp-chart/values-prod.yaml --set zitadel.enabled=true --set oauth2-proxy.enabled=true --set dagster.enabled=false --set marimo.enabled=false --set quarto.enabled=false
+		helm upgrade srdp srdp-chart --namespace {{namespace}} --reset-values -f srdp-chart/values-prod.yaml {{registry_args}} {{prod_auth_only_args}}
 
 # Deploy the complete production stack
 prod-full:
 	cd deploy/kubernetes && \
 		if [ ! -f "{{kubeconfig}}" ]; then echo "kubeconfig not found, run 'just prod-use-kubeconfig' first"; exit 1; fi; \
 		export KUBECONFIG="{{kubeconfig}}"; \
-		helm upgrade srdp srdp-chart --namespace {{namespace}} --reset-values -f srdp-chart/values-prod.yaml
+		helm upgrade srdp srdp-chart --namespace {{namespace}} --reset-values -f srdp-chart/values-prod.yaml {{registry_args}}
 
 # Uninstall the production Helm release and release the LoadBalancer
 prod-uninstall:
@@ -136,7 +166,7 @@ prod-uninstall:
 
 # Build and push images to the Scaleway registry
 build-and-push:
-	source deploy/opentofu/scaleway/secrets.sh && bash deploy/opentofu/scaleway/build-and-push.sh
+	source deploy/opentofu/scaleway/secrets.sh && REGISTRY='{{registry}}' bash deploy/opentofu/scaleway/build-and-push.sh
 
 # ─── Development ──────────────────────────────────────────────────────────────
 

@@ -32,6 +32,11 @@ __pycache__/
 *.pyo
 *.pyd
 
+# pytest-cov output
+.coverage
+.coverage.*
+htmlcov/
+
 # dbt
 target/
 dbt_packages/

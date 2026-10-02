@@ -1,4 +1,4 @@
-{{- if and (index .Values "oauth2-proxy" "enabled") (or .Values.marimo.enabled .Values.quarto.enabled .Values.dagster.enabled .Values.api.enabled .Values.duckdbUi.enabled .Values.hub.enabled .Values.marquez.enabled) }}
+{{- if and (index .Values "oauth2-proxy" "enabled") (or .Values.marimo.enabled .Values.streamlit.enabled .Values.quarto.enabled .Values.dagster.enabled .Values.api.enabled .Values.duckdbUi.enabled .Values.hub.enabled .Values.marquez.enabled) }}
 # Middlewares
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
@@ -45,6 +45,9 @@ spec:
 {{- if .Values.marimo.enabled }}
         - marimo.{{ .Values.global.domain }}
 {{- end }}
+{{- if .Values.streamlit.enabled }}
+        - streamlit.{{ .Values.global.domain }}
+{{- end }}
 {{- if .Values.quarto.enabled }}
         - quarto.{{ .Values.global.domain }}
 {{- end }}
@@ -71,6 +74,18 @@ spec:
   rules:
 {{- if .Values.marimo.enabled }}
     - host: marimo.{{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /oauth2
+            pathType: Prefix
+            backend:
+              service:
+                name: srdp-oauth2-proxy
+                port:
+                  number: 80
+{{- end }}
+{{- if .Values.streamlit.enabled }}
+    - host: streamlit.{{ .Values.global.domain }}
       http:
         paths:
           - path: /oauth2
@@ -183,6 +198,39 @@ spec:
             backend:
               service:
                 name: marimo
+                port:
+                  number: 80
+{{- end }}
+
+{{- if .Values.streamlit.enabled }}
+---
+# Protected Streamlit Routes
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: streamlit-ingress
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-oauth-errors@kubernetescrd,{{ .Release.Namespace }}-oauth-auth@kubernetescrd
+spec:
+  ingressClassName: srdp-traefik
+  tls:
+    - hosts:
+        - streamlit.{{ .Values.global.domain }}
+      {{- if .Values.traefik.certResolver }}
+      secretName: streamlit-tls-prod
+      {{- else }}
+      secretName: custom-ingress-cert
+      {{- end }}
+  rules:
+    - host: streamlit.{{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: streamlit
                 port:
                   number: 80
 {{- end }}

@@ -3,6 +3,26 @@ global:
   domain: "srdp.localhost"
   # Differs in production (db-postgresql-primary), see values-prod.example.yaml.
   postgresqlHost: "db-postgresql"
+  # Registry prefix for every image this repo builds (templates/_helpers.tpl
+  # srdp.image). The source is srdp.toml [deploy].registry: the Justfile
+  # deploy recipes override this value and the Dagster code location
+  # repository below, a subchart value the chart cannot template. This
+  # default must match srdp.toml, tests/deploy checks it.
+  srdpRegistry: "rg.nl-ams.scw.cloud/srdp-registry"
+  # Pod-level pull secrets for those images, e.g. [{name: registry-key}].
+  imagePullSecrets: []
+
+# Credentials: none live in this file. Every password and key comes from a
+# Secret with a fixed name, created outside the chart (External Secrets in the
+# cloud, templates/local-secrets.yaml in kind):
+#   srdp-postgres            postgres-password, password (zitadel user),
+#                            replication-password (replication only)
+#   srdp-zitadel             masterkey, config-yaml
+#   srdp-oauth2-proxy        client-id, client-secret, cookie-secret
+#   srdp-dagster-postgresql  postgresql-password
+#   srdp-marquez             db-password
+localSecrets:
+  enabled: false
 
 # Traefik
 traefik:
@@ -26,15 +46,26 @@ zitadel-db:
   fullnameOverride: "db-postgresql"
   auth:
     database: zitadel
-    postgresPassword: "srdpTest123"
     username: zitadel
-    password: srdpTest123
+    existingSecret: srdp-postgres
+    secretKeys:
+      adminPasswordKey: postgres-password
+      userPasswordKey: password
+      replicationPasswordKey: replication-password
   image:
     repository: bitnami/postgresql
   metrics:
     image:
       repository: bitnami/postgres-exporter
   primary:
+    # Bitnami's default resourcesPreset ("nano", 192Mi limit) gets the
+    # primary OOMKilled once four databases and their clients connect.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 1Gi
     persistence:
       enabled: true
       size: 4Gi
@@ -59,14 +90,11 @@ zitadel-db:
 zitadel:
   enabled: true
   zitadel:
-    masterkey: "51a69a373f45c60d2ae08c48bb89d03e" # Must be 32 characaters
-    secretConfig:
-      Database:
-        Postgres:
-          User:
-            Password: srdpTest123
-          Admin:
-            Password: srdpTest123
+    # masterkey (32 characters) and config-yaml, which holds the database
+    # passwords and the first admin's password, merged with configmapConfig.
+    masterkeySecretName: srdp-zitadel
+    configSecretName: srdp-zitadel
+    configSecretKey: config-yaml
     configmapConfig:
       ExternalDomain: auth.srdp.localhost
       ExternalPort: 443
@@ -75,7 +103,6 @@ zitadel:
       FirstInstance:
         Org:
           Human:
-            Password: "srdpTest123!"
             PasswordChangeRequired: false
       Database:
         Postgres:
@@ -150,9 +177,8 @@ zitadel:
 oauth2-proxy:
   enabled: true
   config:
-    clientID: "348868471498539436"
-    clientSecret: "VQMve4Thh857uplEKmN5nlcgSedaGyYQySSDYyoMgfk4d1PS8k6zUDSdhOdo3IVW"
-    cookieSecret: "VcZnfAWYCgMfNjRLvM1byUaAUs2jSvSE" # Must be 32 characters
+    # client-id, client-secret and cookie-secret (32 characters).
+    existingSecret: srdp-oauth2-proxy
 
   service:
     portNumber: 80
@@ -194,6 +220,11 @@ dagster:
   # routes to it and the read-write webserver stays cluster-internal for
   # operators (port-forward). Dagster OSS has no per-user authorization, so
   # an exposed read-write UI would bypass the writer role (see ADR-0005).
+  # The password comes from srdp-dagster-postgresql (key postgresql-password),
+  # for the webserver, daemon, code location and run pods alike.
+  global:
+    postgresqlSecretName: srdp-dagster-postgresql
+  generatePostgresqlPasswordSecret: false
   dagsterWebserver:
     enableReadOnly: true
     extraPrependedInitContainers: &wait-for-dagster-db
@@ -227,20 +258,34 @@ dagster:
           - name: PGPASSWORD
             valueFrom:
               secretKeyRef:
-                name: dagster-postgresql-secret
+                name: srdp-dagster-postgresql
                 key: postgresql-password
-  dagsterDaemon:
-    extraPrependedInitContainers: *wait-for-dagster-db
   ingress:
     enabled: false
   postgresql:
     enabled: false
     postgresqlHost: db-postgresql
     postgresqlUsername: dagster
-    postgresqlPassword: srdpTest123
     postgresqlDatabase: dagster
     service:
       port: 5432
+  # DuckLake handles concurrent writers through its Postgres catalog, so runs
+  # can overlap. The cap protects node memory (each run pod may take 1536Mi,
+  # a backfill 2Gi) and Postgres connections, and the queue is what applies
+  # dagster/priority for the fast lane. Same limits as Compose's
+  # config/dagster/dagster.yaml, a test checks.
+  dagsterDaemon:
+    extraPrependedInitContainers: *wait-for-dagster-db
+    runCoordinator:
+      enabled: true
+      type: QueuedRunCoordinator
+      config:
+        queuedRunCoordinator:
+          maxConcurrentRuns: 3
+          tagConcurrencyLimits:
+            - key: workload_kind
+              value: backfill
+              limit: 1
   runLauncher:
     type: K8sRunLauncher
     config:
@@ -253,6 +298,7 @@ dagster:
     deployments:
       - name: srdp-etl
         image:
+          # <srdp.toml [deploy].registry>/srdp-etl, the Justfile overrides it.
           repository: rg.nl-ams.scw.cloud/srdp-registry/srdp-etl
           tag: "v1.0"
           pullPolicy: IfNotPresent
@@ -290,8 +336,18 @@ dagster:
               - name: PGPASSWORD
                 valueFrom:
                   secretKeyRef:
-                    name: db-postgresql
+                    name: srdp-postgres
                     key: postgres-password
+        # Writer side of the shared DuckLake volume (templates/ducklake-data-pvc.yaml).
+        # includeConfigInLaunchedRuns (on by default) copies env and volumes
+        # into every K8sRunLauncher run pod, which is where assets materialize.
+        volumes:
+          - name: ducklake-data
+            persistentVolumeClaim:
+              claimName: ducklake-data
+        volumeMounts:
+          - name: ducklake-data
+            mountPath: /data/ducklake
         env:
           - name: DUCKLAKE_PG_HOST
             value: db-postgresql
@@ -300,18 +356,35 @@ dagster:
           - name: DUCKLAKE_PG_PASSWORD
             valueFrom:
               secretKeyRef:
-                name: db-postgresql
+                name: srdp-postgres
                 key: postgres-password
           - name: DUCKLAKE_PG_DB
             value: ducklake
+          - name: DUCKLAKE_DATA_PATH
+            value: /data/ducklake
 
 # Marimo app
 marimo:
   enabled: true
   image:
-    repository: rg.nl-ams.scw.cloud/srdp-registry/marimo
+    repository: marimo
     tag: "v1.0"
     pullPolicy: IfNotPresent
+
+# Streamlit dashboard (projects/cbs-example/streamlit)
+streamlit:
+  enabled: true
+  image:
+    repository: streamlit
+    tag: "v1.0"
+    pullPolicy: IfNotPresent
+
+# Shared DuckLake data volume, see templates/ducklake-data-pvc.yaml
+ducklakeData:
+  mountPath: /data/ducklake
+  size: 4Gi
+  accessMode: ReadWriteOnce
+  storageClassName: ""
 
 # Quarto app
 # Disabled by default: heavy build (Pandoc/TinyTeX/Deno toolchain) for no
@@ -319,7 +392,7 @@ marimo:
 quarto:
   enabled: false
   image:
-    repository: rg.nl-ams.scw.cloud/srdp-registry/quarto
+    repository: quarto
     tag: "v1.0"
     pullPolicy: IfNotPresent
 
@@ -328,13 +401,14 @@ setup:
   # When disabled, the databases must exist already, consumers wait for them.
   enabled: true
   image:
-    repository: rg.nl-ams.scw.cloud/srdp-registry/srdp-setup
+    repository: srdp-setup
     tag: "v1.0"
     pullPolicy: IfNotPresent
   # Keep in step with srdp.toml [setup]. A new role needs its SETUP_PASSWORDS__<ROLE> on the Job.
   databases:
     # Owned by the zitadel-db subchart's auth.* fields instead, a second
-    # source for the same role could silently diverge.
+    # source for the same role could silently diverge. #78 moves it into
+    # srdp-setup, like every other database.
     - name: zitadel
       role: zitadel
       enabled: false
@@ -349,7 +423,7 @@ setup:
 api:
   enabled: true
   image:
-    repository: rg.nl-ams.scw.cloud/srdp-registry/srdp-api
+    repository: srdp-api
     tag: "v1.0"
     pullPolicy: IfNotPresent
 
@@ -358,7 +432,7 @@ api:
 duckdbUi:
   enabled: true
   image:
-    repository: rg.nl-ams.scw.cloud/srdp-registry/duckdb-ui
+    repository: duckdb-ui
     tag: "v1.0"
     pullPolicy: IfNotPresent
 
@@ -366,15 +440,15 @@ duckdbUi:
 hub:
   enabled: true
   image:
-    repository: rg.nl-ams.scw.cloud/srdp-registry/hub
+    repository: hub
     tag: "v1.0"
     pullPolicy: IfNotPresent
 
 # Marquez (OpenLineage backend + UI); upstream images, not built by this repo
 marquez:
   enabled: true
-  # Local dev only.
-  dbPassword: "srdpTest123"
+  # Database password from srdp-marquez (key db-password), shared with the
+  # srdp-setup Job.
   image:
     repository: marquezproject/marquez
     tag: "latest"

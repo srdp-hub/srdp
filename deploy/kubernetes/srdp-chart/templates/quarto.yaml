@@ -15,9 +15,10 @@ spec:
       labels:
         app: quarto
     spec:
+      {{- include "srdp.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: quarto
-          image: "{{ .Values.quarto.image.repository }}:{{ .Values.quarto.image.tag }}"
+          image: {{ include "srdp.image" (list . .Values.quarto.image) }}
           imagePullPolicy: {{ .Values.quarto.image.pullPolicy }}
           ports:
             - containerPort: 80

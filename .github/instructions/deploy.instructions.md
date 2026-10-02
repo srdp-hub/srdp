@@ -38,7 +38,8 @@ Placeholders use the `CHANGE_ME_*` prefix convention.
 
 ### Container images
 
-Registry: `rg.nl-ams.scw.cloud/srdp-registry/`
+Registry: `[deploy] registry` in `srdp.toml`.
+The Justfile passes it to builds and to the chart, so never hardcode it elsewhere.
 
 | Image | Source | Tag |
 |:---|:---|:---|
@@ -52,12 +53,12 @@ Build and push: `just build-and-push`
 
 ### PostgreSQL
 
-Single in-cluster instance (Bitnami, aliased `zitadel-db`) serves both `zitadel` and `dagster` databases. Password must be consistent across:
-
-- `zitadel-db.auth.password`
-- `zitadel.zitadel.masterkey` (exactly 32 characters)
-- `zitadel.zitadel.configmapConfig.Database.Postgres.Password`
-- `dagster.postgresql.postgresqlPassword`
+Single in-cluster instance (Bitnami, aliased `zitadel-db`) serves the `zitadel`, `dagster`, `marquez` and `ducklake` databases.
+No password lives in the values files.
+Every consumer reads a Secret with a fixed name: `srdp-postgres`, `srdp-zitadel`, `srdp-oauth2-proxy`, `srdp-dagster-postgresql` and `srdp-marquez` (keys listed in `values.yaml`).
+In kind, `templates/local-secrets.yaml` creates them from `localSecrets` in `values-local.yaml`.
+Elsewhere, External Secrets creates them.
+The Zitadel master key in `srdp-zitadel` must be exactly 32 characters.
 
 If PostgreSQL is redeployed with a stale PVC, delete the PVC and redeploy.
 

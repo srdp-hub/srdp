@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+permissions:
+  contents: read
 jobs:
   pre-commit:
     runs-on: ubuntu-latest
@@ -28,3 +30,19 @@ jobs:
       # errors instead of checking the code that uses them.
       - run: uv sync --group dev --extra ducklake --extra openlineage --extra api
       - run: uv run pre-commit run --all-files --show-diff-on-failure
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      # tests/deploy renders the chart with `helm template`, against the
+      # subcharts `just chart-deps` fetches from Chart.lock.
+      - uses: azure/setup-helm@v5
+        with:
+          version: v4.3.0
+      - uses: extractions/setup-just@v4
+      - run: uv sync --group dev --extra ducklake --extra openlineage --extra api
+      - run: just chart-deps
+      - run: uv run pytest tests

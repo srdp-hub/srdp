@@ -9,7 +9,9 @@ metadata:
     helm.sh/hook: post-install,post-upgrade
     # Before zitadel-init (-5), so a Zitadel failure can't block the databases.
     helm.sh/hook-weight: "-10"
-    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+    # Kept after success, so `kubectl logs job/srdp-setup` shows the last run.
+    # The next install or upgrade replaces it.
+    helm.sh/hook-delete-policy: before-hook-creation
 spec:
   backoffLimit: 2
   activeDeadlineSeconds: 240
@@ -17,6 +19,7 @@ spec:
     spec:
       restartPolicy: OnFailure
       automountServiceAccountToken: false
+      {{- include "srdp.imagePullSecrets" . | nindent 6 }}
       securityContext:
         seccompProfile:
           type: RuntimeDefault
@@ -29,7 +32,7 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
-          image: "{{ .Values.setup.image.repository }}:{{ .Values.setup.image.tag }}"
+          image: {{ include "srdp.image" (list . .Values.setup.image) }}
           imagePullPolicy: {{ .Values.setup.image.pullPolicy }}
           env:
             - name: SETUP_PG_HOST
@@ -37,12 +40,20 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: db-postgresql
+                  name: srdp-postgres
                   key: postgres-password
+            # Same Secret keys the consumers read, otherwise the Job resets a
+            # role to a password its application does not know.
             - name: SETUP_PASSWORDS__DAGSTER
-              value: {{ .Values.dagster.postgresql.postgresqlPassword | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-dagster-postgresql
+                  key: postgresql-password
             - name: SETUP_PASSWORDS__MARQUEZ
-              value: {{ .Values.marquez.dbPassword | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-marquez
+                  key: db-password
           volumeMounts:
             - name: setup-config
               mountPath: /etc/srdp

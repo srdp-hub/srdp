@@ -1,0 +1,24 @@
+# DuckLake's Parquet files, shared by the Dagster code location and its run
+# pods (writers) and the apps (readers), like the ducklake-data volume in
+# docker-compose.yml. ReadWriteOnce works in kind because every pod lands on
+# the single node. A multi-node cluster needs a ReadWriteMany storage class
+# (ducklakeData.accessMode / storageClassName) or object storage instead.
+# Kept on `helm uninstall` so a reinstall does not lose the data files that
+# the ducklake catalog in Postgres still points at.
+{{- if or .Values.dagster.enabled .Values.api.enabled .Values.duckdbUi.enabled .Values.marimo.enabled .Values.streamlit.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ducklake-data
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - {{ .Values.ducklakeData.accessMode }}
+  {{- with .Values.ducklakeData.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.ducklakeData.size }}
+{{- end }}

@@ -12,30 +12,25 @@ spec:
       app: duckdb-ui
   template:
     metadata:
+      {{- include "srdp.localSecretsChecksum" . | nindent 6 }}
       labels:
         app: duckdb-ui
     spec:
+      {{- include "srdp.imagePullSecrets" . | nindent 6 }}
       initContainers:
         {{- include "srdp.waitForDucklakeDb" . | nindent 8 }}
       containers:
         - name: duckdb-ui
-          image: "{{ .Values.duckdbUi.image.repository }}:{{ .Values.duckdbUi.image.tag }}"
+          image: {{ include "srdp.image" (list . .Values.duckdbUi.image) }}
           imagePullPolicy: {{ .Values.duckdbUi.image.pullPolicy }}
           ports:
             - containerPort: 4213
           env:
-            - name: DUCKLAKE_PG_HOST
-              value: {{ .Values.global.postgresqlHost | quote }}
-            - name: DUCKLAKE_PG_USER
-              value: postgres
-            - name: DUCKLAKE_PG_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: db-postgresql
-                  key: postgres-password
-            - name: DUCKLAKE_PG_DB
-              value: ducklake
-          # DUCKLAKE_DATA_PATH / shared storage: same open question as api.yaml.
+            {{- include "srdp.ducklakeEnv" . | nindent 12 }}
+          volumeMounts:
+            {{- include "srdp.ducklakeVolumeMount" . | nindent 12 }}
+      volumes:
+        {{- include "srdp.ducklakeVolume" . | nindent 8 }}
 ---
 apiVersion: v1
 kind: Service

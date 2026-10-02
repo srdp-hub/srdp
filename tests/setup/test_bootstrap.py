@@ -2,11 +2,18 @@
 
 from pathlib import Path
 
+import psycopg2
 import pytest
 from pydantic import SecretStr, ValidationError
 from pydantic_settings import SettingsConfigDict
 
-from srdp.setup.bootstrap import DatabaseTarget, SetupSettings, ensure_target
+from srdp.setup.bootstrap import (
+    CONNECT_TIMEOUT_SECONDS,
+    DatabaseTarget,
+    SetupSettings,
+    _connect_with_retry,
+    ensure_target,
+)
 
 CONFIG_TOML = """
 # Tables other than [setup] belong to other consumers and are ignored.
@@ -70,6 +77,20 @@ def test_loads_databases_from_toml_and_passwords_from_env(
 
     assert [t.name for t in settings.databases] == ["zitadel", "marquez", "ducklake"]
     assert settings.passwords["marquez"].get_secret_value() == "marquez-pw"
+
+
+def test_repo_srdp_toml_loads_next_to_its_deploy_table(monkeypatch: pytest.MonkeyPatch) -> None:
+    repo_toml = Path(__file__).resolve().parents[2] / "srdp.toml"
+
+    class TomlSettings(SetupSettings):
+        model_config = SettingsConfigDict(toml_file=repo_toml, toml_table_header=("setup",))
+
+    for role in ("ZITADEL", "DAGSTER", "MARQUEZ"):
+        monkeypatch.setenv(f"SETUP_PASSWORDS__{role}", "pw")
+
+    settings = TomlSettings()  # ty: ignore[missing-argument]
+
+    assert [t.name for t in settings.databases] == ["zitadel", "dagster", "marquez", "ducklake"]
 
 
 def test_missing_password_for_enabled_role_fails(settings_from_toml: type[SetupSettings]) -> None:
@@ -188,3 +209,23 @@ def test_roleless_target_is_owned_by_superuser() -> None:
 
     assert not any("ROLE" in s for s in cur.statements)
     assert any("CREATE DATABASE" in s and "'postgres'" in s for s in cur.statements)
+
+
+def test_connect_retries_with_a_per_attempt_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A hanging attempt must not use up the Job's activeDeadlineSeconds."""
+    calls: list[dict[str, object]] = []
+    connection = object()
+
+    def fake_connect(**kwargs: object) -> object:
+        calls.append(kwargs)
+        if len(calls) < 3:
+            msg = "starting up"
+            raise psycopg2.OperationalError(msg)
+        return connection
+
+    monkeypatch.setattr("srdp.setup.bootstrap.psycopg2.connect", fake_connect)
+    monkeypatch.setattr("srdp.setup.bootstrap.time.sleep", lambda _: None)
+
+    assert _connect_with_retry(_settings()) is connection
+    assert len(calls) == 3
+    assert all(call["connect_timeout"] == CONNECT_TIMEOUT_SECONDS for call in calls)

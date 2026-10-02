@@ -23,6 +23,9 @@ from pydantic_settings import (
 logger = logging.getLogger(__name__)
 
 CONFIG_PATH = Path("/etc/srdp/srdp.toml")
+# Per connection attempt, so an unreachable host fails fast and the retry loop,
+# not a hanging socket, decides how long setup waits.
+CONNECT_TIMEOUT_SECONDS = 5
 
 
 # Lowercase, and within Postgres's 63-byte identifier limit, since a longer
@@ -173,6 +176,7 @@ def _connect_with_retry(
                 user=settings.pg_user,
                 password=settings.pg_password.get_secret_value(),
                 dbname="postgres",
+                connect_timeout=CONNECT_TIMEOUT_SECONDS,
             )
         except psycopg2.OperationalError as exc:
             last_error = exc

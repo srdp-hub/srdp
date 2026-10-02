@@ -21,5 +21,16 @@ run_launcher:
   module: dagster
   class: DefaultRunLauncher
 
+# Same limits as the chart's dagsterDaemon.runCoordinator, a test checks.
+run_coordinator:
+  module: dagster.core.run_coordinator
+  class: QueuedRunCoordinator
+  config:
+    max_concurrent_runs: 3
+    tag_concurrency_limits:
+      - key: workload_kind
+        value: backfill
+        limit: 1
+
 telemetry:
   enabled: false

@@ -1,34 +1,32 @@
-{{- if .Values.api.enabled }}
+{{- if .Values.streamlit.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: api
+  name: streamlit
   labels:
-    app: api
+    app: streamlit
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: api
+      app: streamlit
   template:
     metadata:
       {{- include "srdp.localSecretsChecksum" . | nindent 6 }}
       labels:
-        app: api
+        app: streamlit
     spec:
       {{- include "srdp.imagePullSecrets" . | nindent 6 }}
       initContainers:
         {{- include "srdp.waitForDucklakeDb" . | nindent 8 }}
       containers:
-        - name: api
-          image: {{ include "srdp.image" (list . .Values.api.image) }}
-          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+        - name: streamlit
+          image: {{ include "srdp.image" (list . .Values.streamlit.image) }}
+          imagePullPolicy: {{ .Values.streamlit.image.pullPolicy }}
           ports:
             - containerPort: 8000
           env:
             {{- include "srdp.ducklakeEnv" . | nindent 12 }}
-            - name: DAGSTER_GRAPHQL_URL
-              value: "http://{{ .Release.Name }}-dagster-webserver.{{ .Release.Namespace }}.svc.cluster.local:80/graphql"
           volumeMounts:
             {{- include "srdp.ducklakeVolumeMount" . | nindent 12 }}
       volumes:
@@ -37,10 +35,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: api
+  name: streamlit
 spec:
   selector:
-    app: api
+    app: streamlit
   ports:
     - protocol: TCP
       port: 80

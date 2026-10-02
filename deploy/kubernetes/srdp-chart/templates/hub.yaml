@@ -15,9 +15,10 @@ spec:
       labels:
         app: hub
     spec:
+      {{- include "srdp.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: hub
-          image: "{{ .Values.hub.image.repository }}:{{ .Values.hub.image.tag }}"
+          image: {{ include "srdp.image" (list . .Values.hub.image) }}
           imagePullPolicy: {{ .Values.hub.image.pullPolicy }}
           ports:
             - containerPort: 80

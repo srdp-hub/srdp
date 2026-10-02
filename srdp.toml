@@ -1,6 +1,14 @@
 # Central platform config (#42). Never holds secrets.
-# The chart keeps its own copy of [setup] in setup.databases, keep them in step.
+# Each table has its own consumer, which ignores the other tables.
 
+# Read by the Justfile: image builds, kind loads and every Helm deploy.
+[deploy]
+# Registry prefix of every image this repo builds. The chart's defaults
+# (global.srdpRegistry, the srdp-etl repository) must match it, a test checks.
+registry = "rg.nl-ams.scw.cloud/srdp-registry"
+
+# Read by the srdp-setup service. The chart keeps its own copy in
+# setup.databases, keep them in step.
 [setup]
 
 [[setup.databases]]

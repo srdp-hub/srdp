@@ -12,6 +12,7 @@ spec:
       app: marquez
   template:
     metadata:
+      {{- include "srdp.localSecretsChecksum" . | nindent 6 }}
       labels:
         app: marquez
     spec:
@@ -23,7 +24,7 @@ spec:
       enableServiceLinks: false
       # The setup hook Job has no ordering guarantee against this Deployment.
       initContainers:
-        {{- include "srdp.waitForDbLogin" (dict "root" $ "db" "marquez" "user" "marquez" "password" .Values.marquez.dbPassword) | nindent 8 }}
+        {{- include "srdp.waitForDbLogin" (dict "root" $ "db" "marquez" "user" "marquez" "secretName" "srdp-marquez" "secretKey" "db-password") | nindent 8 }}
       containers:
         - name: marquez
           image: "{{ .Values.marquez.image.repository }}:{{ .Values.marquez.image.tag }}"
@@ -39,7 +40,10 @@ spec:
             - name: POSTGRES_PORT
               value: "5432"
             - name: MARQUEZ_DB_PASSWORD
-              value: {{ .Values.marquez.dbPassword | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-marquez
+                  key: db-password
           volumeMounts:
             - name: marquez-config
               mountPath: /etc/marquez
