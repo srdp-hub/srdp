@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-02
 decision-makers: Yannick Vinkesteijn
 consulted: Daniel Kapitan, Thomas Start, Eva van Kalmthout
@@ -116,7 +116,7 @@ Switching a rule off is one explicit line in `srdp.toml`, so it shows up in revi
 - Good, because projects keep their own naming, and an existing setup relaxes the rules it needs instead of migrating.
 - Bad, because a project with loose pipelines has to switch rules off explicitly, or adapt.
 - Bad, because the IO manager and dlt are two write paths into the catalog, which only see each other when their catalog settings match.
-- Bad, because dlt's `ducklake` destination is fairly young (added in dlt 1.17), so a trial source should prove it before this ADR is accepted.
+- Bad, because dlt's `ducklake` destination is fairly young (added in dlt 1.17), so a trial source should prove it before the first production source.
 
 ## More Information
 
