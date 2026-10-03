@@ -34,7 +34,8 @@ icon: lucide/life-buoy
 
 ### Browser rejects the self-signed cert
 
-- Import the `mkcert` root CA (printed during `mkcert -install`) or trust `kubernetes/certs/selfsigned.crt` locally while developing.
+- Run `just docker-tls` or `just local-tls` again, which installs mkcert's local CA into your system trust store, and restart the browser.
+- Firefox keeps its own trust store, so it may need `certutil` (NSS tools) installed before `mkcert` can add the CA there.
 
 ### ACME errors / rate limits
 

@@ -16,3 +16,8 @@ applyTo:
 - Check `zensical.toml` before suggesting markdown formatting or structure for anything under `docs/`.
 
 A second `prompt`-type hook alongside the em-dash one checks new prose for the comma-fragment and contrastive-tic rules on every `Write`/`Edit` to a matching file. Both hooks were verified live, not just written: tested against a real violation and confirmed they actually block, not just exist in a config file.
+
+## Documentation content rules
+
+- Don't write install commands for external tools (such as `brew install mkcert` or `apt install kind`), and especially not OS-specific ones. Name the tool and link to its own install instructions, and state a version requirement only when SRDP depends on it. Install commands for other people's tools go out of date, and each OS variant is one more thing to maintain and test.
+- A setup step SRDP needs after a tool is installed (such as `mkcert -install`) goes into a `just` recipe, so the docs only point to that recipe.

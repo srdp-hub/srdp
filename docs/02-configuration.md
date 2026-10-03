@@ -36,10 +36,10 @@ Add the following line to your hosts file (`/etc/hosts` on macOS/Linux):
 
 The stack serves everything over HTTPS because Zitadel and OAuth2-Proxy require it. [`mkcert`](https://github.com/FiloSottile/mkcert) creates locally-trusted certificates so your browser won't show warnings.
 
+Install `mkcert` following its own instructions, then run:
+
 ```bash
-brew install mkcert   # or see mkcert docs for other platforms
-mkcert -install       # one-time: installs a local Certificate Authority
-just docker-tls       # generates certs in deploy/docker/certs/
+just docker-tls   # trusts mkcert's local CA and generates certs in deploy/docker/certs/
 ```
 
 ### 4) Create the environment file
@@ -91,10 +91,10 @@ Add one line to your hosts file (`/etc/hosts` on macOS/Linux):
 
 ### 3) Install the local CA, create the kind cluster, and generate TLS certificates
 
+Install `mkcert` and `kind` following their own instructions, then run:
+
 ```bash
-brew install mkcert kind   # or see their docs for other platforms
-mkcert -install             # one-time: installs a local Certificate Authority
-just local-tls              # creates the kind cluster (if needed), certs, and the k8s TLS secret
+just local-tls   # trusts mkcert's local CA, creates the kind cluster (if needed), certs, and the k8s TLS secret
 ```
 
 `just local-tls` depends on `kind-up`, so it creates the `srdp` kind cluster on first run and points `kubectl` at it; on later runs it just reuses the existing cluster. `kind` runs as plain containers on whatever Docker daemon you already have (Colima, OrbStack, native Docker Engine on Linux, your own preference, this repo doesn't assume one), no separate VM for Kubernetes itself.

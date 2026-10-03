@@ -57,6 +57,7 @@ just prod-use-kubeconfig   # from repo root
   - `global.domain` and `oauth2-proxy` cookie/whitelist domains (use a real domain or `<lb-ip>.nip.io` once you know the load balancer IP).
   - Zitadel master key, admin/user DB passwords, Dagster DB password, and OAuth2 client credentials.
   - ACME email for Traefik (Let's Encrypt).
+    Let's Encrypt needs the domain to be publicly reachable, so a self-hosted machine without a public domain needs the organisation's own certificate or a DNS challenge instead.
   - Replace these placeholder values in `values-prod.yaml`:
     - `CHANGE_ME_POSTGRES_PASS`
     - `CHANGE_ME_ZITADEL_DB_PASS`

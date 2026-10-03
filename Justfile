@@ -18,8 +18,9 @@ scaleway *args:
 
 # ─── Local development ────────────────────────────────────────────────────────
 
-# Generate mkcert TLS certs for the local Docker Compose stack
+# Trust mkcert's local CA (no-op once done) and generate TLS certs for the local Docker Compose stack
 docker-tls:
+	mkcert -install
 	mkdir -p deploy/docker/certs
 	mkcert -cert-file deploy/docker/certs/selfsigned.crt -key-file deploy/docker/certs/selfsigned.key "srdp.localhost" "auth.srdp.localhost" "marimo.srdp.localhost" "dagster.srdp.localhost" "streamlit.srdp.localhost" "marquez.srdp.localhost" "api.srdp.localhost" "duckdb.srdp.localhost"
 
@@ -49,8 +50,9 @@ kind-load-images: kind-up
 		rg.nl-ams.scw.cloud/srdp-registry/srdp-setup:v1.0 \
 		--name srdp
 
-# Generate local TLS certs for the kind stack
+# Trust mkcert's local CA (no-op once done) and generate TLS certs for the kind stack
 local-tls: kind-up
+	mkcert -install
 	mkdir -p deploy/kubernetes/certs
 	mkcert -cert-file deploy/kubernetes/certs/selfsigned.crt -key-file deploy/kubernetes/certs/selfsigned.key "srdp.localhost" "auth.srdp.localhost" "marimo.srdp.localhost" "dagster.srdp.localhost" "streamlit.srdp.localhost" "marquez.srdp.localhost" "api.srdp.localhost" "duckdb.srdp.localhost"
 	kubectl create namespace {{namespace}} --dry-run=client -o yaml | kubectl apply -f -
@@ -144,6 +146,10 @@ build-and-push:
 init:
 	uv sync --all-groups --all-extras
 	uv run pre-commit install
+
+# Run all pre-commit hooks on every file
+pre-commit:
+	uv run pre-commit run --all-files
 
 # Run ruff check and format check
 lint:
