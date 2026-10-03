@@ -13,6 +13,7 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
   It holds no secrets, and `[setup]` is its first table.
 - `MARQUEZ_DB_PASSWORD` in `deploy/docker/.env` and `marquez.dbPassword` in the chart values.
   Existing Compose setups need to add it to `.env`.
+- ADR-0012, on how SRDP uses dlt with Dagster and DuckLake, with ADR-0002, ADR-0003 and ADR-0004 revised to secure by default.
 
 ### Changed
 
