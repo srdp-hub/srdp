@@ -1,10 +1,13 @@
 ---
 status: accepted
 date: 2026-06-08
+revised: 2026-10-03
 decision-makers: Yannick Vinkesteijn
 ---
 
 # Data organization and ingestion
+
+> **Proposed revision** in [ADR-0012](./0012-dlt-alongside-dagster.md) (#84): raw append-only and validation before skipping the landing zone are rules on by default, which a project can switch off explicitly in `srdp.toml`.
 
 ## Context and Problem Statement
 
@@ -89,10 +92,13 @@ DuckLake manages the filesystem layout within the project's storage prefix autom
 Chosen option: "Fix invariants and a write-mode menu; leave per-asset derivation to asset code." The ADR fixes what must always hold and the menu of supported modes; how a given asset derives its data is implementation and stays in the asset.
 
 Invariants:
-- Raw is logically append-only: pipelines never mutate it in place. New or corrected data arrives as new appends or snapshots. Raw is the source-of-truth and audit trail.
+- Raw is append-only by default, so pipelines don't mutate it in place, and new or corrected data arrives as new appends or snapshots.
+  Raw is the source of truth and the audit trail.
+  A project can switch this off explicitly in `srdp.toml` for its own raw tables, and then loses the audit trail and the rebuild from raw for those tables.
 - Curated layers are reproducible from raw. No information lives only in curated; external reference and enrichment data must itself be ingested as a source.
 
-Write-mode menu: the IO manager supports `replace`, `append`, and `merge`. Each asset chooses its mode based on size and cost. Raw's logical append-only invariant constrains the menu for raw: corrections are represented as new appends or snapshots, never as a destructive in-place `replace` of prior raw data. Curated layers may use any mode, since they are reproducible from raw. Cost-aware guidance (partitioning, incremental merge, compaction, snapshot retention) lives in the docs, not this ADR.
+Write-mode menu: the IO manager supports `replace`, `append`, and `merge`. Each asset chooses its mode based on size and cost. Raw's append-only default constrains the menu for raw: corrections are represented as new appends or snapshots, never as a destructive in-place `replace` of prior raw data. Curated layers may use any mode, since they are reproducible from raw. Cost-aware guidance (partitioning, incremental merge, compaction, snapshot retention) lives in the docs, not this ADR.
+
 
 Immutability is logical, not physical-write-once. Raw is a lakehouse table format over object storage, not a relational database. "No in-place pipeline mutation" is fully compatible with DuckLake's recommended maintenance: compaction (`ducklake_merge_adjacent_files`) and retention (`ducklake_expire_snapshots`, `ducklake_cleanup_old_files`, `ducklake_delete_orphaned_files`, via `CHECKPOINT`). These rewrite and garbage-collect physical files while preserving logical table state.
 
@@ -110,6 +116,7 @@ Chosen option: "Landing zone first". A landing zone sits before raw. External AP
 Raw is the first lake-managed, monitored layer and is reachable only by passing the landing-zone gate or the API. So the controlled entry points are the landing-zone gate and the API, and everything from raw onward is platform-protected and watched for out-of-band change (see [ADR-0003](./0003-data-catalog-lineage-and-observability.md)).
 
 All writes to lake-managed layers go through Dagster by default (see [ADR-0002](./0002-api-and-access-strategy.md), [ADR-0007](./0007-compute-and-scaling.md)). The API's write role is limited to accepting landing-zone drops, which trigger Dagster jobs, plus explicitly-defined operational endpoints. The landing zone is required for external and untrusted ingress, because that is where unconforming data is caught before it can break DuckLake management, monitoring, and pipeline visibility. It may be bypassed only by a direct Dagster source asset that applies equivalent validation (schema and content checks) before writing raw; the gatekeeping contract holds either way.
+A project can switch this validation off explicitly in `srdp.toml`, which keeps the relaxation visible.
 
 Ingestion building blocks the platform provides:
 - API ingestion: data pushed through the FastAPI API, landed, and processed by a triggered Dagster job.
@@ -125,7 +132,7 @@ Schema evolution and data quality are supported by the platform but governed by 
 - Good, because the default layers give projects a clear progression while remaining renameable and extensible.
 - Good, because the IO manager enforces alignment between asset keys, catalog entries, and storage paths, so no name divergence is possible.
 - Good, because write semantics are fixed at the right altitude (invariants and a menu), leaving derivation to assets.
-- Good, because the raw append-only invariant gives reproducibility and an audit trail, and stays compatible with compaction and retention.
+- Good, because append-only raw, on by default, gives reproducibility and an audit trail, and stays compatible with compaction and retention.
 - Good, because the landing zone gatekeeps integrity and decouples ingestion from processing.
 - Good, because erasure is a defined, audited capability rather than a contradiction of immutability.
 - Bad, because DuckDB's three-level naming means domains must be encoded in the table name when layers are used (`raw.sales_orders`, not `raw.sales.orders`).

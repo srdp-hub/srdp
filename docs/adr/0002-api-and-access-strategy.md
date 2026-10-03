@@ -1,10 +1,13 @@
 ---
 status: accepted
 date: 2026-06-08
+revised: 2026-10-03
 decision-makers: Yannick Vinkesteijn
 ---
 
 # API and access strategy
+
+> **Proposed revision** in [ADR-0012](./0012-dlt-alongside-dagster.md) (#84): writers other than the API and Dagster are only permitted explicitly.
 
 ## Context and Problem Statement
 
@@ -98,6 +101,7 @@ Service-to-service backend calls that are not user-driven and do not cross a tru
 The platform records who accessed what, when, and through which path. The decision (storage and granularity) lives with observability in [ADR-0003](./0003-data-catalog-lineage-and-observability.md): access and audit logs are written as append-only structured records (JSONL or Parquet) to blob storage, which survives the outage of any single stateful service.
 
 - API and service access is logged per request at the Traefik and FastAPI layers, including what was requested. All writes are audited because they only occur via the API or Dagster.
+  Other writers are only permitted explicitly ([ADR-0003](./0003-data-catalog-lineage-and-observability.md)), and a writer outside the API and Dagster, for example during development, isn't audited this way.
 - Direct interactive reads are audited at session and grant level by default (a user received a read-only session on a project at a time). Read-only access removes the mutation risk but not read confidentiality, which is a separate concern; deployments that need per-query read audit escalate by routing reads through the API or a logging wrapper (see the read tiers in [ADR-0007](./0007-compute-and-scaling.md)). The read-audit granularity is a per-deployment policy tied to data sensitivity.
 
 ### Consequences

@@ -1,10 +1,13 @@
 ---
 status: accepted
 date: 2026-06-08
+revised: 2026-10-03
 decision-makers: Yannick Vinkesteijn
 ---
 
 # Data catalog, lineage, and observability
+
+> **Proposed revision** in [ADR-0012](./0012-dlt-alongside-dagster.md) (#84): the IO manager stays the default write path, and other writers are allowed only when explicitly permitted, under the conditions in "Write path" below.
 
 ## Context and Problem Statement
 
@@ -42,7 +45,7 @@ Chosen option: "DuckLake as mandatory IO wrapper", because it makes data observa
 
 This is a core architectural decision: DuckLake is not optional. It is the mechanism that ensures no lake-managed data exists outside the catalog; the landing zone is governed separately as a pre-catalog ingress area (see [ADR-0004](./0004-data-organization-and-ingestion.md)). DuckLake stores catalog metadata in PostgreSQL, which the platform already runs, so there is no separate catalog server. Data is written as standard Parquet files to any storage backend, and DuckDB serves as the in-process query engine.
 
-The IO wrapper is agnostic to how data is produced. Asset authors can use Polars, pandas, DuckDB SQL, or any other tool. What is mandatory is that every output goes through the IO manager into DuckLake.
+The IO wrapper is agnostic to how data is produced. Asset authors can use Polars, pandas, DuckDB SQL, or any other tool. What is mandatory is that every output lands in DuckLake's catalog, through the IO manager by default.
 
 ### Why DuckLake over Iceberg
 
@@ -50,7 +53,11 @@ The decisive reason is single-node operational simplicity. SRDP's design point i
 
 ### Write path: Dagster IO manager
 
-The IO manager (`srdp.io.ducklake`) is the single write path into DuckLake. Asset code contains no storage logic; the IO manager handles persistence and catalog registration automatically. The asset-key-to-catalog mapping is specified in [ADR-0004](./0004-data-organization-and-ingestion.md), and the catalog dimension (project) in [ADR-0006](./0006-deployment-and-project-isolation-model.md).
+The IO manager (`srdp.io.ducklake`) is the default write path into DuckLake. Asset code contains no storage logic; the IO manager handles persistence and catalog registration automatically. The asset-key-to-catalog mapping is specified in [ADR-0004](./0004-data-organization-and-ingestion.md), and the catalog dimension (project) in [ADR-0006](./0006-deployment-and-project-isolation-model.md).
+
+Other writers, such as dbt or dlt, are only permitted explicitly, each with its own decision (for dlt, [ADR-0012](./0012-dlt-alongside-dagster.md)).
+A permitted writer runs inside Dagster, writes through DuckLake's catalog with the platform's catalog settings, and keeps the catalog and lineage complete.
+It may not affect the ability of DuckLake, Dagster or any other core component to do its work.
 
 Why an IO manager, not a Dagster resource? A resource requires every asset to explicitly call `ducklake.write(...)`; a developer forgetting that call means data exists in the pipeline but not in the catalog. The IO manager makes catalog registration automatic and impossible to skip.
 
