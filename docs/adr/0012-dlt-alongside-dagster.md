@@ -2,6 +2,7 @@
 status: proposed
 date: 2026-10-02
 decision-makers: Yannick Vinkesteijn
+consulted: Daniel Kapitan, Thomas Start, Eva van Kalmthout
 ---
 
 # dlt alongside Dagster
