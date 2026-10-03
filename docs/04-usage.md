@@ -5,65 +5,46 @@ icon: lucide/circle-play
 
 # Usage & Verification
 
+All apps are protected behind OAuth2-Proxy, so opening one redirects to Zitadel for login first.
+You can use the admin credentials from [02-configuration.md](./02-configuration.md).
+The hub at `https://srdp.localhost` links to every service.
+
+## Docker Compose
+
+### Access services
+
+Each service has its own `https://<service>.srdp.localhost` address, for example `https://dagster.srdp.localhost`.
+The `oauth2-proxy` router rule in `config/traefik/traefik.yml` lists every protected host.
+The Traefik dashboard at `http://localhost:8080` shows all routers and services, which helps when debugging routing.
+
+### Manage the stack
+
+- Start or rebuild: `just docker-up` (add `-d` to run in the background).
+- Stop: `just docker-down`.
+- Logs of all services: `cd deploy/docker && docker compose logs -f`, or add a service name such as `marimo`.
+
+> **Warning:** Do not run `docker compose down -v` unless you want to destroy all persistent data, including your Zitadel configuration.
+
+## Kubernetes (local kind cluster)
+
+### Access services
+
+The same addresses as Docker Compose, with `:18443` added, for example `https://dagster.srdp.localhost:18443`.
+On another cluster, use the domain from `global.domain` in your values.
+
 ### Check the release
+
 - `helm list -n srdp`
 - `kubectl get pods,svc,ing -n srdp`
 
-### Access services
-- Marimo: `https://marimo.srdp.localhost`
-- Dagster: `https://dagster.srdp.localhost`
-- Zitadel: `https://auth.srdp.localhost`
-- Traefik dashboard (if enabled in values): `http://localhost:8080`
-
-All apps (Marimo, Dagster) are protected behind OAuth2-Proxy. Accessing any of them will redirect to Zitadel for OIDC login before granting access. Quarto is disabled by default, see `docs/02-configuration.md`.
-
 ### Update or remove the release
-- Re-apply updated values: rerun the `helm upgrade --install ...` command from [02-configuration.md](./02-configuration.md) (or `just local-deploy`).
-- Remove everything: `helm uninstall srdp -n srdp`
-  - If you also want to clear persistent data: `kubectl delete pvc --all -n srdp`
-- Or use the task runner: `just local-delete`
+
+- Apply updated values: `just local-deploy`.
+- Remove the release and its persistent volumes: `just local-delete`.
 
 ### Logs
-- Watch all pods: `kubectl logs -n srdp -l app.kubernetes.io/instance=srdp -f`
-- Specific service, e.g. Marimo: `kubectl logs -n srdp deploy/marimo -f`
+
+- All pods: `kubectl logs -n srdp -l app.kubernetes.io/instance=srdp -f`
+- One service, for example Marimo: `kubectl logs -n srdp deploy/marimo -f`
 - Dagster webserver: `kubectl logs -n srdp deploy/srdp-dagster-webserver -f`
 - Dagster daemon: `kubectl logs -n srdp deploy/srdp-dagster-daemon -f`
-Once you have completed the setup, you can verify that all services are running correctly by accessing them in your web browser.
-
-### Accessing Services
-
-Use the following URLs. You will be prompted to authenticate before accessing each service. You can use the admin credentials from [02-configuration.md](./02-configuration.md):
-
-*   **Marimo Dashboard:**
-    *   URL: [https://marimo.srdp.localhost](https://marimo.srdp.localhost)
-    *   You should see an interactive dashboard with a slider.
-
-*   **Traefik Dashboard (for debugging):**
-    *   URL: [http://localhost:8080](http://localhost:8080)
-    *   This provides a view of Traefik's configuration, including all detected routers and services. It is very useful for troubleshooting routing issues.
-
-### Managing the Services
-
-You can manage the containers using standard `docker-compose` commands:
-
-*   **To build and start the services:**
-    ```bash
-    docker-compose up --build # Remove --build if no changes were made
-    ```
-
-*   **To stop the services:**
-    ```bash
-    docker-compose down
-    ```
-
-    **Do not use `docker-compose down -v` unless you want to destroy all persistent data, including your Zitadel configuration.**
-
-*   **To view the logs of all running services:**
-    ```bash
-    docker-compose logs -f
-    ```
-
-*   **To view the logs of a specific service (e.g., marimo):**
-    ```bash
-    docker-compose logs -f marimo
-    ```

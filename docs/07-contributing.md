@@ -10,10 +10,11 @@ icon: lucide/git-pull-request
 ```bash
 git clone https://github.com/srdp-hub/srdp.git
 cd srdp
-uv sync
-pre-commit install
-uv run pytest
+just init   # install dependencies and set up pre-commit
+just ci     # lint, type check and tests
 ```
+
+`just --list` shows all available commands.
 
 ## GitHub labels
 
@@ -37,7 +38,8 @@ Labels are managed in the GitHub UI under **Settings > Labels**. The set is inte
 
 We use GitHub Flow: feature branches from `main`, merged via PR.
 
-Branch naming: `<category>/<description>` (e.g., `feat/ducklake-io`, `fix/helm-pvc`, `docs/deployment`).
+Branch naming: `<type>/<issue-number>-<short-slug>` (e.g. `fix/123-short-desc`), where `<type>` is a Conventional Commits type such as `feat`, `fix`, `docs` or `chore`.
+Open an issue first if none exists.
 
 ## Pull requests
 
@@ -78,15 +80,11 @@ We follow the [MADR](https://adr.github.io/madr/) format.
 
 ## CI/CD
 
-CI runs on GitHub Actions. The current workflow:
+CI runs on GitHub Actions, and the workflows live in `.github/workflows/`.
 
-- **`docs.yml`**: builds and deploys documentation to GitHub Pages on push to `main` (paths: `docs/`).
-
-Planned workflows:
-
-- **`ci.yml`**: lint (ruff), type check (ty), test (pytest), security audit (uv-secure) on every PR.
-- **`images.yml`**: build and push container images to Scaleway Container Registry on push to `main`.
-- **`deploy.yml`**: `helm upgrade` against production using kubeconfig stored as a GitHub Actions secret.
+- **`ci.yml`** runs the pre-commit hooks on every pull request and every push to `main`.
+- **`docs.yml`** builds and deploys this documentation to GitHub Pages.
+- **`release.yml`** and **`publish.yml`** create a release from a version tag and publish the package to PyPI.
 
 Production deployments can also be triggered manually via `just prod-full` as a fallback.
 

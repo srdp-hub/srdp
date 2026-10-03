@@ -11,7 +11,7 @@ Before you begin, ensure you have the following software installed on your local
 
 Install each tool following its own instructions.
 
-- Git
+- [Git](https://git-scm.com/downloads).
 - A container runtime with Docker Engine and Docker Compose ([install](https://docs.docker.com/engine/install/)).
   Any Docker-compatible setup works, and Colima and OrbStack are two that are known to work.
 - [`just`](https://github.com/casey/just), the task runner for common commands.
@@ -21,6 +21,7 @@ Install each tool following its own instructions.
 
 - [`mkcert`](https://github.com/FiloSottile/mkcert), for locally trusted TLS certificates for `*.srdp.localhost`.
   `just docker-tls` and `just local-tls` install its local CA and generate the certificates.
+  The first run may ask for your password, because it adds the CA to your system trust store.
 
 ### Kubernetes
 

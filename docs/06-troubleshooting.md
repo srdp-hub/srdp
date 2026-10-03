@@ -10,7 +10,7 @@ icon: lucide/life-buoy
 - Make sure the TLS secret `custom-ingress-cert` exists in the `srdp` namespace (`kubectl get secret custom-ingress-cert -n srdp`).
 - For production, Traefik uses Let's Encrypt via the ACME TLS challenge; verify the `certResolver` and ACME email are set in `values-prod.yaml`.
 - Regenerate with `mkcert` if the hostnames or IP changed (local dev).
-- Confirm your hosts file points `auth/marimo/dagster.<domain>` to the Traefik IP.
+- On a cluster other than kind, confirm that DNS (or your hosts file) points the hostnames to the Traefik IP. `*.srdp.localhost` needs no entries.
 
 ### `kind create cluster` fails with "port is already allocated"
 

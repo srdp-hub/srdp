@@ -25,7 +25,7 @@ This document holds references to the sources used in the creation of this proje
 
 ## External Identity Providers
 
-- **[Integrate Identity Providers | ZITADEL Docs](https://zitadel.com/docs/guides/integrate/identity-providers)**
+- **[Integrate Identity Providers | ZITADEL Docs](https://zitadel.com/docs/guides/integrate/identity-providers/introduction)**
     - This ZITADEL documentation provides a high-level guide on how to connect external identity providers (IdPs). It outlines the process of adding providers at the instance level and then making them available to organizations through login policies, which was the exact workflow followed for Google and GitHub.
 
 - **[Setting up OAuth 2.0 | Google Cloud Documentation](https://support.google.com/cloud/answer/6158849)**
@@ -36,7 +36,7 @@ This document holds references to the sources used in the creation of this proje
 
 ## Multi-Factor Authentication (MFA)
 
-- **[How to configure MFA | ZITADEL Docs](https://zitadel.com/docs/guides/manage/console/login-security-policy#how-to-configure-mfa)**
+- **[Default settings, login and MFA | ZITADEL Docs](https://zitadel.com/docs/guides/manage/console/default-settings)**
     - This official ZITADEL documentation explains how to manage login security policies for an organization. It was used as the primary reference for enforcing Multi-Factor Authentication by changing the organization's policy to "Required" and confirming that TOTP was an allowed second factor.
 
 ## Database

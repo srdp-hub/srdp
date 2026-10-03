@@ -6,6 +6,7 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 
 ### Added
 
+- `just pre-commit`, which runs every pre-commit hook on all files.
 - `srdp-setup` service that creates every service database and role before the services that need them start, on Docker Compose and Kubernetes.
   It runs on every deploy, so it also repairs an existing volume that is missing a database, and it resets each role's password to the configured value.
   The database list lives in the `[setup]` table of the new repo-root `srdp.toml` (Compose) and in `setup.databases` in the chart's `values.yaml` (Kubernetes).
@@ -17,6 +18,8 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 
 ### Changed
 
+- `just docker-tls` and `just local-tls` install mkcert's local CA themselves, so setup is install mkcert and run the recipe.
+- The setup docs link to each tool's own install instructions, drop the unneeded `/etc/hosts` steps, and use `just` recipes throughout.
 - Marquez loads its own config through `MARQUEZ_CONFIG` and reads its database password from `MARQUEZ_DB_PASSWORD`.
   Its role no longer uses the literal password `marquez`, and its config no longer holds the unused OpenSearch settings.
 - Chart templates read the Postgres host from `global.postgresqlHost`, so production's `db-postgresql-primary` works without template edits.

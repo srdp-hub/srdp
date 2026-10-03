@@ -55,7 +55,7 @@ Full rules live in [`markdown.instructions.md`](.github/instructions/markdown.in
 
 ## Detailed instructions
 
-Domain-specific conventions are in `.github/instructions/` and load automatically based on file context:
+Domain-specific conventions are in `.github/instructions/`. GitHub Copilot loads them by file context through their `applyTo` globs, and Claude Code imports them all through `CLAUDE.md`. Other assistants should read the ones that apply:
 
 | File | Applies to |
 |:---|:---|

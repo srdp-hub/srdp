@@ -46,12 +46,10 @@ This is deliberate, not an oversight: passing a string to `ducklake_io_manager` 
 From the repo root:
 
 ```bash
-# One-time: local CA + TLS certs for the *.srdp.localhost stack
-brew install mkcert
-mkcert -install
+# TLS certs for the *.srdp.localhost stack (install mkcert first, see docs/01-prerequisites.md)
 just docker-tls
 
-# Environment file (defaults are fine to start; see "First login" below)
+# Environment file: fill in the empty values, each comment says how to generate it
 cp deploy/docker/.env.example deploy/docker/.env
 
 # Build and start everything
