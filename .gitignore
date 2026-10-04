@@ -28,6 +28,11 @@ charts/
 
 # Python
 __pycache__/
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
 *.pyc
 *.pyo
 *.pyd
