@@ -4,8 +4,7 @@ name: Images
 # main it builds and scans without pushing, so main stays buildable.
 # On a published release every image is pushed by digest, scanned, signed
 # and attested, and only when all of them pass do they get version tags,
-# so a release never has a tag on an image that failed a check, and never
-# tags some images but not the others.
+# so a tag never points at an image that failed a check.
 on:
   pull_request:
     paths: &image-inputs
@@ -225,7 +224,8 @@ jobs:
           path: digests/${{ matrix.name }}
           retention-days: 1
 
-  # Runs only when every image passed, so a release is all or nothing.
+  # Runs only when every image passed. Tagging can't be atomic across a
+  # registry, so it is idempotent instead: re-running it finishes a release.
   tag:
     needs: [version, build]
     runs-on: ubuntu-latest
@@ -246,6 +246,10 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # Version tags only, never latest, so a deployment always pins a version.
+      # The exact version is immutable: if it already points at another
+      # digest, nothing is tagged. A tag that already points at the right
+      # digest is skipped, so after a failed run "re-run failed jobs" finishes
+      # the release. X.Y deliberately moves to the latest patch.
       # skopeo copies the signed index unchanged (--preserve-digests fails
       # instead of rewriting it), so a tag can only point at the signed digest.
       - name: Tag
@@ -253,17 +257,40 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
           MINOR: ${{ needs.version.outputs.minor }}
         run: |
-          tags=("$VERSION")
-          if [ -n "$MINOR" ]; then tags+=("$MINOR"); fi
+          current_digest() {
+            if skopeo inspect --raw "docker://$1" > manifest.json 2>/dev/null; then
+              echo "sha256:$(sha256sum manifest.json | cut -d' ' -f1)"
+            fi
+          }
+
           for file in digests/*; do
             if ! grep -qxE 'sha256:[0-9a-f]{64}' "$file"; then
               echo "::error::$file does not hold a sha256 digest, refusing to tag."
               exit 1
             fi
+          done
+
+          # Check every image before changing any tag.
+          for file in digests/*; do
+            image="ghcr.io/srdp-hub/$(basename "$file")"
+            existing=$(current_digest "$image:$VERSION")
+            if [ -n "$existing" ] && [ "$existing" != "$(cat "$file")" ]; then
+              echo "::error::$image:$VERSION already points at $existing, refusing to move a version tag."
+              exit 1
+            fi
+          done
+
+          tags=("$VERSION")
+          if [ -n "$MINOR" ]; then tags+=("$MINOR"); fi
+          for file in digests/*; do
             image="ghcr.io/srdp-hub/$(basename "$file")"
             digest=$(cat "$file")
             for tag in "${tags[@]}"; do
-              skopeo copy --all --preserve-digests \
+              if [ "$(current_digest "$image:$tag")" = "$digest" ]; then
+                echo "$image:$tag already points at $digest"
+                continue
+              fi
+              skopeo copy --all --preserve-digests --retry-times 3 \
                 "docker://$image@$digest" "docker://$image:$tag"
             done
           done
