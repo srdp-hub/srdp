@@ -1,0 +1,16 @@
+version: 2
+updates:
+  # Workflow actions are pinned by commit SHA, Dependabot keeps them current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Base images of the platform images (#82).
+  - package-ecosystem: docker
+    directories:
+      - /deploy/docker
+      - /services/duckdb-ui
+      - /services/hub
+    schedule:
+      interval: weekly

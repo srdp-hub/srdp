@@ -6,6 +6,8 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 
 ### Added
 
+- Signed platform images: every release builds `srdp-setup`, `dagster-webserver`, `duckdb-ui` and `hub` for amd64 and arm64, scans them for critical vulnerabilities, signs them with cosign, attests their provenance and publishes them to `ghcr.io/srdp-hub` with version tags only. Pull requests that touch the images build and scan them without publishing. See "Verifying published images" in the deployment docs.
+- Dependabot for GitHub Actions and the platform images' base images.
 - `just pre-commit`, which runs every pre-commit hook on all files.
 - `srdp-setup` service that creates every service database and role before the services that need them start, on Docker Compose and Kubernetes.
   It runs on every deploy, so it also repairs an existing volume that is missing a database, and it resets each role's password to the configured value.
@@ -18,6 +20,7 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 
 ### Changed
 
+- `srdp-setup` and `duckdb-ui` build in the uv image and run on `python:3.12-slim-bookworm`, without uv at runtime, and the hub image applies Alpine security updates, so all platform images pass the critical vulnerability scan.
 - `just docker-tls` and `just local-tls` install mkcert's local CA themselves, so setup is install mkcert and run the recipe.
 - The setup docs link to each tool's own install instructions, drop the unneeded `/etc/hosts` steps, and use `just` recipes throughout.
 - Marquez loads its own config through `MARQUEZ_CONFIG` and reads its database password from `MARQUEZ_DB_PASSWORD`.

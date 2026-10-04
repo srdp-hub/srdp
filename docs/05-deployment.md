@@ -147,6 +147,25 @@ just prod-auth-only
 just prod-full
 ```
 
+## Verifying published images
+
+From the first release that includes the images workflow, every release publishes SRDP's platform images (`srdp-setup`, `dagster-webserver`, `duckdb-ui` and `hub`) to `ghcr.io/srdp-hub/<image>:<version>`.
+Each image is scanned for critical vulnerabilities before it gets a version tag, signed with cosign through GitHub's OIDC identity, and carries a build provenance attestation and an SBOM.
+Images are tagged with the release version only, never `latest`, so a deployment always pins a version.
+
+Check an image before you deploy it, with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) and the [GitHub CLI](https://cli.github.com/):
+
+```bash
+# The signature comes from this repo's images workflow
+cosign verify ghcr.io/srdp-hub/srdp-setup:<version> \
+  --certificate-identity-regexp '^https://github.com/srdp-hub/srdp/.github/workflows/images.yml@' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+# The image was built from this repo, with a traceable commit and workflow run
+gh attestation verify oci://ghcr.io/srdp-hub/srdp-setup:<version> --repo srdp-hub/srdp
+```
+
+
 ## Secrets management
 
 Secrets are managed through environment-specific mechanisms and are never committed to Git.

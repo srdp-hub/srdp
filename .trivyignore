@@ -1,0 +1,5 @@
+# Vulnerabilities the image scan (.github/workflows/images.yml) may skip.
+# Each entry needs a reason and an expiry date, so it gets looked at again:
+#
+# CVE-YYYY-NNNNN exp:YYYY-MM-DD
+# (reason: why it doesn't apply or why it can't be fixed yet)
