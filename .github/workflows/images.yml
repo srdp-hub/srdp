@@ -86,7 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
-      minor: ${{ steps.version.outputs.minor }}
+      stable: ${{ steps.version.outputs.stable }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -120,9 +120,9 @@ jobs:
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          # Pre-releases only get their exact version, never the X.Y tag.
+          # Pre-releases never move latest.
           if [ -z "${BASH_REMATCH[4]}" ]; then
-            echo "minor=${BASH_REMATCH[1]}.${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
+            echo "stable=true" >> "$GITHUB_OUTPUT"
           fi
 
   # Push by digest, scan, sign and attest. Untagged until the tag job runs.
@@ -245,17 +245,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Version tags only, never latest, so a deployment always pins a version.
-      # The exact version is immutable: if it already points at another
-      # digest, nothing is tagged. A tag that already points at the right
-      # digest is skipped, so after a failed run "re-run failed jobs" finishes
-      # the release. X.Y deliberately moves to the latest patch.
+      # Two tags: the exact version, which never moves and is what deployments
+      # pin, and latest for trying SRDP out, moved only by a stable release and
+      # only after every image has its version tag. If a version tag already
+      # points at another digest, nothing is tagged. Tags that already point at
+      # the right digest are skipped, so "re-run failed jobs" finishes a release.
+      # Releasing an older line after a newer one would move latest back, which
+      # SRDP doesn't do, since it only maintains the newest release.
       # skopeo copies the signed index unchanged (--preserve-digests fails
       # instead of rewriting it), so a tag can only point at the signed digest.
       - name: Tag
         env:
           VERSION: ${{ needs.version.outputs.version }}
-          MINOR: ${{ needs.version.outputs.minor }}
+          STABLE: ${{ needs.version.outputs.stable }}
         run: |
           current_digest() {
             if skopeo inspect --raw "docker://$1" > manifest.json 2>/dev/null; then
@@ -280,17 +282,20 @@ jobs:
             fi
           done
 
-          tags=("$VERSION")
-          if [ -n "$MINOR" ]; then tags+=("$MINOR"); fi
-          for file in digests/*; do
-            image="ghcr.io/srdp-hub/$(basename "$file")"
-            digest=$(cat "$file")
-            for tag in "${tags[@]}"; do
-              if [ "$(current_digest "$image:$tag")" = "$digest" ]; then
-                echo "$image:$tag already points at $digest"
+          tag_all() {
+            for file in digests/*; do
+              image="ghcr.io/srdp-hub/$(basename "$file")"
+              digest=$(cat "$file")
+              if [ "$(current_digest "$image:$1")" = "$digest" ]; then
+                echo "$image:$1 already points at $digest"
                 continue
               fi
               skopeo copy --all --preserve-digests --retry-times 3 \
-                "docker://$image@$digest" "docker://$image:$tag"
+                "docker://$image@$digest" "docker://$image:$1"
             done
-          done
+          }
+
+          tag_all "$VERSION"
+          if [ "$STABLE" = "true" ]; then
+            tag_all latest
+          fi

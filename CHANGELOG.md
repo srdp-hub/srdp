@@ -6,7 +6,7 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 
 ### Added
 
-- Signed platform images: every release builds `srdp-setup`, `dagster-webserver`, `duckdb-ui` and `hub` for amd64 and arm64, scans them for critical vulnerabilities, signs them with cosign, attests their provenance and publishes them to `ghcr.io/srdp-hub` with version tags only, once all four pass. A published version tag never moves to another image. Pull requests and pushes to `main` that touch the images build and scan them without publishing. See "Verifying published images" in the deployment docs.
+- Signed platform images: every release builds `srdp-setup`, `dagster-webserver`, `duckdb-ui` and `hub` for amd64 and arm64, scans them for critical vulnerabilities, signs them with cosign, attests their provenance and publishes them to `ghcr.io/srdp-hub` once all four pass, tagged with the exact version (which never moves) and `latest` for the newest stable release. Pull requests and pushes to `main` that touch the images build and scan them without publishing. See "Verifying published images" in the deployment docs.
 - Dependabot for GitHub Actions and the platform images' base images, which are pinned by digest.
 - `just pre-commit`, which runs every pre-commit hook on all files.
 - `srdp-setup` service that creates every service database and role before the services that need them start, on Docker Compose and Kubernetes.
