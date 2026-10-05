@@ -23,7 +23,7 @@ logging:
   appenders:
     - type: console
 
-# Explicit because the image tag floats (latest).
+# Explicit, so a Marquez upgrade with a new default cannot switch it on.
 search:
   enabled: false
 

@@ -12,11 +12,11 @@ Both deployment targets (Docker Compose and Helm) run the same logical services.
 | Container | Role | Image | Notes |
 |:---|:---|:---|:---|
 | `srdp-postgres` | Shared platform database | `postgres:17-alpine` | Hosts databases for Zitadel, Dagster, Marquez and DuckLake |
-| `srdp-traefik` | Reverse proxy, TLS termination | `traefik:v3.5.3` | |
-| `srdp-zitadel-init` | Database schema bootstrap | `ghcr.io/zitadel/zitadel:v4.2.2` | Runs once then exits |
-| `srdp-zitadel` | Identity provider (OIDC) | `ghcr.io/zitadel/zitadel:v4.2.2` | API, console, OIDC endpoints |
-| `srdp-zitadel-login` | Hosted login UI | `ghcr.io/zitadel/zitadel-login:v4.2.2` | Separate Next.js app since Zitadel v4 |
-| `srdp-oauth2-proxy` | Forward-auth middleware | `quay.io/oauth2-proxy/oauth2-proxy:v7.6.0` | |
+| `srdp-traefik` | Reverse proxy, TLS termination | `traefik:v3.6.2` | |
+| `srdp-zitadel-init` | Database schema bootstrap | `ghcr.io/zitadel/zitadel:v4.11.1` | Runs once then exits |
+| `srdp-zitadel` | Identity provider (OIDC) | `ghcr.io/zitadel/zitadel:v4.11.1` | API, console, OIDC endpoints |
+| `srdp-zitadel-login` | Hosted login UI | `ghcr.io/zitadel/zitadel-login:v4.11.1` | Separate Next.js app since Zitadel v4 |
+| `srdp-oauth2-proxy` | Forward-auth middleware | `quay.io/oauth2-proxy/oauth2-proxy:v7.13.0` | |
 | `srdp-dagster-code` | User pipeline code (gRPC) | Built from `projects/cbs-example/Dockerfile` | Separate so pipeline code can update independently |
 | `srdp-dagster-webserver` | Orchestration UI | Built from `deploy/docker/dagster-webserver.Dockerfile` | No source code, connects to code server over gRPC |
 | `srdp-dagster-daemon` | Schedule & sensor execution | Same image as webserver | Must be a separate process per Dagster's architecture |

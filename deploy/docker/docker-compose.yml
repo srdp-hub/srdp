@@ -5,13 +5,15 @@ x-ducklake-depends: &ducklake-depends
     postgres:
       condition: service_healthy
 
+# Every pulled image is pinned to an exact version and digest. The chart
+# runs the same versions of these, and tests/deploy fails until they match.
 services:
   # ---------------------------------------------
   # Shared PostgreSQL
   # ---------------------------------------------
   postgres:
     restart: always
-    image: postgres:17-alpine
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
     container_name: srdp-postgres
     environment:
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
@@ -55,7 +57,7 @@ services:
   # Reverse Proxy
   # ---------------------------------------------
   traefik:
-    image: traefik:v3.5.3
+    image: traefik:v3.6.2@sha256:aaf0f6185419a50c74651448c1a5bf4606bd2d2ddb7b8749eed505d55bf8b8ea
     container_name: srdp-traefik
     ports:
       - "80:80"
@@ -104,7 +106,7 @@ services:
         condition: service_healthy
 
   zitadel-init:
-    image: '${ZITADEL_IMAGE:-ghcr.io/zitadel/zitadel:v4.2.2}'
+    image: '${ZITADEL_IMAGE:-ghcr.io/zitadel/zitadel:v4.11.1@sha256:a9f1ed98e0ab7f98cadecab90a47226b735ffad3ed0f318abd7817839518fb1a}'
     container_name: srdp-zitadel-init
     command: init
     depends_on:
@@ -136,7 +138,7 @@ services:
 
   zitadel-login:
     restart: unless-stopped
-    image: 'ghcr.io/zitadel/zitadel-login:v4.2.2'
+    image: 'ghcr.io/zitadel/zitadel-login:v4.11.1@sha256:8f9bae123fc63179c4afe4fb49d720aaaeb05f13ef4f9eb5e3b6d5da590c7b28'
     container_name: srdp-zitadel-login
     environment:
       - ZITADEL_API_URL=https://zitadel:8080
@@ -156,7 +158,7 @@ services:
   # Authentication Proxy
   # ---------------------------------------------
   oauth2-proxy:
-    image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.13.0@sha256:56e3daedf765c7a1eea6e366fbe684be7d3084830ade14b6174570d3c7960954
     container_name: srdp-oauth2-proxy
     restart: unless-stopped
     networks:
@@ -380,7 +382,7 @@ services:
   # Marquez (OpenLineage backend + UI)
   # ---------------------------------------------
   marquez:
-    image: marquezproject/marquez:latest
+    image: marquezproject/marquez:0.51.1@sha256:0721c976cff17d8b14f7949d85d6dac9c7ea37cb9fe857caa19833730fcb1a50
     container_name: srdp-marquez
     environment:
       MARQUEZ_CONFIG: /etc/marquez/marquez.yml
@@ -399,7 +401,7 @@ services:
         condition: service_healthy
 
   marquez-web:
-    image: marquezproject/marquez-web:latest
+    image: marquezproject/marquez-web:0.51.1@sha256:7312112ca0e611b0a37b00d3da6a677485ae4a97622b23d3ae24d849a927868b
     container_name: srdp-marquez-web
     environment:
       MARQUEZ_HOST: marquez

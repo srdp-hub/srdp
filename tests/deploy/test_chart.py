@@ -290,3 +290,118 @@ def test_writers_and_readers_mount_ducklake_data_at_the_same_path(local: list[Ma
         container = find(local, "Deployment", name)["spec"]["template"]["spec"]["containers"][0]
         paths |= {e["value"] for e in container["env"] if e["name"] == "DUCKLAKE_DATA_PATH"}
     assert len(paths) == 1, paths
+
+
+# A digest, or a full major.minor.patch tag. Never `latest`.
+DIGEST = re.compile(r"@sha256:[0-9a-f]{64}$")
+EXACT_TAG = re.compile(r"v?\d+\.\d+\.\d+")
+# Images that cannot be pinned from this repo, with the reason.
+UNPINNABLE = {
+    # Hardcoded in the zitadel subchart's login and setup templates.
+    "wait4x/wait4x:3.6",
+}
+DOCKER_HUB_PREFIXES = ("registry-1.docker.io/", "docker.io/", "library/")
+
+
+def split_image(image: str) -> tuple[str, str, str]:
+    """Split an image reference into (name, tag, digest), with Docker Hub prefixes removed."""
+    reference, _, digest = image.partition("@")
+    name, tag = reference, ""
+    if ":" in reference.rsplit("/", 1)[-1]:
+        name, tag = reference.rsplit(":", 1)
+    for prefix in DOCKER_HUB_PREFIXES:
+        name = name.removeprefix(prefix)
+    return name, tag, digest
+
+
+def is_pinned(image: str) -> bool:
+    """Return whether the image has a digest or an exact version tag, and isn't `latest`."""
+    _, tag, _ = split_image(image)
+    if tag == "latest":
+        return False
+    return bool(DIGEST.search(image) or EXACT_TAG.fullmatch(tag))
+
+
+def manifest_images(node: object) -> list[str]:
+    """Return the image of every container and init container anywhere in the manifests."""
+    if isinstance(node, list):
+        return [image for item in node for image in manifest_images(item)]
+    if not isinstance(node, dict):
+        return []
+    images = [c["image"] for key in ("containers", "initContainers") for c in node.get(key) or []]
+    return images + [image for value in node.values() for image in manifest_images(value)]
+
+
+def compose_images() -> list[str]:
+    """Return the image of every Compose service, with `${VAR:-default}` resolved to its default."""
+    compose = yaml.safe_load((REPO_ROOT / "deploy" / "docker" / "docker-compose.yml").read_text())
+    images = [service["image"] for service in compose["services"].values() if "image" in service]
+    return [re.sub(r"\$\{\w+:-(.*)\}", r"\1", image) for image in images]
+
+
+FROM_LINE = re.compile(r"FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+(\S+))?", re.IGNORECASE)
+
+
+def dockerfile_bases() -> list[tuple[str, str]]:
+    """Return (Dockerfile, base image) for every FROM line in the repo's Dockerfiles."""
+    dockerfiles = [
+        path
+        for pattern in ("**/Dockerfile", "**/*.Dockerfile")
+        for path in REPO_ROOT.glob(pattern)
+        if not {".venv", "node_modules", ".git", ".claude"} & set(path.relative_to(REPO_ROOT).parts)
+    ]
+    bases = []
+    for path in dockerfiles:
+        stages: set[str] = set()
+        for line in path.read_text().splitlines():
+            match = FROM_LINE.match(line)
+            if match is None:
+                continue
+            if match[1] not in stages and match[1] != "scratch":
+                bases.append((str(path.relative_to(REPO_ROOT)), match[1]))
+            if match[2]:
+                stages.add(match[2])
+    return bases
+
+
+RENDERS = {
+    "default": (("values.yaml",), ()),
+    "local": (("values.yaml", "values-local.yaml"), ()),
+    "prod": (("values-prod.example.yaml",), ()),
+    "prod-with-metrics": (("values-prod.example.yaml",), ("zitadel-db.metrics.enabled=true",)),
+}
+
+
+@pytest.mark.parametrize("case", RENDERS)
+def test_every_chart_image_is_pinned(case: str) -> None:
+    values_files, set_values = RENDERS[case]
+    images = set(manifest_images(render(*values_files, set_values=set_values)))
+    # The chart's own images keep their mutable v1.0 tag for now, see #101.
+    own = {i for i in images if "srdp-registry/" in i and i.endswith(":v1.0")}
+    unpinned = {i for i in images if not is_pinned(i)} - own - UNPINNABLE
+    assert not unpinned, unpinned
+
+
+def test_every_compose_image_is_pinned_by_digest() -> None:
+    images = compose_images()
+    assert images
+    assert [i for i in images if not (is_pinned(i) and DIGEST.search(i))] == []
+
+
+def test_every_dockerfile_base_is_pinned_by_digest() -> None:
+    bases = dockerfile_bases()
+    assert bases
+    assert [(path, image) for path, image in bases if not DIGEST.search(image)] == []
+
+
+@pytest.mark.parametrize("case", ["local", "prod"])
+def test_compose_and_chart_run_the_same_versions(case: str) -> None:
+    """Every image Compose pulls runs in the chart too, at the same tag, and the same digest where both pin one."""
+    values_files, set_values = RENDERS[case]
+    chart = [split_image(i) for i in manifest_images(render(*values_files, set_values=set_values))]
+    for name, tag, digest in map(split_image, compose_images()):
+        versions = {(t, d) for n, t, d in chart if n == name}
+        assert versions, f"{name} is not in the chart"
+        for chart_tag, chart_digest in versions:
+            assert chart_tag == tag, f"{name}: chart {chart_tag}, Compose {tag}"
+            assert not chart_digest or chart_digest == digest, f"{name}: chart and Compose digests differ"

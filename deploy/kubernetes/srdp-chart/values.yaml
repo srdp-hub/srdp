@@ -39,6 +39,10 @@ traefik:
       nodePort: 30080
     websecure:
       nodePort: 30443
+  # Same version as Compose, tests/deploy checks. Third-party images in
+  # subcharts without a digest field are pinned by exact tag.
+  image:
+    tag: "v3.6.2"
 
 # Local PostgreSQL
 zitadel-db:
@@ -52,11 +56,15 @@ zitadel-db:
       adminPasswordKey: postgres-password
       userPasswordKey: password
       replicationPasswordKey: replication-password
+  # Bitnami publishes only `latest`, so these are pinned by digest. This
+  # one is PostgreSQL 18.6.0. Compose runs 17, an open decision in #101.
   image:
     repository: bitnami/postgresql
+    digest: sha256:ea7edc281ba9f65e6af5cabbd1ade6e1a32ff473aa79395c2ffd8d6aff8b2036
   metrics:
     image:
       repository: bitnami/postgres-exporter
+      digest: sha256:31efbed2026b64817b7f2ec54d6b2ec18e007e6229666320e0a45d66134d7ee7
   primary:
     # Bitnami's default resourcesPreset ("nano", 192Mi limit) gets the
     # primary OOMKilled once four databases and their clients connect.
@@ -73,6 +81,7 @@ zitadel-db:
     enabled: true
     image:
       repository: bitnami/os-shell
+      digest: sha256:c596a0cd6054322dc6ff09f192cfd3d3b619bbe649444c2522340d3739108b3d
   tls:
     enabled: true
     certificatesSecret: postgres-cert
@@ -141,7 +150,7 @@ zitadel:
     activeDeadlineSeconds: 900
     initContainers:
       - name: wait-for-db
-        image: busybox:1.36
+        image: busybox:1.36.1@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
         command:
           - sh
           - -c
@@ -161,7 +170,7 @@ zitadel:
     activeDeadlineSeconds: 900
     initContainers:
       - name: wait-for-db
-        image: busybox:1.36
+        image: busybox:1.36.1@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
         command:
           - sh
           - -c
@@ -213,6 +222,9 @@ oauth2-proxy:
       hostnames:
         - "auth.srdp.localhost"
 
+  image:
+    tag: "v7.13.0"
+
 # Dagster orchestration
 dagster:
   enabled: true
@@ -230,7 +242,7 @@ dagster:
     extraPrependedInitContainers: &wait-for-dagster-db
       # Copy of srdp.waitForDbLogin (_helpers.tpl), the subchart doesn't tpl this.
       - name: wait-for-dagster-db
-        image: postgres:17-alpine
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
         command:
           - sh
           - -c
@@ -264,11 +276,23 @@ dagster:
     enabled: false
   postgresql:
     enabled: false
+    # Image of the subchart's own check-db-ready init container, the same
+    # pinned postgres image as the wait containers (no digest field, so the
+    # digest rides on the tag).
+    image:
+      repository: library/postgres
+      tag: "17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24"
     postgresqlHost: db-postgresql
     postgresqlUsername: dagster
     postgresqlDatabase: dagster
     service:
       port: 5432
+  # The subchart's own busybox version, pinned. Its init containers wait
+  # with nslookup, which hung on 1.36.1 in kind (NXDOMAIN on search domains).
+  busybox:
+    image:
+      repository: docker.io/busybox
+      tag: "1.28.4@sha256:141c253bc4c3fd0a201d32dc1f493bcf3fff003b6df416dea4f41046e0f37d47"
   # DuckLake handles concurrent writers through its Postgres catalog, so runs
   # can overlap. The cap protects node memory (each run pod may take 1536Mi,
   # a backfill 2Gi) and Postgres connections, and the queue is what applies
@@ -308,7 +332,7 @@ dagster:
         port: 3030
         initContainers:
           - name: wait-for-ducklake-db
-            image: postgres:17-alpine
+            image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
             command:
               - sh
               - -c
@@ -451,10 +475,12 @@ marquez:
   # srdp-setup Job.
   image:
     repository: marquezproject/marquez
-    tag: "latest"
+    tag: "0.51.1"
+    digest: sha256:0721c976cff17d8b14f7949d85d6dac9c7ea37cb9fe857caa19833730fcb1a50
     pullPolicy: IfNotPresent
   web:
     image:
       repository: marquezproject/marquez-web
-      tag: "latest"
+      tag: "0.51.1"
+      digest: sha256:7312112ca0e611b0a37b00d3da6a677485ae4a97622b23d3ae24d849a927868b
       pullPolicy: IfNotPresent

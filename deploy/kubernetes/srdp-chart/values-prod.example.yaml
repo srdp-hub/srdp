@@ -40,7 +40,7 @@ traefik:
   deployment:
     initContainers:
       - name: fix-acme-perms
-        image: busybox:1.36
+        image: busybox:1.36.1@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
         command:
           - sh
           - -c
@@ -113,7 +113,7 @@ zitadel:
   initJob:
     initContainers:
       - name: wait-for-db
-        image: busybox:1.36
+        image: busybox:1.36.1@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
         command:
           - sh
           - -c
@@ -128,7 +128,7 @@ zitadel:
   setupJob:
     initContainers:
       - name: wait-for-db
-        image: busybox:1.36
+        image: busybox:1.36.1@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
         command:
           - sh
           - -c
@@ -176,7 +176,7 @@ dagster:
   dagsterWebserver:
     extraPrependedInitContainers: &wait-for-dagster-db-prod
       - name: wait-for-dagster-db
-        image: postgres:17-alpine
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
         command:
           - sh
           - -c
@@ -226,7 +226,7 @@ dagster:
         port: 3030
         initContainers:
           - name: wait-for-ducklake-db
-            image: postgres:17-alpine
+            image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
             command:
               - sh
               - -c

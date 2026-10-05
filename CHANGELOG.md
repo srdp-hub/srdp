@@ -50,6 +50,14 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
   It stays after it succeeds, until the next install or upgrade, so `kubectl logs job/srdp-setup` always shows the last run.
   Each connection attempt times out after 5 seconds, so an unreachable host can't use up those 4 minutes.
 - `just build-and-push` also builds and pushes the `srdp-setup` image, and stops on the first failed build or push.
+- Every third-party container image is pinned to an exact version, by digest where the image reference allows it, and Compose and the chart run the same version of each image that both pull.
+  Two components still differ between the targets, the Postgres server (below) and Dagster, which Compose builds from `uv.lock` (1.13.20) while the chart runs the 1.12.17 subchart images.
+  Compose moves to Traefik v3.6.2, Zitadel and its login v4.11.1 and OAuth2-Proxy v7.13.0, the versions the chart already ran.
+  Marquez runs 0.51.1 on both instead of `latest`, and every Dockerfile base image is pinned by digest.
+  The chart's Postgres server is pinned to the Bitnami image that `latest` pointed to (PostgreSQL 18.6.0), while Compose runs `postgres:17-alpine`.
+  The Dagster subchart's `check-db-ready` init container uses the same pinned `postgres` image as the chart's own wait containers, and its `busybox` stays on 1.28.4 because its `nslookup` wait hung on 1.36.1 in kind.
+  Dependabot proposes updates for the Compose images and all Dockerfile bases, and `tests/deploy` fails until the chart runs the same versions as Compose.
+  Existing `values-prod.yaml` files must pin the same images in their wait containers, since their lists replace the chart's.
 
 ### Removed
 
