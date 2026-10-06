@@ -6,28 +6,5 @@ updates:
     schedule:
       interval: weekly
 
-  # Base images of every Dockerfile, pinned by digest (#82).
-  - package-ecosystem: docker
-    directories:
-      - /deploy/docker
-      - /services/duckdb-ui
-      - /services/hub
-      - /services/quarto
-      - /projects/cbs-example
-      - /projects/cbs-example/api
-      - /projects/cbs-example/notebooks
-      - /projects/cbs-example/streamlit
-    schedule:
-      interval: weekly
-
-  # The Compose images, pinned by digest. Dependabot can't update the chart
-  # copies, so a bump must also update the chart in the same PR, and
-  # tests/deploy fails until it does. Major versions can need a data or
-  # config migration, so they stay a manual change.
-  - package-ecosystem: docker-compose
-    directory: /deploy/docker
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-    schedule:
-      interval: weekly
+  # Container images, charts and Dockerfile bases are updated by Renovate
+  # (renovate.json), grouped in one PR.

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "docker:pinDigests"],
+  "enabledManagers": ["dockerfile", "docker-compose", "helmv3", "helm-values", "custom.regex"],
+  "schedule": ["before 6am on monday"],
+  "packageRules": [
+    {
+      "description": "One PR per week for all container image and chart bumps.",
+      "matchManagers": ["dockerfile", "docker-compose", "helmv3", "helm-values", "custom.regex"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "container images and charts"
+    },
+    {
+      "description": "Major versions can need a data or config migration, so they wait for approval on the dashboard.",
+      "matchManagers": ["dockerfile", "docker-compose", "helmv3", "helm-values", "custom.regex"],
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "The Python minor is fixed by requires-python in pyproject.toml, only patch and digest bumps are allowed.",
+      "matchPackageNames": ["python", "ghcr.io/astral-sh/uv"],
+      "matchUpdateTypes": ["major", "minor"],
+      "enabled": false
+    },
+    {
+      "description": "Dagster comes from uv.lock, so the chart follows the release line the lockfile resolves.",
+      "matchPackageNames": ["dagster"],
+      "matchManagers": ["helmv3"],
+      "groupName": "dagster"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Images written as 'image: name:tag@digest' inside chart values and templates.",
+      "managerFilePatterns": ["/^deploy/kubernetes/srdp-chart/(values.*\\.yaml|templates/.*\\.(yaml|tpl))$/"],
+      "matchStrings": ["image:\\s*[\"']?(?<depName>[^\\s\"':@{}]+):(?<currentValue>[^\\s\"'@]+)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))?"],
+      "datasourceTemplate": "docker"
+    }
+  ]
+}
