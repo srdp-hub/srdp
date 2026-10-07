@@ -6,12 +6,12 @@ REPO_ROOT="$(cd -- "$SCRIPT_DIR/../../.." && pwd)"
 
 # Configuration. REGISTRY comes from srdp.toml [deploy] via `just build-and-push`.
 REGISTRY="${REGISTRY:?set REGISTRY, or run via just build-and-push}"
-VERSION="v1.0"
+VERSION="${VERSION:-$(cd "$REPO_ROOT" && uv run --no-project python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')}"
 
 echo "Logging into Scaleway Registry"
 echo "$SCW_SECRET_KEY" | docker login "${REGISTRY%%/*}" -u nologin --password-stdin
 
-echo "Building and Pushing SRDP Images"
+echo "Building and Pushing SRDP Images (the platform images come from ghcr.io/srdp-hub)"
 echo "Target Registry: $REGISTRY"
 echo "Version: $VERSION"
 
@@ -31,13 +31,5 @@ docker build --platform linux/amd64 \
   -t "$REGISTRY/srdp-etl:$VERSION" \
   "$REPO_ROOT"
 docker push "$REGISTRY/srdp-etl:$VERSION"
-
-echo "Building SRDP Setup (database/role bootstrap Job)..."
-# Build context is repo root, the Dockerfile needs access to src/.
-docker build --platform linux/amd64 \
-  -f "$REPO_ROOT/deploy/docker/srdp-setup.Dockerfile" \
-  -t "$REGISTRY/srdp-setup:$VERSION" \
-  "$REPO_ROOT"
-docker push "$REGISTRY/srdp-setup:$VERSION"
 
 echo "Done! Images pushed."

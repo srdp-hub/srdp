@@ -51,13 +51,28 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
   Each connection attempt times out after 5 seconds, so an unreachable host can't use up those 4 minutes.
 - `just build-and-push` also builds and pushes the `srdp-setup` image, and stops on the first failed build or push.
 - Every third-party container image is pinned to an exact version, by digest where the image reference allows it, and Compose and the chart run the same version of each image that both pull.
-  Two components still differ between the targets, the Postgres server (below) and Dagster, which Compose builds from `uv.lock` (1.13.20) while the chart runs the 1.12.17 subchart images.
   Compose moves to Traefik v3.6.2, Zitadel and its login v4.11.1 and OAuth2-Proxy v7.13.0, the versions the chart already ran.
   Marquez runs 0.51.1 on both instead of `latest`, and every Dockerfile base image is pinned by digest.
-  The chart's Postgres server is pinned to the Bitnami image that `latest` pointed to (PostgreSQL 18.6.0), while Compose runs `postgres:17-alpine`.
+  Postgres runs major version 18 on both targets, the chart through the Bitnami image that `latest` pointed to (18.6.0) and Compose through `postgres:18-alpine`, and a test checks that the majors match.
   The Dagster subchart's `check-db-ready` init container uses the same pinned `postgres` image as the chart's own wait containers, and its `busybox` stays on 1.28.4 because its `nslookup` wait hung on 1.36.1 in kind.
-  Dependabot proposes updates for the Compose images and all Dockerfile bases, and `tests/deploy` fails until the chart runs the same versions as Compose.
+  Renovate (`renovate.json`, run by `.github/workflows/renovate.yml`) proposes one weekly PR for the images, the chart dependencies and the Dagster packages, and `tests/deploy` fails until the chart runs the same versions as Compose.
+  The workflow needs a `RENOVATE_TOKEN` secret, a GitHub App token or a PAT, because PRs opened with `GITHUB_TOKEN` do not start CI.
+  Dependabot stays for GitHub Actions.
   Existing `values-prod.yaml` files must pin the same images in their wait containers, since their lists replace the chart's.
+
+- The chart's own images and Compose's platform images use the release version instead of the mutable `v1.0` tag.
+  The platform images (`srdp-setup`, `dagster-webserver`, `duckdb-ui`, `hub`) come from `ghcr.io/srdp-hub` (`global.platformRegistry`), and the chart's `appVersion` and `version` follow the release, which `scripts/release.sh` keeps in step.
+  Local builds are tagged `dev` (`global.imageTag` in `values-local.yaml`), and Compose builds from source unless `SRDP_VERSION` is set.
+  This breaks existing `values-prod.yaml` files that set image tags, and `just build-and-push` no longer pushes `srdp-setup`.
+  Fix it by removing the tags or setting them to the release version, and by running `just kind-load-images` again locally.
+- The Dagster webserver and daemon on Kubernetes run SRDP's `dagster-webserver` image, built from `uv.lock`, instead of the upstream `dagster/dagster-celery-k8s` image, and the Dagster subchart is 1.13.20, the same release as `uv.lock`.
+  A fresh install is the tested path, an upgrade of an existing Kubernetes install is not.
+- Postgres is major version 18 on Compose, up from 17.
+  The new image keeps its data below `/var/lib/postgresql/<major>`, so Compose mounts the volume at `/var/lib/postgresql`, and the existing `srdp-pgdata` volume from 17 does not start.
+  There is no in-place upgrade, since nothing runs in production yet.
+  Remove the volume with `docker volume rm srdp-pgdata` (this deletes the local data) and start again, or dump the data with `pg_dumpall` from the old stack first.
+- Python is one version, 3.12, in every image, `.python-version` and CI, and tests fail when a Dockerfile drifts from `requires-python`.
+- Streamlit and Marimo are the `streamlit` and `marimo` dependency groups in `pyproject.toml` and are installed with `uv sync --group`, instead of an unlocked `uv pip install` in the image builds.
 
 ### Removed
 

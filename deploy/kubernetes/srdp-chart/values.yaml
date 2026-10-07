@@ -9,6 +9,12 @@ global:
   # repository below, a subchart value the chart cannot template. This
   # default must match srdp.toml, tests/deploy checks it.
   srdpRegistry: "rg.nl-ams.scw.cloud/srdp-registry"
+  # Registry of the platform images SRDP publishes (srdp-setup, dagster-webserver,
+  # duckdb-ui, hub). Images marked `platform: true` come from here.
+  platformRegistry: "ghcr.io/srdp-hub"
+  # Tag of every image this repo builds. Empty means the chart's appVersion,
+  # which is the SRDP release. Local development sets "dev".
+  imageTag: ""
   # Pod-level pull secrets for those images, e.g. [{name: registry-key}].
   imagePullSecrets: []
 
@@ -57,7 +63,7 @@ zitadel-db:
       userPasswordKey: password
       replicationPasswordKey: replication-password
   # Bitnami publishes only `latest`, so these are pinned by digest. This
-  # one is PostgreSQL 18.6.0. Compose runs 17, an open decision in #101.
+  # one is PostgreSQL 18.6.0, the same major as Compose.
   image:
     repository: bitnami/postgresql
     digest: sha256:ea7edc281ba9f65e6af5cabbd1ade6e1a32ff473aa79395c2ffd8d6aff8b2036
@@ -237,12 +243,20 @@ dagster:
   global:
     postgresqlSecretName: srdp-dagster-postgresql
   generatePostgresqlPasswordSecret: false
+  # The webserver and daemon run SRDP's own dagster-webserver image, built from
+  # uv.lock like Compose's, so Dagster and Python match the code location.
+  # The tag is the chart's appVersion (a test checks), the Justfile moves the
+  # repository with the platform registry like the code location's.
   dagsterWebserver:
+    image:
+      repository: ghcr.io/srdp-hub/dagster-webserver
+      tag: "0.3.1" # release-tag
+      pullPolicy: IfNotPresent
     enableReadOnly: true
     extraPrependedInitContainers: &wait-for-dagster-db
       # Copy of srdp.waitForDbLogin (_helpers.tpl), the subchart doesn't tpl this.
       - name: wait-for-dagster-db
-        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
         command:
           - sh
           - -c
@@ -281,7 +295,7 @@ dagster:
     # digest rides on the tag).
     image:
       repository: library/postgres
-      tag: "17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24"
+      tag: "18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873"
     postgresqlHost: db-postgresql
     postgresqlUsername: dagster
     postgresqlDatabase: dagster
@@ -299,6 +313,10 @@ dagster:
   # dagster/priority for the fast lane. Same limits as Compose's
   # config/dagster/dagster.yaml, a test checks.
   dagsterDaemon:
+    image:
+      repository: ghcr.io/srdp-hub/dagster-webserver
+      tag: "0.3.1" # release-tag
+      pullPolicy: IfNotPresent
     extraPrependedInitContainers: *wait-for-dagster-db
     runCoordinator:
       enabled: true
@@ -324,7 +342,8 @@ dagster:
         image:
           # <srdp.toml [deploy].registry>/srdp-etl, the Justfile overrides it.
           repository: rg.nl-ams.scw.cloud/srdp-registry/srdp-etl
-          tag: "v1.0"
+          # The chart's appVersion, a test checks. The release script keeps it.
+          tag: "0.3.1" # release-tag
           pullPolicy: IfNotPresent
         dagsterApiGrpcArgs:
           - "-m"
@@ -332,7 +351,7 @@ dagster:
         port: 3030
         initContainers:
           - name: wait-for-ducklake-db
-            image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+            image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
             command:
               - sh
               - -c
@@ -392,7 +411,6 @@ marimo:
   enabled: true
   image:
     repository: marimo
-    tag: "v1.0"
     pullPolicy: IfNotPresent
 
 # Streamlit dashboard (projects/cbs-example/streamlit)
@@ -400,7 +418,6 @@ streamlit:
   enabled: true
   image:
     repository: streamlit
-    tag: "v1.0"
     pullPolicy: IfNotPresent
 
 # Shared DuckLake data volume, see templates/ducklake-data-pvc.yaml
@@ -417,7 +434,6 @@ quarto:
   enabled: false
   image:
     repository: quarto
-    tag: "v1.0"
     pullPolicy: IfNotPresent
 
 # Setup: database/role bootstrap Job
@@ -426,7 +442,7 @@ setup:
   enabled: true
   image:
     repository: srdp-setup
-    tag: "v1.0"
+    platform: true
     pullPolicy: IfNotPresent
   # Keep in step with srdp.toml [setup]. A new role needs its SETUP_PASSWORDS__<ROLE> on the Job.
   databases:
@@ -448,7 +464,6 @@ api:
   enabled: true
   image:
     repository: srdp-api
-    tag: "v1.0"
     pullPolicy: IfNotPresent
 
 # DuckDB UI, reverse-proxied through Traefik (see services/duckdb-ui and
@@ -457,7 +472,7 @@ duckdbUi:
   enabled: true
   image:
     repository: duckdb-ui
-    tag: "v1.0"
+    platform: true
     pullPolicy: IfNotPresent
 
 # Static hub landing page, served on the bare domain
@@ -465,7 +480,7 @@ hub:
   enabled: true
   image:
     repository: hub
-    tag: "v1.0"
+    platform: true
     pullPolicy: IfNotPresent
 
 # Marquez (OpenLineage backend + UI); upstream images, not built by this repo

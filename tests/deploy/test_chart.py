@@ -4,6 +4,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import tarfile
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -66,7 +67,7 @@ def local() -> list[Manifest]:
 def test_streamlit_runs_behind_the_login(local: list[Manifest]) -> None:
     deployment = find(local, "Deployment", "streamlit")
     container = deployment["spec"]["template"]["spec"]["containers"][0]
-    assert container["image"].endswith("/streamlit:v1.0")
+    assert container["image"].endswith("/streamlit:dev")
     assert find(local, "Service", "streamlit")["spec"]["ports"][0]["targetPort"] == 8000
 
     ingress = find(local, "Ingress", "streamlit-ingress")
@@ -205,8 +206,16 @@ def test_the_justfile_registry_moves_every_srdp_image() -> None:
     )
     images = srdp_images(manifests, registry)
     names = {image.rsplit("/", 1)[1].split(":")[0] for image in images}
-    assert names >= {"marimo", "srdp-etl", "srdp-api", "duckdb-ui", "hub", "streamlit", "srdp-setup"}
+    assert names >= {"marimo", "srdp-etl", "srdp-api", "streamlit"}
     assert all(image.startswith(f"{registry}/") for image in images), images
+    # The platform images SRDP publishes stay on their own registry.
+    platform = {i for i in manifest_images(manifests) if i.startswith(f"{PLATFORM_REGISTRY}/")}
+    assert {i.rsplit("/", 1)[1].split(":")[0] for i in platform} >= {
+        "srdp-setup",
+        "duckdb-ui",
+        "hub",
+        "dagster-webserver",
+    }
     for name in ("marimo", "api", "streamlit", "srdp-setup"):
         spec = next(s for n, s in pod_specs(manifests) if n == name)
         assert spec["imagePullSecrets"] == [{"name": "registry-key"}]
@@ -300,6 +309,7 @@ UNPINNABLE = {
     # Hardcoded in the zitadel subchart's login and setup templates.
     "wait4x/wait4x:3.6",
 }
+PLATFORM_REGISTRY = "ghcr.io/srdp-hub"
 DOCKER_HUB_PREFIXES = ("registry-1.docker.io/", "docker.io/", "library/")
 
 
@@ -333,9 +343,10 @@ def manifest_images(node: object) -> list[str]:
 
 
 def compose_images() -> list[str]:
-    """Return the image of every Compose service, with `${VAR:-default}` resolved to its default."""
+    """Return the third-party image of every Compose service, with `${VAR:-default}` resolved to its default."""
     compose = yaml.safe_load((REPO_ROOT / "deploy" / "docker" / "docker-compose.yml").read_text())
-    images = [service["image"] for service in compose["services"].values() if "image" in service]
+    # Services with a build are our own images, tagged by SRDP_VERSION instead of pinned.
+    images = [s["image"] for s in compose["services"].values() if "image" in s and "build" not in s]
     return [re.sub(r"\$\{\w+:-(.*)\}", r"\1", image) for image in images]
 
 
@@ -376,8 +387,8 @@ RENDERS = {
 def test_every_chart_image_is_pinned(case: str) -> None:
     values_files, set_values = RENDERS[case]
     images = set(manifest_images(render(*values_files, set_values=set_values)))
-    # The chart's own images keep their mutable v1.0 tag for now, see #101.
-    own = {i for i in images if "srdp-registry/" in i and i.endswith(":v1.0")}
+    # Our own images are tagged with the release (or dev locally), which the next tests check.
+    own = {i for i in images if "srdp-registry/" in i or i.startswith(f"{PLATFORM_REGISTRY}/")}
     unpinned = {i for i in images if not is_pinned(i)} - own - UNPINNABLE
     assert not unpinned, unpinned
 
@@ -405,3 +416,40 @@ def test_compose_and_chart_run_the_same_versions(case: str) -> None:
         for chart_tag, chart_digest in versions:
             assert chart_tag == tag, f"{name}: chart {chart_tag}, Compose {tag}"
             assert not chart_digest or chart_digest == digest, f"{name}: chart and Compose digests differ"
+
+
+def chart_app_version() -> str:
+    """Return the chart's appVersion, which is the SRDP release."""
+    return yaml.safe_load((CHART_DIR / "Chart.yaml").read_text())["appVersion"]
+
+
+@pytest.mark.parametrize("values_file", ["values.yaml", "values-prod.example.yaml"])
+def test_release_tags_follow_the_chart_app_version(values_file: str) -> None:
+    """Subchart image tags cannot be templated, so the release script keeps them in step with appVersion."""
+    marked = re.findall(r'tag: "([^"]+)" # release-tag', (CHART_DIR / values_file).read_text())
+    assert marked
+    assert set(marked) == {chart_app_version()}
+
+
+def test_chart_version_is_the_release_version() -> None:
+    chart = yaml.safe_load((CHART_DIR / "Chart.yaml").read_text())
+    project = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())["project"]
+    assert chart["version"] == chart["appVersion"] == project["version"]
+
+
+@pytest.mark.parametrize("case", ["default", "local", "prod"])
+def test_dagster_runs_srdp_images_only(case: str) -> None:
+    """The webserver and daemon run our dagster-webserver image, so Dagster and Python match uv.lock."""
+    values_files, set_values = RENDERS[case]
+    images = manifest_images(render(*values_files, set_values=set_values))
+    assert [i for i in images if "dagster/" in i and PLATFORM_REGISTRY not in i] == []
+    assert any(i.startswith(f"{PLATFORM_REGISTRY}/dagster-webserver:") for i in images)
+
+
+def test_compose_and_chart_run_the_same_postgres_major() -> None:
+    """The chart's Postgres is a Bitnami image pinned by digest, so its major comes from the subchart's appVersion."""
+    compose = yaml.safe_load((REPO_ROOT / "deploy" / "docker" / "docker-compose.yml").read_text())
+    compose_major = split_image(compose["services"]["postgres"]["image"])[1].split("-")[0]
+    with tarfile.open(next((CHART_DIR / "charts").glob("postgresql-*.tgz"))) as archive:
+        subchart = yaml.safe_load(archive.extractfile("postgresql/Chart.yaml").read())
+    assert subchart["appVersion"].split(".")[0] == compose_major

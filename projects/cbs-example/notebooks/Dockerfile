@@ -6,10 +6,8 @@ WORKDIR /app
 # what lets the notebook attach the same catalog Dagster and dbt write to.
 COPY pyproject.toml uv.lock README.md ./
 COPY src/ src/
-RUN uv sync --frozen --no-dev --extra ducklake
-
-# Marimo itself is a runtime tool, not a dependency of the srdp library.
-RUN uv pip install --python .venv/bin/python "marimo>=0.13"
+# The app tool comes from the pyproject dependency group of the same name.
+RUN uv sync --frozen --no-dev --extra ducklake --group marimo
 
 ENV PATH="/app/.venv/bin:${PATH}"
 

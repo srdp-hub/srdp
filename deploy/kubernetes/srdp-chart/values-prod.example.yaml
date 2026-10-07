@@ -176,7 +176,7 @@ dagster:
   dagsterWebserver:
     extraPrependedInitContainers: &wait-for-dagster-db-prod
       - name: wait-for-dagster-db
-        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
         command:
           - sh
           - -c
@@ -218,7 +218,7 @@ dagster:
       - name: srdp-etl
         image:
           repository: "rg.nl-ams.scw.cloud/srdp-registry/srdp-etl" # Set from srdp.toml by the Justfile
-          tag: "v1.0"
+          tag: "0.3.1" # release-tag
           pullPolicy: IfNotPresent
         dagsterApiGrpcArgs:
           - "-m"
@@ -226,7 +226,7 @@ dagster:
         port: 3030
         initContainers:
           - name: wait-for-ducklake-db
-            image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+            image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
             command:
               - sh
               - -c

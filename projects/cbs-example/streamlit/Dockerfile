@@ -5,10 +5,8 @@ WORKDIR /app
 # Platform library, for the DuckLake connection helper (srdp.io.ducklake).
 COPY pyproject.toml uv.lock README.md ./
 COPY src/ src/
-RUN uv sync --frozen --no-dev --extra ducklake
-
-# Streamlit itself is a runtime tool, not a dependency of the srdp library.
-RUN uv pip install --python .venv/bin/python streamlit
+# The app tool comes from the pyproject dependency group of the same name.
+RUN uv sync --frozen --no-dev --extra ducklake --group streamlit
 
 ENV PATH="/app/.venv/bin:${PATH}"
 

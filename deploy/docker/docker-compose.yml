@@ -13,7 +13,7 @@ services:
   # ---------------------------------------------
   postgres:
     restart: always
-    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
     container_name: srdp-postgres
     environment:
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
@@ -26,12 +26,13 @@ services:
     networks:
       - db
     volumes:
-      - pgdata:/var/lib/postgresql/data:rw
+      - pgdata:/var/lib/postgresql:rw
 
   # ---------------------------------------------
   # Setup: database/role bootstrap from srdp.toml [setup]
   # ---------------------------------------------
   srdp-setup:
+    image: ${SRDP_PLATFORM_REGISTRY:-ghcr.io/srdp-hub}/srdp-setup:${SRDP_VERSION:-dev}
     build:
       context: ../../
       dockerfile: deploy/docker/srdp-setup.Dockerfile
@@ -205,6 +206,7 @@ services:
   # Dagster (Orchestration)
   # ---------------------------------------------
   dagster-webserver:
+    image: ${SRDP_PLATFORM_REGISTRY:-ghcr.io/srdp-hub}/dagster-webserver:${SRDP_VERSION:-dev}
     build:
       context: ../../
       dockerfile: deploy/docker/dagster-webserver.Dockerfile
@@ -232,6 +234,7 @@ services:
       ]
 
   dagster-daemon:
+    image: ${SRDP_PLATFORM_REGISTRY:-ghcr.io/srdp-hub}/dagster-webserver:${SRDP_VERSION:-dev}
     build:
       context: ../../
       dockerfile: deploy/docker/dagster-webserver.Dockerfile
@@ -362,6 +365,7 @@ services:
   # ---------------------------------------------
   duckdb-ui:
     <<: *ducklake-depends
+    image: ${SRDP_PLATFORM_REGISTRY:-ghcr.io/srdp-hub}/duckdb-ui:${SRDP_VERSION:-dev}
     build:
       context: ../../
       dockerfile: services/duckdb-ui/Dockerfile
@@ -419,6 +423,7 @@ services:
   # Plain nginx + static HTML, deliberately, no generator, no toolchain, nothing to
   # crash (Quarto's toolchain-heavy image is exactly why it's disabled by default).
   hub:
+    image: ${SRDP_PLATFORM_REGISTRY:-ghcr.io/srdp-hub}/hub:${SRDP_VERSION:-dev}
     build:
       context: ../../services/hub
       dockerfile: Dockerfile

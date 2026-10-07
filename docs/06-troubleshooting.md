@@ -57,8 +57,9 @@ icon: lucide/life-buoy
 
 ### Updated container image not picked up after rebuild
 
-- Cause: The default `imagePullPolicy` is `IfNotPresent`. If you rebuild an image with the same tag (e.g. `v1.0`), Kubernetes will keep using the cached version.
-- Fix: Bump the image tag (e.g. `v1.0` → `v1.1`) in both the build command and `values-prod.yaml`, then redeploy. Alternatively, set `imagePullPolicy: Always` in your values file, but this is slower for routine deployments.
+- Cause: The default `imagePullPolicy` is `IfNotPresent`. If you rebuild an image with the same tag, Kubernetes keeps using the cached version.
+  Local builds use the `dev` tag with `imagePullPolicy: Never`, so `just kind-load-images` followed by a pod restart picks up a rebuild.
+- Fix: Bump the image tag in both the build command and `values-prod.yaml`, then redeploy. Alternatively, set `imagePullPolicy: Always` in your values file, but this is slower for routine deployments.
 
 ### Orphaned Scaleway Load Balancer blocks `tofu destroy`
 

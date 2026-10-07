@@ -6,7 +6,7 @@ The image is Compose's postgres image, tests/deploy checks every copy.
 */}}
 {{- define "srdp.waitForDbLogin" -}}
 - name: wait-for-{{ .db }}-db
-  image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+  image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
   command:
     - sh
     - -c
@@ -89,7 +89,9 @@ Usage: {{ include "srdp.image" (list . .Values.api.image) }}
 {{- define "srdp.image" -}}
 {{- $root := index . 0 -}}
 {{- $image := index . 1 -}}
-{{- printf "%s/%s:%s" (trimSuffix "/" $root.Values.global.srdpRegistry) $image.repository $image.tag | quote -}}
+{{- $registry := ternary $root.Values.global.platformRegistry $root.Values.global.srdpRegistry (default false $image.platform) -}}
+{{- $tag := $image.tag | default $root.Values.global.imageTag | default $root.Chart.AppVersion -}}
+{{- printf "%s/%s:%s" (trimSuffix "/" $registry) $image.repository $tag | quote -}}
 {{- end -}}
 
 {{/*

@@ -100,20 +100,28 @@ else
     info "Pre-release, leaving CHANGELOG.md alone."
 fi
 
+info "Updating the chart version and the chart's image tags..."
+CHART_DIR="deploy/kubernetes/srdp-chart"
+sed -i.bak -E "s/^version: .*/version: $VERSION/; s/^appVersion: .*/appVersion: \"$VERSION\"/" "$CHART_DIR/Chart.yaml"
+rm "$CHART_DIR/Chart.yaml.bak"
+# Only lines marked "# release-tag" move, other tags are third-party versions.
+sed -i.bak -E "s/tag: \"[^\"]+\" # release-tag/tag: \"$VERSION\" # release-tag/" "$CHART_DIR/values.yaml" "$CHART_DIR/values-prod.example.yaml"
+rm "$CHART_DIR/values.yaml.bak" "$CHART_DIR/values-prod.example.yaml.bak"
+
 info "Updating uv.lock..."
 if ! uv lock; then
-    git checkout -- pyproject.toml CHANGELOG.md
+    git checkout -- pyproject.toml CHANGELOG.md deploy/kubernetes/srdp-chart
     error "uv lock failed. Fix it before releasing, version bump and changelog reverted."
 fi
 
 info "Running just ci..."
 if ! just ci; then
-    git checkout -- pyproject.toml CHANGELOG.md uv.lock
+    git checkout -- pyproject.toml CHANGELOG.md uv.lock deploy/kubernetes/srdp-chart
     error "just ci failed. Fix it before releasing, version bump, changelog and lockfile reverted."
 fi
 
 info "Committing version bump..."
-git add pyproject.toml CHANGELOG.md uv.lock
+git add pyproject.toml CHANGELOG.md uv.lock deploy/kubernetes/srdp-chart
 git commit -m "chore: bump version to $VERSION"
 
 info "Creating git tag v$VERSION..."

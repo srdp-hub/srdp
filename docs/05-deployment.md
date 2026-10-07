@@ -34,7 +34,8 @@ Run the build recipe from the repository root. It sources `deploy/opentofu/scale
 ```bash
 just build-and-push
 ```
-This builds and pushes Marimo, srdp-etl (Dagster user code) and srdp-setup to the registry in `srdp.toml` under `[deploy] registry`.
+This builds and pushes Marimo and srdp-etl (Dagster user code) to the registry in `srdp.toml` under `[deploy] registry`, tagged with the version in `pyproject.toml`.
+The platform images, including `srdp-setup`, come from `ghcr.io/srdp-hub` and need no push.
 Quarto is disabled by default (`quarto.enabled: false`).
 `docs/02-configuration.md` explains why.
 
@@ -156,8 +157,9 @@ From the first release that includes the images workflow, every release publishe
 Each image is scanned for critical vulnerabilities before it gets a version tag, signed with cosign through GitHub's OIDC identity, and carries a build provenance attestation and an SBOM.
 Each image gets its exact version as a tag, which never moves, and `latest` points at the newest stable release.
 Use `latest` for trying SRDP out, and pin the exact version (or the digest) in a deployment, so it only changes when you change it.
-The Compose files and the Helm chart do not pull these images yet.
-Both still use images from your own registry, which is set by `[deploy] registry` in `srdp.toml`.
+The Helm chart pulls these images from `ghcr.io/srdp-hub` at its `appVersion`, which is the release version, and the Dagster webserver and daemon run the same `dagster-webserver` image.
+Compose pulls them when `SRDP_VERSION` is set in `deploy/docker/.env`, and builds them from source and tags them `dev` when it is not set.
+The images of your own project still come from your registry, which is set by `[deploy] registry` in `srdp.toml`.
 
 Check an image before you deploy it, with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) and the [GitHub CLI](https://cli.github.com/):
 
