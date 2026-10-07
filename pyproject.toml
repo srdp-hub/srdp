@@ -52,6 +52,15 @@ Repository = "https://github.com/srdp-hub/srdp"
 Issues = "https://github.com/srdp-hub/srdp/issues"
 Documentation = "https://docs.srdphub.com"
 
+[tool.uv]
+# cryptography 47 and newer crash with an illegal instruction (exit 132) on
+# Apple Silicon hosts whose VM exposes SME, such as Colima on an M4, as soon as
+# Dagster's Kubernetes run launcher imports google-auth. Checked with 46.0.7
+# (works) and 47.0.0 to 50.0.2 (crash). Remove the bound once a release imports
+# cleanly there, and keep it out of the published package, it is a dev and
+# image-build constraint.
+constraint-dependencies = ["cryptography<47"]
+
 [dependency-groups]
 # Runtime tools of the example apps. They are not part of the published srdp
 # package, so they are groups and the app images install them with --group.

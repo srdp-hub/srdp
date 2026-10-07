@@ -71,6 +71,9 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
   The new image keeps its data below `/var/lib/postgresql/<major>`, so Compose mounts the volume at `/var/lib/postgresql`, and the existing `srdp-pgdata` volume from 17 does not start.
   There is no in-place upgrade, since nothing runs in production yet.
   Remove the volume with `docker volume rm srdp-pgdata` (this deletes the local data) and start again, or dump the data with `pg_dumpall` from the old stack first.
+- `cryptography` is held below 47 (`constraint-dependencies` in `pyproject.toml`, lockfile 46.0.7).
+  Versions 47.0.0 to 50.0.2 crash with an illegal instruction (exit 132) when imported on Apple Silicon hosts whose Docker VM exposes SME, such as Colima on an M4, which killed the Dagster daemon as soon as it queued a run.
+  Remove the bound once a release imports cleanly there.
 - Python is one version, 3.12, in every image, `.python-version` and CI, and tests fail when a Dockerfile drifts from `requires-python`.
 - Streamlit and Marimo are the `streamlit` and `marimo` dependency groups in `pyproject.toml` and are installed with `uv sync --group`, instead of an unlocked `uv pip install` in the image builds.
 
