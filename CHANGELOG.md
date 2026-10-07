@@ -7,7 +7,7 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 ### Added
 
 - Signed platform images: every release builds `srdp-setup`, `dagster-webserver`, `duckdb-ui` and `hub` for amd64 and arm64, scans them for critical vulnerabilities, signs them with cosign, attests their provenance and publishes them to `ghcr.io/srdp-hub` once all four pass, tagged with the exact version (which never moves) and `latest` for the newest stable release. Pull requests and pushes to `main` that touch the images build and scan them without publishing. See "Verifying published images" in the deployment docs.
-- Dependabot for GitHub Actions and the platform images' base images, which are pinned by digest.
+- Renovate for the container images, the chart dependencies and the Dagster packages, and Dependabot for GitHub Actions.
 - `just pre-commit`, which runs every pre-commit hook on all files.
 - `srdp-setup` service that creates every service database and role before the services that need them start, on Docker Compose and Kubernetes.
   It runs on every deploy, so it also repairs an existing volume that is missing a database, and it resets each role's password to the configured value.
@@ -53,7 +53,8 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 - Every third-party container image is pinned to an exact version, by digest where the image reference allows it, and Compose and the chart run the same version of each image that both pull.
   Compose moves to Traefik v3.6.2, Zitadel and its login v4.11.1 and OAuth2-Proxy v7.13.0, the versions the chart already ran.
   Marquez runs 0.51.1 on both instead of `latest`, and every Dockerfile base image is pinned by digest.
-  Postgres runs major version 18 on both targets, the chart through the Bitnami image that `latest` pointed to (18.6.0) and Compose through `postgres:18-alpine`, and a test checks that the majors match.
+  Postgres runs major version 18 on both targets, the chart through the Bitnami image that `latest` pointed to (18.6.0) and Compose through `postgres:18-alpine`.
+  A test compares the Postgres subchart's `appVersion` with Compose's major, since the digest of the Bitnami image carries no version.
   The Dagster subchart's `check-db-ready` init container uses the same pinned `postgres` image as the chart's own wait containers, and its `busybox` stays on 1.28.4 because its `nslookup` wait hung on 1.36.1 in kind.
   Renovate (`renovate.json`, run by `.github/workflows/renovate.yml`) proposes one weekly PR for the images, the chart dependencies and the Dagster packages, and `tests/deploy` fails until the chart runs the same versions as Compose.
   The workflow needs a `RENOVATE_TOKEN` secret, a GitHub App token or a PAT, because PRs opened with `GITHUB_TOKEN` do not start CI.
@@ -62,19 +63,26 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 
 - The chart's own images and Compose's platform images use the release version instead of the mutable `v1.0` tag.
   The platform images (`srdp-setup`, `dagster-webserver`, `duckdb-ui`, `hub`) come from `ghcr.io/srdp-hub` (`global.platformRegistry`), and the chart's `appVersion` and `version` follow the release, which `scripts/release.sh` keeps in step.
-  Local builds are tagged `dev` (`global.imageTag` in `values-local.yaml`), and Compose builds from source unless `SRDP_VERSION` is set.
+  Local builds are tagged `dev` (`global.imageTag` in `values-local.yaml`).
+  `just docker-up` always builds from source and tags `dev`, and `just docker-up-release <version>` pulls a published release.
   This breaks existing `values-prod.yaml` files that set image tags, and `just build-and-push` no longer pushes `srdp-setup`.
   Fix it by removing the tags or setting them to the release version, and by running `just kind-load-images` again locally.
+  Until the first release publishes these images, a production deploy cannot pull `ghcr.io/srdp-hub/*` at the chart's version.
+  Wait for the release candidate, or point `global.platformRegistry` at your own registry and push the four images there.
+  The ghcr packages must be public for anonymous pulls.
 - The Dagster webserver and daemon on Kubernetes run SRDP's `dagster-webserver` image, built from `uv.lock`, instead of the upstream `dagster/dagster-celery-k8s` image, and the Dagster subchart is 1.13.20, the same release as `uv.lock`.
-  A fresh install is the tested path, an upgrade of an existing Kubernetes install is not.
+  Only a fresh install was tested, and an upgrade of an existing Kubernetes install was not.
 - Postgres is major version 18 on Compose, up from 17.
   The new image keeps its data below `/var/lib/postgresql/<major>`, so Compose mounts the volume at `/var/lib/postgresql`, and the existing `srdp-pgdata` volume from 17 does not start.
   There is no in-place upgrade, since nothing runs in production yet.
   Remove the volume with `docker volume rm srdp-pgdata` (this deletes the local data) and start again, or dump the data with `pg_dumpall` from the old stack first.
-- `cryptography` is held below 47 (`constraint-dependencies` in `pyproject.toml`, lockfile 46.0.7).
-  Versions 47.0.0 to 50.0.2 crash with an illegal instruction (exit 132) when imported on Apple Silicon hosts whose Docker VM exposes SME, such as Colima on an M4, which killed the Dagster daemon as soon as it queued a run.
-  Remove the bound once a release imports cleanly there.
-- Python is one version, 3.12, in every image, `.python-version` and CI, and tests fail when a Dockerfile drifts from `requires-python`.
+- The local Compose override and `values-local.yaml` set `OPENSSL_armcap=0` on the Dagster containers.
+  On one tested host (Colima on an Apple M4) every `cryptography` release from 47.0.0 to 50.0.2 crashed with an illegal instruction (exit 132) on import, which killed the Dagster daemon as soon as it queued a run, while 46.0.7 and any value of `OPENSSL_armcap` worked.
+  The setting is for development only, because production keeps the ARM crypto acceleration.
+  Holding `cryptography` below 47 would have fixed it everywhere, but it would also have reintroduced fixed security advisories in the production images.
+- Python is one build in every image.
+  All Dockerfiles start from the same `python` image reference and copy in the same pinned `uv`, so the webserver, daemon, code location and apps run the same patch version, and a test fails when two references differ.
+  The Python minor is also tested against `requires-python` and `.python-version`.
 - Streamlit and Marimo are the `streamlit` and `marimo` dependency groups in `pyproject.toml` and are installed with `uv sync --group`, instead of an unlocked `uv pip install` in the image builds.
 
 ### Removed

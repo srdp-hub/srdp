@@ -107,8 +107,14 @@ local-delete:
 	kubectl delete pvc --all -n {{namespace}} || true
 
 # Start the Docker Compose stack (local dev). Attached by default; pass -d to detach.
+# It builds every image from source and tags the platform images dev, whatever SRDP_VERSION says in .env.
 docker-up *args:
-	cd deploy/docker && docker compose up --build {{args}}
+	cd deploy/docker && SRDP_VERSION=dev docker compose up --build {{args}}
+
+# Start the Docker Compose stack with the published platform images of a release, e.g. `just docker-up-release 0.4.0 -d`.
+docker-up-release version *args:
+	cd deploy/docker && SRDP_VERSION={{version}} docker compose pull srdp-setup dagster-webserver dagster-daemon duckdb-ui hub
+	cd deploy/docker && SRDP_VERSION={{version}} docker compose up {{args}}
 
 # Stop the Docker Compose stack
 docker-down:

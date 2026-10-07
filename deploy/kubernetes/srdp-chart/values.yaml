@@ -174,6 +174,11 @@ zitadel:
       "helm.sh/hook-weight": "5"
       "helm.sh/hook-delete-policy": before-hook-creation
     activeDeadlineSeconds: 900
+    # The subchart's own image for the job that writes the machine key, pinned by digest.
+    machinekeyWriter:
+      image:
+        repository: alpine/k8s
+        tag: "1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4"
     initContainers:
       - name: wait-for-db
         image: busybox:1.36.1@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662

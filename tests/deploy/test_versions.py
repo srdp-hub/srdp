@@ -39,6 +39,16 @@ def test_every_dockerfile_python_is_the_pyproject_minor() -> None:
     assert not wrong, wrong
 
 
+def test_every_python_image_runs_the_same_python_build() -> None:
+    """Build and runtime stages of every image share one python image reference and one uv, so no container drifts a patch version."""
+    texts = [path.read_text() for path in dockerfiles()]
+    pythons = {ref for text in texts for ref in re.findall(r"^FROM\s+(python:\S+)", text, re.MULTILINE)}
+    uvs = {ref for text in texts for ref in re.findall(r"^COPY --from=(ghcr\.io/astral-sh/uv:\S+)", text, re.MULTILINE)}
+    assert len(pythons) == 1, pythons
+    assert len(uvs) == 1, uvs
+    assert all("@sha256:" in ref for ref in pythons | uvs)
+
+
 def test_python_version_file_matches_the_pyproject_minor() -> None:
     """`uv` and CI pick the same interpreter the images run."""
     requires = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())["project"]["requires-python"]

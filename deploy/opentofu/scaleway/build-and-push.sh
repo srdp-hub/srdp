@@ -32,4 +32,18 @@ docker build --platform linux/amd64 \
   "$REPO_ROOT"
 docker push "$REGISTRY/srdp-etl:$VERSION"
 
+echo "Building SRDP API..."
+docker build --platform linux/amd64 \
+  -f "$REPO_ROOT/projects/cbs-example/api/Dockerfile" \
+  -t "$REGISTRY/srdp-api:$VERSION" \
+  "$REPO_ROOT"
+docker push "$REGISTRY/srdp-api:$VERSION"
+
+echo "Building Streamlit..."
+docker build --platform linux/amd64 \
+  -f "$REPO_ROOT/projects/cbs-example/streamlit/Dockerfile" \
+  -t "$REGISTRY/streamlit:$VERSION" \
+  "$REPO_ROOT"
+docker push "$REGISTRY/streamlit:$VERSION"
+
 echo "Done! Images pushed."

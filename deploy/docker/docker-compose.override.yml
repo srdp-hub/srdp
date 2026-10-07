@@ -3,3 +3,17 @@ services:
     volumes:
       - "./certs/selfsigned.crt:/etc/certs/selfsigned.crt:ro"
       - "./certs/selfsigned.key:/etc/certs/selfsigned.key:ro"
+
+  # Dev only. On Apple Silicon hosts whose Docker VM exposes SME (Colima on an M4),
+  # cryptography 47 and newer crash with an illegal instruction in OpenSSL's ARM
+  # capability probe (exit 132). Setting OPENSSL_armcap skips the probe. It is
+  # not set in production, where the crypto acceleration stays on.
+  dagster-daemon:
+    environment:
+      OPENSSL_armcap: "0"
+  dagster-webserver:
+    environment:
+      OPENSSL_armcap: "0"
+  dagster-code:
+    environment:
+      OPENSSL_armcap: "0"

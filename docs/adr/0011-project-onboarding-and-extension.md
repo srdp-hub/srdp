@@ -94,7 +94,7 @@ Belongs in an `srdp validate` step run before `workspace.yaml`/compose generatio
 Each service/code-location entry carries either `image:` or `build:`, exactly like Compose already allows.
 `srdp deploy --dev` resolves this per environment: local dev defaults to building SRDP's own services and *pulling* a project's published image (never assume an external project's build toolchain is set up locally), a production-style target defaults the other way for SRDP's own services.
 
-**Confirmed gap**: the Kubernetes chart already pulls SRDP's own services from `rg.nl-ams.scw.cloud/srdp-registry/...`, built and pushed by `deploy/opentofu/scaleway/build-and-push.sh`.
+**Confirmed gap**: the Kubernetes chart pulls the platform images from `ghcr.io/srdp-hub` and the example project's images from `rg.nl-ams.scw.cloud/srdp-registry/...`, built and pushed by `deploy/opentofu/scaleway/build-and-push.sh`.
 Compose has no equivalent, `docker-compose.prod.yml` has no `image:` override at all, and `deploy/opentofu/gcp/startup-script.sh.tpl` clones the repo and builds on the target VM (`git clone` + `docker compose up --build`).
 Both predate this ADR and are not treated as fixed points, patch or replace them to reach the stated default, whichever gets there.
 Plan: publish SRDP's own service images to a real registry on release (`ghcr.io`, reusing the GitHub Actions release pipeline already built for PyPI), have `docker-compose.prod.yml` pull from it, and point the GCP startup script at that instead of building from a git clone.
