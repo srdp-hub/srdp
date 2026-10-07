@@ -112,7 +112,6 @@ dagster:
           pullPolicy: Never
         dagsterApiGrpcArgs: ["-m", "etl.definitions"]
         port: 3030
-        env: *openssl-armcap
         initContainers:
           - name: wait-for-ducklake-db
             image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
@@ -169,3 +168,6 @@ dagster:
             value: ducklake
           - name: DUCKLAKE_DATA_PATH
             value: /data/ducklake
+          # Dev only, see the OPENSSL_armcap note in docker-compose.override.yml.
+          - name: OPENSSL_armcap
+            value: "0"
