@@ -21,6 +21,10 @@ global:
 #   srdp-oauth2-proxy        client-id, client-secret, cookie-secret
 #   srdp-dagster-postgresql  postgresql-password
 #   srdp-marquez             db-password
+#   srdp-ducklake-s3-writer  DUCKLAKE_S3_KEY_ID, DUCKLAKE_S3_SECRET
+#   srdp-ducklake-s3-reader  DUCKLAKE_S3_KEY_ID, DUCKLAKE_S3_SECRET
+#                            (both only with ducklakeStorage.backend: s3)
+#   srdp-garage              rpc-secret, admin-token (only with garage.enabled)
 localSecrets:
   enabled: false
 
@@ -338,6 +342,63 @@ dagster:
                   secretKeyRef:
                     name: srdp-postgres
                     key: postgres-password
+          - name: wait-for-ducklake-bucket
+            # Same container as srdp.waitForDucklakeBucket in templates/_helpers.tpl,
+            # with the writer key. includeConfigInLaunchedRuns copies it into
+            # every run pod, so no run starts before the bucket exists.
+            image: curlimages/curl:8.22.0
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 100
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: [ALL]
+            envFrom:
+              - configMapRef:
+                  name: srdp-ducklake-storage
+            env:
+              - name: DUCKLAKE_S3_KEY_ID
+                valueFrom:
+                  secretKeyRef:
+                    name: srdp-ducklake-s3-writer
+                    key: DUCKLAKE_S3_KEY_ID
+                    optional: true
+              - name: DUCKLAKE_S3_SECRET
+                valueFrom:
+                  secretKeyRef:
+                    name: srdp-ducklake-s3-writer
+                    key: DUCKLAKE_S3_SECRET
+                    optional: true
+            command:
+              - sh
+              - -c
+              - |
+                if [ "$DUCKLAKE_STORAGE_BACKEND" != "s3" ]; then exit 0; fi
+                scheme=https
+                if [ "$DUCKLAKE_S3_USE_SSL" = "false" ]; then scheme=http; fi
+                # The list request DuckDB makes on s3://<bucket>/<prefix>/, in its URL style,
+                # so a key scoped to the prefix passes too. The chart allows only
+                # [A-Za-z0-9._/-] in the prefix, so / is the one character to encode.
+                prefix=$(printf '%s' "$DUCKLAKE_S3_PREFIX" | sed -e 's#^/*##' -e 's#/*$##')
+                if [ -n "$prefix" ]; then prefix="$(printf '%s' "$prefix" | sed 's#/#%2F#g')%2F"; fi
+                query="list-type=2&max-keys=1&prefix=$prefix"
+                if [ "$DUCKLAKE_S3_URL_STYLE" = "vhost" ]; then
+                  url="$scheme://$DUCKLAKE_S3_BUCKET.$DUCKLAKE_S3_ENDPOINT/?$query"
+                else
+                  url="$scheme://$DUCKLAKE_S3_ENDPOINT/$DUCKLAKE_S3_BUCKET?$query"
+                fi
+                for i in $(seq 1 60); do
+                  # The key goes in through stdin, so it never shows in the process list.
+                  code=$(printf 'user = "%s:%s"\n' "$DUCKLAKE_S3_KEY_ID" "$DUCKLAKE_S3_SECRET" |
+                    curl -s -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 10 \
+                        -K - --aws-sigv4 "aws:amz:$DUCKLAKE_S3_REGION:s3" "$url")
+                  if [ "$code" = "200" ]; then exit 0; fi
+                  echo "waiting for bucket $DUCKLAKE_S3_BUCKET at $DUCKLAKE_S3_ENDPOINT, HTTP $code ($i/60)..."
+                  sleep 2
+                done
+                echo "bucket $DUCKLAKE_S3_BUCKET still unreachable with this pod's key after 60 attempts, giving up." >&2
+                exit 1
         # Writer side of the shared DuckLake volume (templates/ducklake-data-pvc.yaml).
         # includeConfigInLaunchedRuns (on by default) copies env and volumes
         # into every K8sRunLauncher run pod, which is where assets materialize.
@@ -348,6 +409,9 @@ dagster:
         volumeMounts:
           - name: ducklake-data
             mountPath: /data/ducklake
+        # DUCKLAKE_STORAGE_BACKEND and the S3 settings, see ducklakeStorage.
+        envConfigMaps:
+          - name: srdp-ducklake-storage
         env:
           - name: DUCKLAKE_PG_HOST
             value: db-postgresql
@@ -362,6 +426,21 @@ dagster:
             value: ducklake
           - name: DUCKLAKE_DATA_PATH
             value: /data/ducklake
+          # The writer key, for DUCKLAKE_STORAGE_BACKEND=s3. Optional, so
+          # local storage needs no such Secret. Only this code location and
+          # its run pods hold it, the apps get the read-only key.
+          - name: DUCKLAKE_S3_KEY_ID
+            valueFrom:
+              secretKeyRef:
+                name: srdp-ducklake-s3-writer
+                key: DUCKLAKE_S3_KEY_ID
+                optional: true
+          - name: DUCKLAKE_S3_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: srdp-ducklake-s3-writer
+                key: DUCKLAKE_S3_SECRET
+                optional: true
 
 # Marimo app
 marimo:
@@ -379,12 +458,47 @@ streamlit:
     tag: "v1.0"
     pullPolicy: IfNotPresent
 
-# Shared DuckLake data volume, see templates/ducklake-data-pvc.yaml
+# Shared DuckLake data volume, see templates/ducklake-data-pvc.yaml. With
+# ducklakeStorage.backend: s3 the apps no longer mount it. Set enabled: false
+# with S3 once the Dagster code location below no longer mounts it either
+# (values-prod.example.yaml), then no pod is tied to the node that holds it.
 ducklakeData:
+  enabled: true
   mountPath: /data/ducklake
   size: 4Gi
   accessMode: ReadWriteOnce
   storageClassName: ""
+
+# Where DuckLake keeps its Parquet files, rendered into the
+# srdp-ducklake-storage ConfigMap that every DuckLake consumer reads
+# (templates/ducklake-storage-configmap.yaml). `local` uses the ducklake-data
+# volume above. `s3` uses the bucket below: Dagster and its run pods get the
+# key in the srdp-ducklake-s3-writer Secret, the apps the read-only key in
+# srdp-ducklake-s3-reader. Both Secrets hold DUCKLAKE_S3_KEY_ID and
+# DUCKLAKE_S3_SECRET. values-local-s3.yaml switches kind to the bundled Garage.
+ducklakeStorage:
+  backend: local
+  s3:
+    bucket: ""
+    prefix: ""
+    # Bare host[:port], no scheme; useSsl picks https or http.
+    endpoint: ""
+    urlStyle: path
+    region: ""
+    useSsl: true
+
+# Garage, an S3-compatible server for testing DuckLake on S3 in kind. Not for
+# production. templates/garage.yaml runs it with one node and a setup Job that
+# creates the ducklakeStorage.s3 bucket and the writer and reader keys from the
+# srdp-ducklake-s3-* Secrets. Its own RPC secret and admin token come from the
+# srdp-garage Secret (keys rpc-secret, admin-token).
+garage:
+  enabled: false
+  image:
+    repository: dxflrs/garage
+    tag: "v2.4.1"
+    pullPolicy: IfNotPresent
+  size: 4Gi
 
 # Quarto app
 # Disabled by default: heavy build (Pandoc/TinyTeX/Deno toolchain) for no
@@ -404,6 +518,11 @@ setup:
     repository: srdp-setup
     tag: "v1.0"
     pullPolicy: IfNotPresent
+  # The whole Job, retries included. It must cover the database wait plus the
+  # Garage step's wait (DATABASE_WAIT_SECONDS and GARAGE_WAIT_SECONDS in
+  # src/srdp/setup/), a test checks. A deadline kill fails `helm install`, so
+  # this matches the Zitadel Jobs.
+  activeDeadlineSeconds: 900
   # Keep in step with srdp.toml [setup]. A new role needs its SETUP_PASSWORDS__<ROLE> on the Job.
   databases:
     # Owned by the zitadel-db subchart's auth.* fields instead, a second

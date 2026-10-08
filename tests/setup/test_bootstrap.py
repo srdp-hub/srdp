@@ -229,3 +229,112 @@ def test_connect_retries_with_a_per_attempt_timeout(monkeypatch: pytest.MonkeyPa
     assert _connect_with_retry(_settings()) is connection
     assert len(calls) == 3
     assert all(call["connect_timeout"] == CONNECT_TIMEOUT_SECONDS for call in calls)
+
+
+GARAGE_TOML = """
+[[setup.databases]]
+name = "ducklake"
+
+[setup.garage]
+enabled = true
+admin_url = "http://garage:3903"
+bucket = "ducklake"
+"""
+
+GARAGE_SECRETS = {
+    "SETUP_GARAGE__ADMIN_TOKEN": "admin-token-9f2c",
+    "SETUP_GARAGE__WRITER_SECRET": "c" * 64,
+    "SETUP_GARAGE__READER_SECRET": "d" * 64,
+}
+GARAGE_ENV = {
+    **GARAGE_SECRETS,
+    "SETUP_GARAGE__WRITER_KEY_ID": "GK" + "a" * 24,
+    "SETUP_GARAGE__READER_KEY_ID": "GK" + "b" * 24,
+}
+
+
+def settings_class_for(config: Path) -> type[SetupSettings]:
+    """A SetupSettings that reads this TOML file instead of /etc/srdp/srdp.toml."""
+
+    class TomlSettings(SetupSettings):
+        model_config = SettingsConfigDict(toml_file=config, toml_table_header=("setup",))
+
+    return TomlSettings
+
+
+def settings_class(tmp_path: Path, toml: str) -> type[SetupSettings]:
+    """A SetupSettings that reads this TOML text instead of /etc/srdp/srdp.toml."""
+    config = tmp_path / "srdp.toml"
+    config.write_text(toml)
+    return settings_class_for(config)
+
+
+def test_garage_table_and_garage_secrets_from_env_make_one_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name, value in GARAGE_ENV.items():
+        monkeypatch.setenv(name, value)
+
+    garage = settings_class(tmp_path, GARAGE_TOML)().garage  # ty: ignore[missing-argument]
+
+    assert garage.enabled is True
+    assert garage.admin_url == "http://garage:3903"
+    assert garage.bucket == "ducklake"
+    assert garage.admin_token.get_secret_value() == "admin-token-9f2c"
+    assert garage.writer_key_id == "GK" + "a" * 24
+    assert garage.reader_secret.get_secret_value() == "d" * 64
+
+
+def test_invalid_garage_config_never_shows_a_secret(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    for name, value in GARAGE_ENV.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("SETUP_GARAGE__WRITER_KEY_ID", "not-a-garage-key")
+
+    with pytest.raises(ValidationError) as exc:
+        settings_class(tmp_path, GARAGE_TOML)()  # ty: ignore[missing-argument]
+
+    message = str(exc.value)
+    assert "SETUP_GARAGE__WRITER_KEY_ID must be GK followed by 24 hex characters" in message
+    # Pydantic shows the start and end of the raw input, which here holds the secrets.
+    assert "input_value" not in message
+    for secret in GARAGE_SECRETS.values():
+        assert secret[:8] not in message
+        assert secret[-8:] not in message
+
+
+def test_unknown_key_in_garage_table_fails(tmp_path: Path) -> None:
+    toml = GARAGE_TOML.replace('bucket = "ducklake"', 'bucket = "ducklake"\nadmin_port = 3903')
+
+    with pytest.raises(ValidationError, match="admin_port"):
+        settings_class(tmp_path, toml)()  # ty: ignore[missing-argument]
+
+
+@pytest.mark.parametrize(
+    "env",
+    [
+        # What Compose passes without the s3 profile.
+        dict.fromkeys(GARAGE_ENV, ""),
+        # Another S3 server's keys, e.g. Scaleway's, which the Garage step never imports.
+        {"SETUP_GARAGE__WRITER_KEY_ID": "SCWABCDEFGHIJKLMNOPQ", "SETUP_GARAGE__WRITER_SECRET": "not-hex"},
+    ],
+)
+def test_disabled_garage_step_ignores_garage_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, env: dict[str, str]
+) -> None:
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    toml = GARAGE_TOML.replace("enabled = true", "enabled = false")
+
+    assert settings_class(tmp_path, toml)().garage.enabled is False  # ty: ignore[missing-argument]
+
+
+def test_repo_srdp_toml_keeps_the_garage_step_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    repo_toml = Path(__file__).resolve().parents[2] / "srdp.toml"
+    for role in ("ZITADEL", "DAGSTER", "MARQUEZ"):
+        monkeypatch.setenv(f"SETUP_PASSWORDS__{role}", "pw")
+
+    garage = settings_class_for(repo_toml)().garage  # ty: ignore[missing-argument]
+
+    assert garage.enabled is False
+    assert garage.admin_url == "http://garage:3903"
+    assert garage.bucket == "ducklake"

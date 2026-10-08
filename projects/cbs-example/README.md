@@ -120,9 +120,11 @@ docker exec -w /app/projects/cbs-example/dbt srdp-dagster-code \
   env PATH="/app/.venv/bin:$PATH" DBT_PROFILES_DIR=. dbt build
 ```
 
-`profiles.yml` attaches the same DuckLake catalog Dagster writes to (`ducklake:postgres:...`, via `dbt-duckdb`'s native `is_ducklake`/`override_data_path` support, reading the `DUCKLAKE_*` env vars already set on that container).
+`profiles.yml` holds no storage settings of its own.
+Its `srdp.io.dbt_plugin` plugin attaches the same DuckLake catalog Dagster writes to, from the `DUCKLAKE_*` env vars already set on that container.
+That covers the Postgres catalog and the data path, or the S3 bucket and its key with `DUCKLAKE_STORAGE_BACKEND=s3`.
 There's no separate "dbt's own copy of the data."
-Running it from a plain host shell instead needs `DUCKLAKE_DATA_PATH` pointed at wherever the `ducklake-data` volume is actually mounted, which is why the container is the simpler path.
+Running it from a plain host shell instead needs the same `DUCKLAKE_*` variables, with `DUCKLAKE_DATA_PATH` pointed at wherever the `ducklake-data` volume is actually mounted, which is why the container is the simpler path.
 
 ## Using this as a template for a new project
 

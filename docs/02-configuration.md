@@ -44,6 +44,17 @@ cp deploy/docker/.env.example deploy/docker/.env
 Fill in the empty values in `deploy/docker/.env`, which are required, and the comment above each one says how to generate it.
 You will need to update `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` after you create the OIDC application in Zitadel; see [First boot: create the Zitadel OIDC application](#first-boot-create-the-zitadel-oidc-application) below.
 
+DuckLake keeps its Parquet files in the `ducklake-data` volume by default.
+To keep them in an S3 bucket on the bundled Garage server instead, set these in `.env`:
+
+- `COMPOSE_PROFILES=s3` starts Garage.
+- `SETUP_GARAGE_ENABLED=true` turns on the Garage step of `srdp-setup`, which creates the bucket and imports the two keys before any DuckLake service starts.
+- `DUCKLAKE_STORAGE_BACKEND=s3` moves DuckLake to the bucket.
+- The four `DUCKLAKE_S3_*_KEY_ID` and `DUCKLAKE_S3_*_SECRET` values and the two `GARAGE_*` secrets go in as `.env.example` describes.
+
+The Garage step's other settings live in the `[setup.garage]` table of `srdp.toml`.
+Only set `SETUP_GARAGE_ENABLED=true` together with the `s3` profile, because the step waits for Garage and fails if it never starts.
+
 ### 4) Start the stack
 
 ```bash

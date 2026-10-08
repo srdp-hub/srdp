@@ -1,0 +1,17 @@
+# Overlay on values-local.yaml: DuckLake on S3 in kind, against the bundled
+# Garage server. Deploy with:
+#   just local-deploy -f srdp-chart/values-local-s3.yaml
+# The keys come from localSecrets.ducklakeS3 and localSecrets.garage in
+# values-local.yaml.
+ducklakeStorage:
+  backend: s3
+  s3:
+    bucket: ducklake
+    prefix: kind
+    endpoint: garage:3900
+    urlStyle: path
+    region: garage
+    useSsl: false
+
+garage:
+  enabled: true

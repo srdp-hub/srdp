@@ -26,3 +26,14 @@ role = "marquez"
 # DuckLake connects as the superuser (DUCKLAKE_PG_USER=postgres).
 [[setup.databases]]
 name = "ducklake"
+
+# The optional Garage step, the bundled S3 server for testing DuckLake on S3.
+# It creates the bucket and imports the writer and reader key, which come from
+# SETUP_GARAGE__* env vars. Compose turns it on with SETUP_GARAGE_ENABLED=true
+# in .env (next to COMPOSE_PROFILES=s3) and sets the bucket from
+# DUCKLAKE_S3_BUCKET. The chart renders its own copy from garage.enabled and
+# ducklakeStorage.s3.bucket.
+[setup.garage]
+enabled = false
+admin_url = "http://garage:3903"
+bucket = "ducklake"

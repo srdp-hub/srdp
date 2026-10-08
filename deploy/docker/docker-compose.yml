@@ -5,6 +5,34 @@ x-ducklake-depends: &ducklake-depends
     postgres:
       condition: service_healthy
 
+# Where DuckLake keeps its Parquet files, the same for every DuckLake consumer.
+# DUCKLAKE_STORAGE_BACKEND=s3 moves them from the ducklake-data volume to a
+# bucket; COMPOSE_PROFILES=s3 adds the bundled Garage server for that. The
+# defaults below point at that Garage. Each consumer merges one role's key
+# (x-ducklake-writer or x-ducklake-reader below):
+# dagster-code the writer key, the four apps the read-only key, because a SQL
+# console runs with the full authority of its S3 key.
+x-ducklake-storage: &ducklake-storage
+  DUCKLAKE_STORAGE_BACKEND: "${DUCKLAKE_STORAGE_BACKEND:-local}"
+  DUCKLAKE_S3_BUCKET: "${DUCKLAKE_S3_BUCKET:-ducklake}"
+  DUCKLAKE_S3_PREFIX: "${DUCKLAKE_S3_PREFIX:-compose}"
+  DUCKLAKE_S3_ENDPOINT: "${DUCKLAKE_S3_ENDPOINT:-garage:3900}"
+  DUCKLAKE_S3_URL_STYLE: "${DUCKLAKE_S3_URL_STYLE:-path}"
+  DUCKLAKE_S3_REGION: "${DUCKLAKE_S3_REGION:-garage}"
+  DUCKLAKE_S3_USE_SSL: "${DUCKLAKE_S3_USE_SSL:-false}"
+
+# The storage settings plus one role's key. Merge exactly one of these into a
+# DuckLake consumer's environment.
+x-ducklake-writer: &ducklake-writer
+  <<: *ducklake-storage
+  DUCKLAKE_S3_KEY_ID: "${DUCKLAKE_S3_WRITER_KEY_ID:-}"
+  DUCKLAKE_S3_SECRET: "${DUCKLAKE_S3_WRITER_SECRET:-}"
+
+x-ducklake-reader: &ducklake-reader
+  <<: *ducklake-storage
+  DUCKLAKE_S3_KEY_ID: "${DUCKLAKE_S3_READER_KEY_ID:-}"
+  DUCKLAKE_S3_SECRET: "${DUCKLAKE_S3_READER_SECRET:-}"
+
 services:
   # ---------------------------------------------
   # Shared PostgreSQL
@@ -43,6 +71,18 @@ services:
       SETUP_PASSWORDS__ZITADEL: "${ZITADEL_DATABASE_POSTGRES_USER_PASSWORD}"
       SETUP_PASSWORDS__DAGSTER: "${DAGSTER_PG_PASSWORD}"
       SETUP_PASSWORDS__MARQUEZ: "${MARQUEZ_DB_PASSWORD}"
+      # The optional Garage step ([setup.garage] in srdp.toml,
+      # src/srdp/setup/garage.py) runs only with SETUP_GARAGE_ENABLED=true,
+      # set in .env next to COMPOSE_PROFILES=s3. It creates the bucket and
+      # imports the writer and reader key the DuckLake services get, before any
+      # of them starts (they all wait for this service).
+      SETUP_GARAGE__ENABLED: "${SETUP_GARAGE_ENABLED:-false}"
+      SETUP_GARAGE__BUCKET: "${DUCKLAKE_S3_BUCKET:-ducklake}"
+      SETUP_GARAGE__ADMIN_TOKEN: "${GARAGE_ADMIN_TOKEN:-}"
+      SETUP_GARAGE__WRITER_KEY_ID: "${DUCKLAKE_S3_WRITER_KEY_ID:-}"
+      SETUP_GARAGE__WRITER_SECRET: "${DUCKLAKE_S3_WRITER_SECRET:-}"
+      SETUP_GARAGE__READER_KEY_ID: "${DUCKLAKE_S3_READER_KEY_ID:-}"
+      SETUP_GARAGE__READER_SECRET: "${DUCKLAKE_S3_READER_SECRET:-}"
     volumes:
       - "../../srdp.toml:/etc/srdp/srdp.toml:ro"
     networks:
@@ -50,6 +90,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      garage:
+        condition: service_healthy
+        required: false
 
   # ---------------------------------------------
   # Reverse Proxy
@@ -267,6 +310,7 @@ services:
       DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
       DUCKLAKE_PG_DB: ducklake
       DUCKLAKE_DATA_PATH: /data/ducklake
+      <<: *ducklake-writer
       MARQUEZ_URL: http://marquez:5000
     healthcheck:
       test: ["CMD", "uv", "run", "dagster", "api", "grpc-health-check", "-p", "3030"]
@@ -306,6 +350,7 @@ services:
       DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
       DUCKLAKE_PG_DB: ducklake
       DUCKLAKE_DATA_PATH: /data/ducklake
+      <<: *ducklake-reader
     networks:
       - app
       - db
@@ -327,6 +372,7 @@ services:
       DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
       DUCKLAKE_PG_DB: ducklake
       DUCKLAKE_DATA_PATH: /data/ducklake
+      <<: *ducklake-reader
     networks:
       - app
       - db
@@ -348,6 +394,7 @@ services:
       DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
       DUCKLAKE_PG_DB: ducklake
       DUCKLAKE_DATA_PATH: /data/ducklake
+      <<: *ducklake-reader
       DAGSTER_GRAPHQL_URL: http://dagster-webserver:3000/graphql
     networks:
       - app
@@ -370,11 +417,44 @@ services:
       DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
       DUCKLAKE_PG_DB: ducklake
       DUCKLAKE_DATA_PATH: /data/ducklake
+      <<: *ducklake-reader
     networks:
       - app
       - db
     volumes:
       - ducklake-data:/data/ducklake:ro
+
+  # ---------------------------------------------
+  # Garage: S3-compatible server for DuckLake on S3, only with the s3 profile
+  # (COMPOSE_PROFILES=s3). For local testing, not production storage.
+  # ---------------------------------------------
+  garage:
+    profiles: [s3]
+    image: dxflrs/garage:v2.4.1
+    container_name: srdp-garage
+    # Hardened like srdp-setup. Garage stays root here: the garage-data volume
+    # starts root-owned and the shell-less image cannot change that, and
+    # without capabilities root only writes to what it owns. The chart runs it
+    # as a non-root user through fsGroup.
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      GARAGE_RPC_SECRET: "${GARAGE_RPC_SECRET:-}"
+      GARAGE_ADMIN_TOKEN: "${GARAGE_ADMIN_TOKEN:-}"
+    configs:
+      - source: garage-toml
+        target: /etc/garage.toml
+    volumes:
+      - garage-data:/var/lib/garage
+    networks:
+      - db
+    healthcheck:
+      # The image has no shell, so the exec form calls the binary directly.
+      test: ["CMD", "/garage", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   # ---------------------------------------------
   # Marquez (OpenLineage backend + UI)
@@ -424,6 +504,28 @@ services:
     networks:
       - app
 
+
+# Garage's config, generated so that s3_region follows DUCKLAKE_S3_REGION:
+# DuckDB signs every request with that region, and Garage refuses a signature
+# for another one. Inline content needs Docker Compose 2.23 or newer. No
+# secrets here: GARAGE_RPC_SECRET and GARAGE_ADMIN_TOKEN come from .env, and
+# Garage reads both from the environment.
+configs:
+  garage-toml:
+    content: |
+      metadata_dir = "/var/lib/garage/meta"
+      data_dir = "/var/lib/garage/data"
+      db_engine = "sqlite"
+      replication_factor = 1
+      rpc_bind_addr = "[::]:3901"
+
+      [s3_api]
+      s3_region = "${DUCKLAKE_S3_REGION:-garage}"
+      api_bind_addr = "[::]:3900"
+
+      [admin]
+      api_bind_addr = "[::]:3903"
+
 networks:
   app:
     name: srdp-app
@@ -437,3 +539,5 @@ volumes:
     name: srdp-dagster-compute-logs
   ducklake-data:
     name: srdp-ducklake-data
+  garage-data:
+    name: srdp-garage-data

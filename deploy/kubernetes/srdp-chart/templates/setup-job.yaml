@@ -14,7 +14,7 @@ metadata:
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
   backoffLimit: 2
-  activeDeadlineSeconds: 240
+  activeDeadlineSeconds: {{ .Values.setup.activeDeadlineSeconds }}
   template:
     spec:
       restartPolicy: OnFailure
@@ -54,6 +54,38 @@ spec:
                 secretKeyRef:
                   name: srdp-marquez
                   key: db-password
+            {{- if .Values.garage.enabled }}
+            # Secrets of the optional Garage step (src/srdp/setup/garage.py),
+            # only with the bundled Garage. The step itself is switched on in
+            # [setup.garage] of setup-configmap.yaml. It imports the role
+            # Secrets the DuckLake consumers read, so Garage accepts exactly
+            # the keys they get.
+            - name: SETUP_GARAGE__ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-garage
+                  key: admin-token
+            - name: SETUP_GARAGE__WRITER_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-ducklake-s3-writer
+                  key: DUCKLAKE_S3_KEY_ID
+            - name: SETUP_GARAGE__WRITER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-ducklake-s3-writer
+                  key: DUCKLAKE_S3_SECRET
+            - name: SETUP_GARAGE__READER_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-ducklake-s3-reader
+                  key: DUCKLAKE_S3_KEY_ID
+            - name: SETUP_GARAGE__READER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-ducklake-s3-reader
+                  key: DUCKLAKE_S3_SECRET
+            {{- end }}
           volumeMounts:
             - name: setup-config
               mountPath: /etc/srdp

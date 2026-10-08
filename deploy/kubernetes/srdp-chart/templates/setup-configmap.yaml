@@ -1,9 +1,18 @@
 {{- if .Values.setup.enabled }}
+{{- /*
+The [setup] table of srdp.toml, rendered from setup.databases and, for the
+optional Garage step, from garage.enabled and the DuckLake bucket. The
+Garage step's secrets come in as SETUP_GARAGE__* env vars, see setup-job.yaml.
+*/ -}}
+{{- $garage := dict "enabled" false }}
+{{- if .Values.garage.enabled }}
+{{- $garage = dict "enabled" true "admin_url" (include "srdp.garageAdminUrl" .) "bucket" (required "ducklakeStorage.s3.bucket" .Values.ducklakeStorage.s3.bucket) }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: srdp-setup-config
 data:
   srdp.toml: |
-{{ toToml (dict "setup" (dict "databases" .Values.setup.databases)) | indent 4 }}
+{{ toToml (dict "setup" (dict "databases" .Values.setup.databases "garage" $garage)) | indent 4 }}
 {{- end }}

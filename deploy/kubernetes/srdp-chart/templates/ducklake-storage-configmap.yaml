@@ -1,0 +1,33 @@
+# Where DuckLake keeps its Parquet files, read through envFrom by the Dagster
+# code location, its run pods and the four apps. See ducklakeStorage in
+# values.yaml. The S3 keys are not here, they come from a role Secret.
+{{- $s := .Values.ducklakeStorage }}
+{{- if not (has $s.backend (list "local" "s3")) }}
+{{- fail "ducklakeStorage.backend must be local or s3" }}
+{{- end }}
+{{- if and (eq $s.backend "local") (not .Values.ducklakeData.enabled) }}
+{{- fail "ducklakeStorage.backend: local keeps the Parquet files on the ducklake-data volume, so it needs ducklakeData.enabled: true" }}
+{{- end }}
+{{- if eq $s.backend "s3" }}
+{{- /* The bucket wait (srdp.waitForDucklakeBucket) puts both into its request URL as they are. */}}
+{{- if not (regexMatch "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$" (required "ducklakeStorage.s3.bucket" $s.s3.bucket)) }}
+{{- fail "ducklakeStorage.s3.bucket must be an S3 bucket name: 3 to 63 lowercase letters, digits, dots and hyphens" }}
+{{- end }}
+{{- if not (regexMatch "^[A-Za-z0-9._/-]*$" $s.s3.prefix) }}
+{{- fail "ducklakeStorage.s3.prefix may only hold letters, digits, dots, underscores, hyphens and slashes" }}
+{{- end }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: srdp-ducklake-storage
+data:
+  DUCKLAKE_STORAGE_BACKEND: {{ $s.backend | quote }}
+  {{- if eq $s.backend "s3" }}
+  DUCKLAKE_S3_BUCKET: {{ required "ducklakeStorage.s3.bucket" $s.s3.bucket | quote }}
+  DUCKLAKE_S3_PREFIX: {{ $s.s3.prefix | quote }}
+  DUCKLAKE_S3_ENDPOINT: {{ required "ducklakeStorage.s3.endpoint" $s.s3.endpoint | quote }}
+  DUCKLAKE_S3_URL_STYLE: {{ required "ducklakeStorage.s3.urlStyle" $s.s3.urlStyle | quote }}
+  DUCKLAKE_S3_REGION: {{ required "ducklakeStorage.s3.region" $s.s3.region | quote }}
+  DUCKLAKE_S3_USE_SSL: {{ $s.s3.useSsl | quote }}
+  {{- end }}

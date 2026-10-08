@@ -2,10 +2,12 @@
 # pods (writers) and the apps (readers), like the ducklake-data volume in
 # docker-compose.yml. ReadWriteOnce works in kind because every pod lands on
 # the single node. A multi-node cluster needs a ReadWriteMany storage class
-# (ducklakeData.accessMode / storageClassName) or object storage instead.
+# (ducklakeData.accessMode / storageClassName) or object storage instead:
+# ducklakeStorage.backend: s3 with ducklakeData.enabled: false, so no pod
+# mounts a volume (values-prod.example.yaml).
 # Kept on `helm uninstall` so a reinstall does not lose the data files that
 # the ducklake catalog in Postgres still points at.
-{{- if or .Values.dagster.enabled .Values.api.enabled .Values.duckdbUi.enabled .Values.marimo.enabled .Values.streamlit.enabled }}
+{{- if and .Values.ducklakeData.enabled (or .Values.dagster.enabled .Values.api.enabled .Values.duckdbUi.enabled .Values.marimo.enabled .Values.streamlit.enabled) }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
