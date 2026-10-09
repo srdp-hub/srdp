@@ -14,6 +14,14 @@ There are two options:
 Both options require mkcert for local TLS certificates.
 The `*.srdp.localhost` domains resolve to your own machine by themselves, so no hosts-file entries are needed.
 
+### Using another domain
+
+The base domain of every hostname is `domain` in the `[deploy]` table of `srdp.toml`.
+To use another one, change it there before the first start, then run the TLS recipe of your option and start the stack.
+The `just` recipes pass it to Docker Compose and to the local Helm deploy, so every hostname from `auth.<domain>` to `dagster.<domain>` follows it.
+Zitadel records its domain when it starts for the first time.
+A domain outside `.localhost` also needs DNS records that point its hostnames at your machine.
+
 ---
 
 ## Option A: Docker Compose

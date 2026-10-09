@@ -9,6 +9,20 @@ registry := `uv run --no-project python -c 'import sys, tomllib; sys.stdout.writ
 # Helm patches deployments[0] in place only when a -f file defines the list
 # (values.yaml or values-prod.yaml do), otherwise the --set replaces it.
 registry_args := "--set-string 'global.srdpRegistry=" + registry + "' --set-string 'dagster.dagster-user-deployments.deployments[0].image.repository=" + registry + "/srdp-etl'"
+# Base domain of every hostname, from srdp.toml [deploy]. Compose reads it as
+# SRDP_DOMAIN. The local kind deploy passes it to the chart as global.domain
+# and to the Zitadel and OAuth2-Proxy subchart values derived from it, which
+# the chart cannot template. The prod recipes keep taking the domain from
+# values-prod.yaml.
+domain := `uv run --no-project python -c 'import sys, tomllib; sys.stdout.write(tomllib.load(open("srdp.toml", "rb"))["deploy"]["domain"])'`
+# Helm patches the list items in place because values.yaml defines the lists.
+# The Zitadel login config is a single string in values-local.yaml, so it is
+# set as a JSON string to keep its newlines.
+domain_args := "--set-string 'global.domain=" + domain + "' --set-string 'zitadel.zitadel.configmapConfig.ExternalDomain=auth." + domain + "' --set-string 'oauth2-proxy.extraArgs.cookie-domain=." + domain + "' --set-string 'oauth2-proxy.extraArgs.whitelist-domain=." + domain + "' --set-string 'oauth2-proxy.extraArgs.oidc-issuer-url=https://auth." + domain + "' --set-string 'oauth2-proxy.customRequestHeaders[0]=Host:auth." + domain + "' --set-string 'oauth2-proxy.hostAliases[0].hostnames[0]=auth." + domain + "'"
+local_domain_args := domain_args + " --set-json 'zitadel.login.customConfigmapConfig=\"ZITADEL_SERVICE_USER_TOKEN_FILE=\\\"/login-client/pat\\\"\\nZITADEL_API_URL=\\\"http://srdp-zitadel:8080\\\"\\nCUSTOM_REQUEST_HEADERS=\\\"Host:auth." + domain + ",X-Zitadel-Public-Host:auth." + domain + "\\\"\\n\"'"
+# Every hostname the stack serves, for the mkcert certificates. The wildcard
+# also covers a client project's own hostnames under the domain.
+domain_hosts := '"' + domain + '" "*.' + domain + '" "auth.' + domain + '" "marimo.' + domain + '" "dagster.' + domain + '" "streamlit.' + domain + '" "marquez.' + domain + '" "api.' + domain + '" "duckdb.' + domain + '"'
 # The chart rolls its own pods when a local Secret changes (srdp.localSecretsChecksum).
 # Subcharts cannot hash the parent's Secrets, so local-deploy passes them a hash of
 # values-local.yaml, which holds every local Secret value.
@@ -40,7 +54,7 @@ scaleway *args:
 docker-tls:
 	mkcert -install
 	mkdir -p deploy/docker/certs
-	mkcert -cert-file deploy/docker/certs/selfsigned.crt -key-file deploy/docker/certs/selfsigned.key "srdp.localhost" "auth.srdp.localhost" "marimo.srdp.localhost" "dagster.srdp.localhost" "streamlit.srdp.localhost" "marquez.srdp.localhost" "api.srdp.localhost" "duckdb.srdp.localhost"
+	mkcert -cert-file deploy/docker/certs/selfsigned.crt -key-file deploy/docker/certs/selfsigned.key {{domain_hosts}}
 
 # Create (or reuse) the local kind cluster
 kind-up:
@@ -74,7 +88,7 @@ kind-load-images: kind-up
 local-tls: kind-up
 	mkcert -install
 	mkdir -p deploy/kubernetes/certs
-	mkcert -cert-file deploy/kubernetes/certs/selfsigned.crt -key-file deploy/kubernetes/certs/selfsigned.key "srdp.localhost" "auth.srdp.localhost" "marimo.srdp.localhost" "dagster.srdp.localhost" "streamlit.srdp.localhost" "marquez.srdp.localhost" "api.srdp.localhost" "duckdb.srdp.localhost"
+	mkcert -cert-file deploy/kubernetes/certs/selfsigned.crt -key-file deploy/kubernetes/certs/selfsigned.key {{domain_hosts}}
 	kubectl create namespace {{namespace}} --dry-run=client -o yaml | kubectl apply -f -
 	kubectl create secret tls custom-ingress-cert --namespace {{namespace}} --key deploy/kubernetes/certs/selfsigned.key --cert deploy/kubernetes/certs/selfsigned.crt --dry-run=client -o yaml | kubectl apply -f -
 
@@ -87,11 +101,11 @@ chart-deps:
 
 # Deploy the full stack to local kind via Helm
 local-deploy: kind-load-images chart-deps
-	cd deploy/kubernetes && helm upgrade --install srdp srdp-chart --namespace {{namespace}} --create-namespace -f srdp-chart/values.yaml -f srdp-chart/values-local.yaml {{registry_args}} {{local_secrets_args}}
+	cd deploy/kubernetes && helm upgrade --install srdp srdp-chart --namespace {{namespace}} --create-namespace -f srdp-chart/values.yaml -f srdp-chart/values-local.yaml {{registry_args}} {{local_domain_args}} {{local_secrets_args}}
 	@echo "Reading Traefik's assigned ClusterIP to wire it into oauth2-proxy's hostAliases..."
 	@TRAEFIK_IP=$(kubectl get svc srdp-traefik -n {{namespace}} -o jsonpath='{.spec.clusterIP}'); \
 	echo "Traefik ClusterIP: $TRAEFIK_IP"; \
-	cd deploy/kubernetes && helm upgrade srdp srdp-chart --namespace {{namespace}} -f srdp-chart/values.yaml -f srdp-chart/values-local.yaml {{registry_args}} {{local_secrets_args}} --set-string "oauth2-proxy.hostAliases[0].ip=$TRAEFIK_IP"
+	cd deploy/kubernetes && helm upgrade srdp srdp-chart --namespace {{namespace}} -f srdp-chart/values.yaml -f srdp-chart/values-local.yaml {{registry_args}} {{local_domain_args}} {{local_secrets_args}} --set-string "oauth2-proxy.hostAliases[0].ip=$TRAEFIK_IP"
 
 # Uninstall the local Helm release and its PVCs
 local-delete:
@@ -104,11 +118,11 @@ local-delete:
 
 # Start the Docker Compose stack (local dev). Attached by default; pass -d to detach.
 docker-up *args:
-	cd deploy/docker && docker compose up --build {{args}}
+	cd deploy/docker && SRDP_DOMAIN='{{domain}}' docker compose up --build {{args}}
 
 # Stop the Docker Compose stack
 docker-down:
-	cd deploy/docker && docker compose down
+	cd deploy/docker && SRDP_DOMAIN='{{domain}}' docker compose down
 
 # ─── Production / infra ───────────────────────────────────────────────────────
 

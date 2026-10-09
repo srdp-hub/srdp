@@ -1,0 +1,11 @@
+# Local development only: serve the mkcert certificate from `just docker-tls`
+# as Traefik's default certificate. docker-compose.override.yml mounts this
+# file together with the certificate. Production gets its certificates from
+# Let's Encrypt instead (docker-compose.prod.yml), so it never loads this file.
+
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: "/etc/certs/selfsigned.crt"
+        keyFile: "/etc/certs/selfsigned.key"

@@ -1,20 +1,15 @@
-# Traefik's static configuration, plus the dynamic (routing) configuration
-# via the file provider pointed at this same file.
+# Traefik's static configuration for local development.
 #
-# All HTTP routing is defined here instead of discovered from Docker labels.
-# Traefik therefore never needs the Docker socket mounted: a container that
-# can reach the socket can start new containers with the host filesystem
-# mounted, and a read-only bind mount of the socket file does not restrict
-# that, since it only protects the socket file itself, not the Docker API
-# reachable through it. See PR #51 review discussion on docker-compose.yml.
+# docker-compose.prod.yml replaces this file with the production static
+# configuration (Let's Encrypt, no dashboard). It has to replace the whole
+# file: Traefik reads its static configuration from exactly one source, and a
+# configuration file found at startup wins over command-line flags and
+# environment variables.
 #
-# To stop exposing a service in a given deployment, do both:
-# 1. Don't start its container (give it its own `profiles:` entry in
-#    docker-compose.yml so it opts out of the default `docker compose up`,
-#    or simply don't include it on the command line).
-# 2. Remove its router and service block below. A stopped container still
-#    answers a request with a 502 rather than a clean absence, because
-#    routers here no longer come and go with the containers.
+# Routing (the dynamic configuration) lives in config/traefik/dynamic/ and is
+# loaded by the file provider below. Compose mounts each of those files
+# individually into /etc/traefik/dynamic/, so an overlay can mount its own
+# routing file next to them.
 
 log:
   level: "INFO"
@@ -23,7 +18,7 @@ ping: {}
 
 providers:
   file:
-    filename: "/etc/traefik/traefik.yaml"
+    directory: "/etc/traefik/dynamic"
 
 entrypoints:
   web:
@@ -38,158 +33,6 @@ entrypoints:
     address: ":443"
     http:
       tls: {}
-
-http:
-  routers:
-    zitadel:
-      entryPoints:
-        - "websecure"
-      service: "zitadel"
-      rule: '(Host(`auth.srdp.localhost`) && !PathPrefix(`/ui/v2/login`) && !PathPrefix(`/oauth2/`))'
-      tls: {}
-    zitadel-login:
-      entryPoints:
-        - "websecure"
-      service: "zitadel-login"
-      rule: '(Host(`auth.srdp.localhost`) && PathPrefix(`/ui/v2/login`))'
-      tls: {}
-    oauth2-proxy:
-      service: "oauth2-proxy"
-      rule: '(Host(`auth.srdp.localhost`) || Host(`marimo.srdp.localhost`) || Host(`dagster.srdp.localhost`) || Host(`streamlit.srdp.localhost`) || Host(`srdp.localhost`) || Host(`marquez.srdp.localhost`) || Host(`api.srdp.localhost`) || Host(`duckdb.srdp.localhost`)) && PathPrefix(`/oauth2/`)'
-    dagster:
-      service: "dagster"
-      rule: 'Host(`dagster.srdp.localhost`)'
-      middlewares:
-        - "zitadel-errors"
-        - "zitadel-auth"
-    marimo:
-      service: "marimo"
-      rule: 'Host(`marimo.srdp.localhost`)'
-      middlewares:
-        - "zitadel-errors"
-        - "zitadel-auth"
-    streamlit:
-      service: "streamlit"
-      rule: 'Host(`streamlit.srdp.localhost`)'
-      middlewares:
-        - "zitadel-errors"
-        - "zitadel-auth"
-    api:
-      service: "api"
-      rule: 'Host(`api.srdp.localhost`)'
-      middlewares:
-        - "zitadel-errors"
-        - "zitadel-auth"
-    duckdb-ui:
-      service: "duckdb-ui"
-      rule: 'Host(`duckdb.srdp.localhost`)'
-      middlewares:
-        - "zitadel-errors"
-        - "zitadel-auth"
-    # DuckDB UI's frontend makes its own background API calls (/localToken,
-    # /ddb/run, /ddb/interrupt, /ddb/tokenize, /localEvents, all confirmed by
-    # reading its own bundle) that can legitimately return their own 401 from
-    # DuckDB's server, unrelated to SSO. zitadel-errors rewrites any 401 in the
-    # response chain into a login redirect, which hijacks these and breaks
-    # them with a CORS error a background fetch() can't follow. This more
-    # specific router (Traefik favors the longer/more specific rule
-    # automatically, no explicit priority needed) keeps the real auth check
-    # (zitadel-auth) but skips the rewrite for DuckDB's own API surface.
-    # /localEvents is a long-lived EventSource (SSE) stream, not a
-    # request/response, see haproxy.cfg's timeout tunnel for why that matters.
-    duckdb-ui-internal:
-      service: "duckdb-ui"
-      rule: 'Host(`duckdb.srdp.localhost`) && (Path(`/localToken`) || Path(`/localEvents`) || PathPrefix(`/ddb/`))'
-      middlewares:
-        - "zitadel-auth"
-    marquez:
-      service: "marquez-web"
-      rule: 'Host(`marquez.srdp.localhost`)'
-      middlewares:
-        - "zitadel-errors"
-        - "zitadel-auth"
-    hub:
-      service: "hub"
-      rule: 'Host(`srdp.localhost`)'
-      middlewares:
-        - "zitadel-errors"
-        - "zitadel-auth"
-  services:
-    zitadel:
-      loadBalancer:
-        serversTransport: "zitadel"
-        passHostHeader: true
-        servers:
-          - url: "https://zitadel:8080"
-    zitadel-login:
-      loadBalancer:
-        serversTransport: "zitadel-login"
-        passHostHeader: true
-        servers:
-          - url: "http://zitadel-login:3000"
-    oauth2-proxy:
-      loadBalancer:
-        servers:
-          - url: "http://oauth2-proxy:4180"
-    dagster:
-      loadBalancer:
-        servers:
-          - url: "http://dagster-webserver:3000"
-    marimo:
-      loadBalancer:
-        servers:
-          - url: "http://marimo:8000"
-    streamlit:
-      loadBalancer:
-        servers:
-          - url: "http://streamlit:8000"
-    api:
-      loadBalancer:
-        servers:
-          - url: "http://api:8000"
-    duckdb-ui:
-      loadBalancer:
-        servers:
-          - url: "http://duckdb-ui:4213"
-    marquez-web:
-      loadBalancer:
-        servers:
-          - url: "http://marquez-web:3000"
-    hub:
-      loadBalancer:
-        servers:
-          - url: "http://hub:80"
-  middlewares:
-    zitadel-auth:
-      forwardAuth:
-        address: "http://oauth2-proxy:4180/oauth2/auth"
-        trustForwardHeader: true
-        authResponseHeaders:
-          - "X-Auth-Request-User"
-          - "X-Auth-Request-Email"
-          - "X-Auth-Request-Access-Token"
-    zitadel-errors:
-      errors:
-        status:
-          - "401"
-          - "402"
-          - "403"
-        statusRewrites:
-          "401": 302
-        service: "oauth2-proxy"
-        query: "/oauth2/sign_in"
-  serversTransports:
-    zitadel:
-      insecureSkipVerify: true
-    zitadel-login:
-      insecureSkipVerify: true
-
-tls:
-  stores:
-    default:
-      defaultCertificate:
-        certFile: "/etc/certs/selfsigned.crt"
-        keyFile: "/etc/certs/selfsigned.key"
 
 api:
   dashboard: true # Enable the Traefik dashboard for debugging

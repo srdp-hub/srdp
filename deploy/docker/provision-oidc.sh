@@ -20,14 +20,17 @@
 #      if nothing changed.
 #
 # Usage: deploy/docker/provision-oidc.sh   (run from anywhere; requires the
-# Compose stack to be up, since it talks to Zitadel over auth.srdp.localhost)
+# Compose stack to be up, since it talks to Zitadel over auth.<domain>, with
+# the domain from srdp.toml [deploy])
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 LOGIN_CLIENT_PAT_FILE="$SCRIPT_DIR/login-client.pat"
-AUTH_HOST="auth.srdp.localhost"
+SRDP_TOML="$SCRIPT_DIR/../../srdp.toml"
+DOMAIN=$(python3 -c 'import sys, tomllib; sys.stdout.write(tomllib.load(open(sys.argv[1], "rb"))["deploy"]["domain"])' "$SRDP_TOML")
+AUTH_HOST="auth.$DOMAIN"
 ADMIN_USERNAME="srdp-admin-automation"
 PROJECT_NAME="srdp"
 APP_NAME="oauth2-proxy"

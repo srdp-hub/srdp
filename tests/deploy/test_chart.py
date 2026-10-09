@@ -26,13 +26,14 @@ def _chart_dependencies() -> None:
         pytest.fail("chart dependencies missing, run `just chart-deps`")
 
 
-def render(*values_files: str, set_values: tuple[str, ...] = ()) -> list[Manifest]:
-    """Render the chart with the given values files (relative to the chart) and --set overrides."""
+def render(*values_files: str, set_values: tuple[str, ...] = (), extra_args: tuple[str, ...] = ()) -> list[Manifest]:
+    """Render the chart with the given values files (relative to the chart), --set overrides and raw helm args."""
     args = ["helm", "template", "srdp", str(CHART_DIR), "--namespace", "srdp"]
     for values_file in values_files:
         args += ["-f", str(CHART_DIR / values_file)]
     for set_value in set_values:
         args += ["--set", set_value]
+    args += extra_args
     # Fixed argv, no shell: every argument comes from this test module.
     result = subprocess.run(args, capture_output=True, text=True, check=True)  # noqa: S603
     return [doc for doc in yaml.safe_load_all(result.stdout) if doc]
@@ -224,6 +225,43 @@ def test_chart_registry_defaults_match_srdp_toml(values_file: str) -> None:
         assert values["global"]["srdpRegistry"] == registry
     deployments = values["dagster"]["dagster-user-deployments"]["deployments"]
     assert [d["image"]["repository"] for d in deployments] == [f"{registry}/srdp-etl"]
+
+
+def just_args(variable: str, *overrides: str) -> tuple[str, ...]:
+    """Return a Justfile helm args variable as raw argv, with `--set` overrides."""
+    just = shutil.which("just")
+    if just is None:
+        pytest.skip("needs just")
+    # Fixed argv, no shell: every argument comes from this test module.
+    result = subprocess.run(  # noqa: S603
+        [just, *overrides, "--evaluate", variable], cwd=REPO_ROOT, capture_output=True, text=True, check=True
+    )
+    return tuple(shlex.split(result.stdout))
+
+
+def test_the_justfile_domain_moves_every_hostname() -> None:
+    """Zitadel and OAuth2-Proxy are subcharts that cannot template global.domain, so local_domain_args sets them."""
+    domain = "example.test"
+    manifests = render(
+        "values.yaml",
+        "values-local.yaml",
+        extra_args=just_args("local_domain_args", "--set", "domain", domain),
+    )
+    assert "srdp.localhost" not in yaml.safe_dump_all(manifests)
+    hosts = [r["host"] for r in find(manifests, "Ingress", "auth-routes-ingress")["spec"]["rules"]]
+    assert hosts
+    assert all(host == domain or host.endswith(f".{domain}") for host in hosts), hosts
+
+
+def test_chart_domain_defaults_match_srdp_toml() -> None:
+    """Rendering without the Justfile must land on srdp.toml's domain, so the Justfile args change nothing."""
+    domain = tomllib.loads((REPO_ROOT / "srdp.toml").read_text())["deploy"]["domain"]
+    # The Justfile puts it inside single-quoted shell args, Helm --set values
+    # and a JSON string, so anything beyond a plain hostname would break them.
+    assert re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+", domain), domain
+    assert render("values.yaml", "values-local.yaml") == render(
+        "values.yaml", "values-local.yaml", extra_args=just_args("local_domain_args")
+    )
 
 
 LOCAL_SECRET_READERS = ["marquez", "api", "duckdb-ui", "marimo", "streamlit"]

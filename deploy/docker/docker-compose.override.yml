@@ -1,5 +1,12 @@
 services:
   traefik:
+    # Local development only. A production run lists its files explicitly
+    # (-f docker-compose.yml -f docker-compose.prod.yml), so Compose skips this
+    # file and none of the below reaches production.
+    ports:
+      # Traefik dashboard (api.insecure in config/traefik/traefik.yml).
+      - "8080:8080"
     volumes:
       - "./certs/selfsigned.crt:/etc/certs/selfsigned.crt:ro"
       - "./certs/selfsigned.key:/etc/certs/selfsigned.key:ro"
+      - "../../config/traefik/dynamic/local-tls.yml:/etc/traefik/dynamic/local-tls.yml:ro"

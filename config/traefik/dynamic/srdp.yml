@@ -1,0 +1,166 @@
+# Traefik's dynamic (routing) configuration for SRDP's own services.
+#
+# Hostnames come from the SRDP_DOMAIN environment variable through Traefik's
+# file provider templating. Compose sets it from srdp.toml [deploy] domain.
+#
+# All HTTP routing is defined here instead of discovered from Docker labels.
+# Traefik therefore never needs the Docker socket mounted: a container that
+# can reach the socket can start new containers with the host filesystem
+# mounted, and a read-only bind mount of the socket file does not restrict
+# that, since it only protects the socket file itself, not the Docker API
+# reachable through it. See PR #51 review discussion on docker-compose.yml.
+#
+# To stop exposing a service in a given deployment, do both:
+# 1. Don't start its container (give it its own `profiles:` entry in
+#    docker-compose.yml so it opts out of the default `docker compose up`,
+#    or simply don't include it on the command line).
+# 2. Remove its router and service block below. A stopped container still
+#    answers a request with a 502 rather than a clean absence, because
+#    routers here no longer come and go with the containers.
+#
+# TLS comes from the websecure entrypoint in the static configuration, so no
+# router sets its own tls block: a router-level block would replace the
+# entrypoint's, including the production certificate resolver.
+
+http:
+  routers:
+    zitadel:
+      entryPoints:
+        - "websecure"
+      service: "zitadel"
+      rule: '(Host(`auth.{{ env "SRDP_DOMAIN" }}`) && !PathPrefix(`/ui/v2/login`) && !PathPrefix(`/oauth2/`))'
+    zitadel-login:
+      entryPoints:
+        - "websecure"
+      service: "zitadel-login"
+      rule: '(Host(`auth.{{ env "SRDP_DOMAIN" }}`) && PathPrefix(`/ui/v2/login`))'
+    oauth2-proxy:
+      service: "oauth2-proxy"
+      rule: '(Host(`auth.{{ env "SRDP_DOMAIN" }}`) || Host(`marimo.{{ env "SRDP_DOMAIN" }}`) || Host(`dagster.{{ env "SRDP_DOMAIN" }}`) || Host(`streamlit.{{ env "SRDP_DOMAIN" }}`) || Host(`{{ env "SRDP_DOMAIN" }}`) || Host(`marquez.{{ env "SRDP_DOMAIN" }}`) || Host(`api.{{ env "SRDP_DOMAIN" }}`) || Host(`duckdb.{{ env "SRDP_DOMAIN" }}`)) && PathPrefix(`/oauth2/`)'
+    dagster:
+      service: "dagster"
+      rule: 'Host(`dagster.{{ env "SRDP_DOMAIN" }}`)'
+      middlewares:
+        - "zitadel-errors"
+        - "zitadel-auth"
+    marimo:
+      service: "marimo"
+      rule: 'Host(`marimo.{{ env "SRDP_DOMAIN" }}`)'
+      middlewares:
+        - "zitadel-errors"
+        - "zitadel-auth"
+    streamlit:
+      service: "streamlit"
+      rule: 'Host(`streamlit.{{ env "SRDP_DOMAIN" }}`)'
+      middlewares:
+        - "zitadel-errors"
+        - "zitadel-auth"
+    api:
+      service: "api"
+      rule: 'Host(`api.{{ env "SRDP_DOMAIN" }}`)'
+      middlewares:
+        - "zitadel-errors"
+        - "zitadel-auth"
+    duckdb-ui:
+      service: "duckdb-ui"
+      rule: 'Host(`duckdb.{{ env "SRDP_DOMAIN" }}`)'
+      middlewares:
+        - "zitadel-errors"
+        - "zitadel-auth"
+    # DuckDB UI's frontend makes its own background API calls (/localToken,
+    # /ddb/run, /ddb/interrupt, /ddb/tokenize, /localEvents, all confirmed by
+    # reading its own bundle) that can legitimately return their own 401 from
+    # DuckDB's server, unrelated to SSO. zitadel-errors rewrites any 401 in the
+    # response chain into a login redirect, which hijacks these and breaks
+    # them with a CORS error a background fetch() can't follow. This more
+    # specific router (Traefik favors the longer/more specific rule
+    # automatically, no explicit priority needed) keeps the real auth check
+    # (zitadel-auth) but skips the rewrite for DuckDB's own API surface.
+    # /localEvents is a long-lived EventSource (SSE) stream, not a
+    # request/response, see haproxy.cfg's timeout tunnel for why that matters.
+    duckdb-ui-internal:
+      service: "duckdb-ui"
+      rule: 'Host(`duckdb.{{ env "SRDP_DOMAIN" }}`) && (Path(`/localToken`) || Path(`/localEvents`) || PathPrefix(`/ddb/`))'
+      middlewares:
+        - "zitadel-auth"
+    marquez:
+      service: "marquez-web"
+      rule: 'Host(`marquez.{{ env "SRDP_DOMAIN" }}`)'
+      middlewares:
+        - "zitadel-errors"
+        - "zitadel-auth"
+    hub:
+      service: "hub"
+      rule: 'Host(`{{ env "SRDP_DOMAIN" }}`)'
+      middlewares:
+        - "zitadel-errors"
+        - "zitadel-auth"
+  services:
+    zitadel:
+      loadBalancer:
+        serversTransport: "zitadel"
+        passHostHeader: true
+        servers:
+          - url: "https://zitadel:8080"
+    zitadel-login:
+      loadBalancer:
+        serversTransport: "zitadel-login"
+        passHostHeader: true
+        servers:
+          - url: "http://zitadel-login:3000"
+    oauth2-proxy:
+      loadBalancer:
+        servers:
+          - url: "http://oauth2-proxy:4180"
+    dagster:
+      loadBalancer:
+        servers:
+          - url: "http://dagster-webserver:3000"
+    marimo:
+      loadBalancer:
+        servers:
+          - url: "http://marimo:8000"
+    streamlit:
+      loadBalancer:
+        servers:
+          - url: "http://streamlit:8000"
+    api:
+      loadBalancer:
+        servers:
+          - url: "http://api:8000"
+    duckdb-ui:
+      loadBalancer:
+        servers:
+          - url: "http://duckdb-ui:4213"
+    marquez-web:
+      loadBalancer:
+        servers:
+          - url: "http://marquez-web:3000"
+    hub:
+      loadBalancer:
+        servers:
+          - url: "http://hub:80"
+  middlewares:
+    zitadel-auth:
+      forwardAuth:
+        address: "http://oauth2-proxy:4180/oauth2/auth"
+        trustForwardHeader: true
+        authResponseHeaders:
+          - "X-Auth-Request-User"
+          - "X-Auth-Request-Email"
+          - "X-Auth-Request-Access-Token"
+    zitadel-errors:
+      errors:
+        status:
+          - "401"
+          - "402"
+          - "403"
+        statusRewrites:
+          "401": 302
+        service: "oauth2-proxy"
+        query: "/oauth2/sign_in"
+  serversTransports:
+    zitadel:
+      insecureSkipVerify: true
+    zitadel-login:
+      insecureSkipVerify: true

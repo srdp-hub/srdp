@@ -1,3 +1,48 @@
+# Production static configuration for Traefik. It replaces
+# config/traefik/traefik.yml as a whole, because Traefik reads its static
+# configuration from exactly one source: a configuration file found at startup
+# wins over command-line flags and environment variables. Compose interpolates
+# ACME_EMAIL (and the optional ACME_CA_SERVER) into it.
+#
+# Every router on websecure gets its certificate from Let's Encrypt through
+# the entrypoint's certificate resolver, for the hostnames in its rule. The
+# dashboard is off, and its port is not published (see the override file).
+configs:
+  traefik-prod:
+    content: |
+      log:
+        level: "INFO"
+      accessLog: {}
+      ping: {}
+      providers:
+        file:
+          directory: "/etc/traefik/dynamic"
+      entrypoints:
+        web:
+          address: ":80"
+          http:
+            redirections:
+              entrypoint:
+                to: "websecure"
+                scheme: "https"
+                permanent: true
+        websecure:
+          address: ":443"
+          http:
+            tls:
+              certResolver: "letsencrypt"
+      certificatesResolvers:
+        letsencrypt:
+          acme:
+            email: "${ACME_EMAIL:?ACME_EMAIL must be set in .env for docker-compose.prod.yml}"
+            storage: "/etc/traefik/acme/acme.json"
+            # Let's Encrypt production by default. Point it at the staging
+            # directory (https://acme-staging-v02.api.letsencrypt.org/directory)
+            # to try a new domain without hitting the production rate limits.
+            caServer: "${ACME_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}"
+            httpChallenge:
+              entryPoint: "web"
+
 services:
   # The exposed webserver runs read-only in production: Dagster OSS has no
   # per-user authorization, so a read-write UI would bypass the writer role
@@ -13,10 +58,11 @@ services:
       ]
 
   traefik:
-    command:
-      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/etc/traefik/acme/acme.json"
-      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
-      - "--api.dashboard=false"
+    command: ["--configFile=/etc/traefik/traefik.prod.yaml"]
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping", "--configFile=/etc/traefik/traefik.prod.yaml"]
+    configs:
+      - source: traefik-prod
+        target: /etc/traefik/traefik.prod.yaml
     volumes:
       - ./letsencrypt:/etc/traefik/acme

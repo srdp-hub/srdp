@@ -6,6 +6,12 @@
 # Registry prefix of every image this repo builds. The chart's defaults
 # (global.srdpRegistry, the srdp-etl repository) must match it, a test checks.
 registry = "rg.nl-ams.scw.cloud/srdp-registry"
+# Base domain of every hostname: auth.<domain>, dagster.<domain>, and so on.
+# The Justfile passes it to Docker Compose (SRDP_DOMAIN), to the mkcert
+# certificates and to the local kind deploy. The prod recipes keep taking the
+# domain from values-prod.yaml. The chart's defaults (global.domain and the
+# values derived from it) must match it, a test checks.
+domain = "srdp.localhost"
 
 # Read by the srdp-setup service. The chart keeps its own copy in
 # setup.databases, keep them in step.
