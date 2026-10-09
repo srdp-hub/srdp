@@ -26,7 +26,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_wrapper: false
-      - uses: terraform-linters/setup-tflint@v4
+      - uses: terraform-linters/setup-tflint@v6
       # The local `ty` hook shells out to `uv run ty check`, which needs the
       # project's own env synced first, pre-commit's own hook envs (ruff,
       # gitleaks, terraform, yamllint) install themselves. The extras below
