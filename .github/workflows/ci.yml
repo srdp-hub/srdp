@@ -23,7 +23,7 @@ jobs:
       # The terraform_fmt/terraform_tflint hooks below (deploy/scaleway/)
       # shell out to the `terraform` and `tflint` binaries directly, pre-commit
       # doesn't install these itself the way it does its Python/JS hook envs.
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_wrapper: false
       - uses: terraform-linters/setup-tflint@v4
