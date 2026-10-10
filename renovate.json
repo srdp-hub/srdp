@@ -83,7 +83,7 @@
       "groupName": "dagster"
     },
     {
-      "description": "Of the Python packages only Dagster is Renovate's, the rest stay with Dependabot.",
+      "description": "Of the Python packages only Dagster is Renovate's. The rest have no version updater yet (a Dependabot uv entry is planned after v0.4.0), and security alerts still open Dependabot PRs.",
       "matchManagers": [
         "pep621"
       ],

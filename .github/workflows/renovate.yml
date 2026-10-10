@@ -1,8 +1,7 @@
 name: Renovate
 
-# Opens the weekly PR that bumps container images, charts and the Dagster
-# release line (renovate.json). It needs a RENOVATE_TOKEN secret, a GitHub App
-# token or a PAT, because PRs opened with GITHUB_TOKEN don't trigger CI.
+# Opens the weekly PR for images, charts and Dagster (renovate.json). Needs a
+# RENOVATE_TOKEN secret (App token or PAT), since GITHUB_TOKEN PRs don't run CI.
 on:
   schedule:
     - cron: "0 3 * * 1"

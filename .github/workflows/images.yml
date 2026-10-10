@@ -337,3 +337,31 @@ jobs:
           if [ "$STABLE" = "true" ]; then
             tag_all latest
           fi
+
+  # A new ghcr package is private, but the chart pulls without credentials.
+  # Pulls every version tag anonymously and fails if one is private.
+  public:
+    needs: [version, tag]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+
+      - name: Pull every image anonymously
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          failed=0
+          for file in digests/*; do
+            name="$(basename "$file")"
+            if ! skopeo inspect --raw "docker://ghcr.io/srdp-hub/$name:$VERSION" > /dev/null 2>&1; then
+              echo "::error::ghcr.io/srdp-hub/$name:$VERSION cannot be pulled without a login. A new GitHub package is private. Set its visibility to public in the package settings (https://github.com/orgs/srdp-hub/packages/container/$name/settings), then re-run this job."
+              failed=1
+            fi
+          done
+          exit "$failed"

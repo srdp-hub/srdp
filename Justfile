@@ -107,7 +107,7 @@ local-delete:
 	kubectl delete pvc --all -n {{namespace}} || true
 
 # Start the Docker Compose stack (local dev). Attached by default; pass -d to detach.
-# It builds every image from source and tags the platform images dev, whatever SRDP_VERSION says in .env.
+# Builds from source and tags the platform images dev, whatever SRDP_VERSION says.
 docker-up *args:
 	cd deploy/docker && SRDP_VERSION=dev docker compose up --build {{args}}
 
