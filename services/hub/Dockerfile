@@ -1,4 +1,4 @@
-FROM nginx:1.28-alpine-slim@sha256:b33eedfdf089be1f83759ced27b4deec5b6f1b6fc2a6819ebce0ae351a4406e5
+FROM nginx:1.31-alpine-slim@sha256:f761b94f2cb9e8e05e2943d5f773609596113ef69b54e2433a996d109a8f78b7
 
 # Pull in OS security fixes the pinned base image doesn't have yet. This
 # makes the build less reproducible, which the provenance attestation records.
