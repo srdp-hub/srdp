@@ -11,12 +11,12 @@ Both deployment targets (Docker Compose and Helm) run the same logical services.
 
 | Container | Role | Image | Notes |
 |:---|:---|:---|:---|
-| `srdp-postgres` | Shared platform database | `postgres:17-alpine` | Hosts databases for Zitadel, Dagster, Marquez and DuckLake |
-| `srdp-traefik` | Reverse proxy, TLS termination | `traefik:v3.5.3` | |
-| `srdp-zitadel-init` | Database schema bootstrap | `ghcr.io/zitadel/zitadel:v4.2.2` | Runs once then exits |
-| `srdp-zitadel` | Identity provider (OIDC) | `ghcr.io/zitadel/zitadel:v4.2.2` | API, console, OIDC endpoints |
-| `srdp-zitadel-login` | Hosted login UI | `ghcr.io/zitadel/zitadel-login:v4.2.2` | Separate Next.js app since Zitadel v4 |
-| `srdp-oauth2-proxy` | Forward-auth middleware | `quay.io/oauth2-proxy/oauth2-proxy:v7.6.0` | |
+| `srdp-postgres` | Shared platform database | `postgres:18-alpine` | Hosts databases for Zitadel, Dagster, Marquez and DuckLake |
+| `srdp-traefik` | Reverse proxy, TLS termination | `traefik:v3.6.2` | |
+| `srdp-zitadel-init` | Database schema bootstrap | `ghcr.io/zitadel/zitadel:v4.11.1` | Runs once then exits |
+| `srdp-zitadel` | Identity provider (OIDC) | `ghcr.io/zitadel/zitadel:v4.11.1` | API, console, OIDC endpoints |
+| `srdp-zitadel-login` | Hosted login UI | `ghcr.io/zitadel/zitadel-login:v4.11.1` | Separate Next.js app since Zitadel v4 |
+| `srdp-oauth2-proxy` | Forward-auth middleware | `quay.io/oauth2-proxy/oauth2-proxy:v7.13.0` | |
 | `srdp-dagster-code` | User pipeline code (gRPC) | Built from `projects/cbs-example/Dockerfile` | Separate so pipeline code can update independently |
 | `srdp-dagster-webserver` | Orchestration UI | Built from `deploy/docker/dagster-webserver.Dockerfile` | No source code, connects to code server over gRPC |
 | `srdp-dagster-daemon` | Schedule & sensor execution | Same image as webserver | Must be a separate process per Dagster's architecture |
@@ -309,6 +309,7 @@ Shared across all services. The `srdp-setup` service (`src/srdp/setup/`) creates
 Three containers, two images:
 
 - **dagster-webserver** and **dagster-daemon** share an image (`dagster-webserver.Dockerfile`) that installs only the `[infra]` extra, with no source code. They connect to the code server over gRPC.
+  On Kubernetes the chart runs the same image for them, so both targets run the Dagster version in `uv.lock`.
 - **dagster-code** uses the project Dockerfile (`projects/cbs-example/Dockerfile`) which installs the full `srdp` package plus project code. It runs `dagster code-server start` to expose definitions over gRPC.
 - The Helm chart uses `dagsterApiGrpcArgs` to configure the same gRPC server. The Dagster Helm chart manages the command internally, so `code-server` vs `api grpc` only applies to the Docker Compose setup.
 - `dagster.yaml` configures PostgreSQL storage and the run launcher (`DefaultRunLauncher` locally, `K8sRunLauncher` in production).

@@ -6,11 +6,5 @@ updates:
     schedule:
       interval: weekly
 
-  # Base images of the platform images (#82).
-  - package-ecosystem: docker
-    directories:
-      - /deploy/docker
-      - /services/duckdb-ui
-      - /services/hub
-    schedule:
-      interval: weekly
+  # Container images, charts and Dockerfile bases are updated by Renovate
+  # (renovate.json), grouped in one PR.

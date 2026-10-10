@@ -1,0 +1,127 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "docker:pinDigests"
+  ],
+  "enabledManagers": [
+    "dockerfile",
+    "docker-compose",
+    "helmv3",
+    "helm-values",
+    "custom.regex",
+    "pep621"
+  ],
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "packageRules": [
+    {
+      "description": "One PR per week for all container image and chart bumps.",
+      "matchManagers": [
+        "dockerfile",
+        "docker-compose",
+        "helmv3",
+        "helm-values",
+        "custom.regex"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest",
+        "pin"
+      ],
+      "groupName": "container images and charts"
+    },
+    {
+      "description": "Major versions can need a data or config migration, so they wait for approval on the dashboard.",
+      "matchManagers": [
+        "dockerfile",
+        "docker-compose",
+        "helmv3",
+        "helm-values",
+        "custom.regex"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "The Python minor is fixed by requires-python in pyproject.toml, only patch and digest bumps are allowed.",
+      "matchPackageNames": [
+        "python"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "A uv minor can change behavior while uv is on 0.x, so it gets its own PR instead of joining the weekly one. CI builds every image with it, and all Dockerfiles move together.",
+      "matchPackageNames": [
+        "ghcr.io/astral-sh/uv"
+      ],
+      "groupName": "uv"
+    },
+    {
+      "description": "The hub image stays on the nginx stable line, which has even minor versions. Odd minors are the mainline.",
+      "matchPackageNames": [
+        "nginx"
+      ],
+      "allowedVersions": "/^\\d+\\.\\d*[02468]-/"
+    },
+    {
+      "description": "Dagster comes from uv.lock and the chart follows it, so both bump in one PR. Only the lockfile moves, the pyproject floors stay.",
+      "matchPackageNames": [
+        "dagster"
+      ],
+      "matchManagers": [
+        "helmv3"
+      ],
+      "groupName": "dagster"
+    },
+    {
+      "description": "Of the Python packages only Dagster is Renovate's. The rest have no version updater yet (a Dependabot uv entry is planned after v0.4.0), and security alerts still open Dependabot PRs.",
+      "matchManagers": [
+        "pep621"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "The Dagster packages, grouped with the chart.",
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchPackageNames": [
+        "/^dagster/"
+      ],
+      "enabled": true,
+      "groupName": "dagster",
+      "rangeStrategy": "update-lockfile"
+    },
+    {
+      "description": "SRDP's own images are versioned by the release script, not by Renovate.",
+      "matchPackageNames": [
+        "/^ghcr\\.io/srdp-hub//",
+        "/srdp-registry//"
+      ],
+      "enabled": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Images written as 'image: name:tag@digest' inside chart values and templates.",
+      "managerFilePatterns": [
+        "/^deploy/kubernetes/srdp-chart/(values.*\\.yaml|templates/.*\\.(yaml|tpl))$/"
+      ],
+      "matchStrings": [
+        "image:\\s*[\"']?(?<depName>[^\\s\"':@{}]+):(?<currentValue>[^\\s\"'@]+)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))?"
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "timezone": "Europe/Amsterdam"
+}

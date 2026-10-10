@@ -51,7 +51,10 @@ zitadel:
       ZITADEL_API_URL="http://srdp-zitadel:8080"
       CUSTOM_REQUEST_HEADERS="Host:auth.srdp.localhost,X-Zitadel-Public-Host:auth.srdp.localhost"
 
-# Local overrides: use locally-built images (no registry pull)
+# Local overrides: use locally-built images (no registry pull), tagged dev.
+global:
+  imageTag: "dev"
+
 marimo:
   image:
     pullPolicy: Never
@@ -60,19 +63,58 @@ quarto:
   image:
     pullPolicy: Never
 
+streamlit:
+  image:
+    pullPolicy: Never
+
+setup:
+  image:
+    pullPolicy: Never
+
+api:
+  image:
+    pullPolicy: Never
+
+duckdbUi:
+  image:
+    pullPolicy: Never
+
+hub:
+  image:
+    pullPolicy: Never
+
 dagster:
+  dagsterWebserver:
+    image:
+      tag: "dev"
+      pullPolicy: Never
+    # Dev only, see the OPENSSL_armcap note in docker-compose.override.yml.
+    env: &openssl-armcap
+      - name: OPENSSL_armcap
+        value: "0"
+  dagsterDaemon:
+    image:
+      tag: "dev"
+      pullPolicy: Never
+    # Dev only, see the OPENSSL_armcap note in docker-compose.override.yml.
+    env: *openssl-armcap
+  runLauncher:
+    config:
+      k8sRunLauncher:
+        envVars:
+          - OPENSSL_armcap=0
   dagster-user-deployments:
     deployments:
       - name: srdp-etl
         image:
           repository: rg.nl-ams.scw.cloud/srdp-registry/srdp-etl
-          tag: "v1.0"
+          tag: "dev"
           pullPolicy: Never
         dagsterApiGrpcArgs: ["-m", "etl.definitions"]
         port: 3030
         initContainers:
           - name: wait-for-ducklake-db
-            image: postgres:17-alpine
+            image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
             command:
               - sh
               - -c
@@ -126,3 +168,6 @@ dagster:
             value: ducklake
           - name: DUCKLAKE_DATA_PATH
             value: /data/ducklake
+          # Dev only, see the OPENSSL_armcap note in docker-compose.override.yml.
+          - name: OPENSSL_armcap
+            value: "0"

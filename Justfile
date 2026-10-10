@@ -6,6 +6,8 @@ namespace := "srdp"
 # deploy recipes pass it to the chart as global.srdpRegistry and as the Dagster
 # code location's repository, a subchart value the chart cannot template.
 registry := `uv run --no-project python -c 'import sys, tomllib; sys.stdout.write(tomllib.load(open("srdp.toml", "rb"))["deploy"]["registry"])'`
+# Registry of the platform images SRDP publishes, the chart's global.platformRegistry.
+platform_registry := "ghcr.io/srdp-hub"
 # Helm patches deployments[0] in place only when a -f file defines the list
 # (values.yaml or values-prod.yaml do), otherwise the --set replaces it.
 registry_args := "--set-string 'global.srdpRegistry=" + registry + "' --set-string 'dagster.dagster-user-deployments.deployments[0].image.repository=" + registry + "/srdp-etl'"
@@ -51,23 +53,25 @@ kind-up:
 kind-down:
 	kind delete cluster --name srdp
 
-# Build all images and load them into kind
+# Build all images, tagged dev, and load them into kind
 kind-load-images: kind-up
-	docker build -t {{registry}}/marimo:v1.0 -f projects/cbs-example/notebooks/Dockerfile .
-	docker build -t {{registry}}/srdp-etl:v1.0 -f projects/cbs-example/Dockerfile .
-	docker build -t {{registry}}/srdp-api:v1.0 -f projects/cbs-example/api/Dockerfile .
-	docker build -t {{registry}}/duckdb-ui:v1.0 -f services/duckdb-ui/Dockerfile .
-	docker build -t {{registry}}/hub:v1.0 services/hub
-	docker build -t {{registry}}/streamlit:v1.0 -f projects/cbs-example/streamlit/Dockerfile .
-	docker build -t {{registry}}/srdp-setup:v1.0 -f deploy/docker/srdp-setup.Dockerfile .
+	docker build -t {{platform_registry}}/srdp-setup:dev -f deploy/docker/srdp-setup.Dockerfile .
+	docker build -t {{platform_registry}}/dagster-webserver:dev -f deploy/docker/dagster-webserver.Dockerfile .
+	docker build -t {{platform_registry}}/duckdb-ui:dev -f services/duckdb-ui/Dockerfile .
+	docker build -t {{platform_registry}}/hub:dev services/hub
+	docker build -t {{registry}}/marimo:dev -f projects/cbs-example/notebooks/Dockerfile .
+	docker build -t {{registry}}/srdp-etl:dev -f projects/cbs-example/Dockerfile .
+	docker build -t {{registry}}/srdp-api:dev -f projects/cbs-example/api/Dockerfile .
+	docker build -t {{registry}}/streamlit:dev -f projects/cbs-example/streamlit/Dockerfile .
 	kind load docker-image \
-		{{registry}}/marimo:v1.0 \
-		{{registry}}/srdp-etl:v1.0 \
-		{{registry}}/srdp-api:v1.0 \
-		{{registry}}/duckdb-ui:v1.0 \
-		{{registry}}/hub:v1.0 \
-		{{registry}}/srdp-setup:v1.0 \
-		{{registry}}/streamlit:v1.0 \
+		{{platform_registry}}/srdp-setup:dev \
+		{{platform_registry}}/dagster-webserver:dev \
+		{{platform_registry}}/duckdb-ui:dev \
+		{{platform_registry}}/hub:dev \
+		{{registry}}/marimo:dev \
+		{{registry}}/srdp-etl:dev \
+		{{registry}}/srdp-api:dev \
+		{{registry}}/streamlit:dev \
 		--name srdp
 
 # Trust mkcert's local CA (no-op once done) and generate TLS certs for the kind stack
@@ -103,8 +107,14 @@ local-delete:
 	kubectl delete pvc --all -n {{namespace}} || true
 
 # Start the Docker Compose stack (local dev). Attached by default; pass -d to detach.
+# Builds from source and tags the platform images dev, whatever SRDP_VERSION says.
 docker-up *args:
-	cd deploy/docker && docker compose up --build {{args}}
+	cd deploy/docker && SRDP_VERSION=dev docker compose up --build {{args}}
+
+# Start the Docker Compose stack with the published platform images of a release, e.g. `just docker-up-release 0.4.0 -d`.
+docker-up-release version *args:
+	cd deploy/docker && SRDP_VERSION='{{version}}' docker compose pull srdp-setup dagster-webserver dagster-daemon duckdb-ui hub
+	cd deploy/docker && SRDP_VERSION='{{version}}' docker compose up {{args}}
 
 # Stop the Docker Compose stack
 docker-down:

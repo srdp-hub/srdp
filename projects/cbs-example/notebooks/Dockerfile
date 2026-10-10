@@ -1,4 +1,9 @@
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+FROM python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
+
+# One Python for every image: the same base as the runtime stages, with uv copied in.
+COPY --from=ghcr.io/astral-sh/uv:0.12.19@sha256:04d046b13e60d6bcec73cbc5e1cad25d680dea90c8573340950a0ac2d1aef424 /uv /uvx /bin/
+ENV UV_PYTHON_DOWNLOADS=never \
+    UV_LINK_MODE=copy
 
 WORKDIR /app
 
@@ -6,10 +11,8 @@ WORKDIR /app
 # what lets the notebook attach the same catalog Dagster and dbt write to.
 COPY pyproject.toml uv.lock README.md ./
 COPY src/ src/
-RUN uv sync --frozen --no-dev --extra ducklake
-
-# Marimo itself is a runtime tool, not a dependency of the srdp library.
-RUN uv pip install --python .venv/bin/python "marimo>=0.13"
+# The app tool comes from the pyproject dependency group of the same name.
+RUN uv sync --frozen --no-dev --extra ducklake --group marimo
 
 ENV PATH="/app/.venv/bin:${PATH}"
 

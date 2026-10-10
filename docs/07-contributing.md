@@ -69,6 +69,9 @@ Publishing that draft builds, scans and signs the platform images, and publishes
 A release candidate such as `just release 0.4.0-rc.1` leaves the changelog alone, and its draft is marked as a pre-release.
 It publishes the images with the exact version tag only, so `latest` stays on the last stable release.
 
+GitHub creates new container packages as private, and the chart pulls the platform images without credentials.
+After the first publish, set each package to public in its settings. The `public` job of `images.yml` fails after a release while one is still private.
+
 ## Architectural Decision Records (ADRs)
 
 Significant, hard-to-reverse decisions (choosing a component, changing a core interface, adopting a new pattern) should be recorded as an ADR in `docs/adr/`.

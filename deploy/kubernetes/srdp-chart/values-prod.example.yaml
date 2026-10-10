@@ -40,7 +40,7 @@ traefik:
   deployment:
     initContainers:
       - name: fix-acme-perms
-        image: busybox:1.36
+        image: busybox:1.36.1@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
         command:
           - sh
           - -c
@@ -113,7 +113,7 @@ zitadel:
   initJob:
     initContainers:
       - name: wait-for-db
-        image: busybox:1.36
+        image: busybox:1.36.1@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
         command:
           - sh
           - -c
@@ -128,7 +128,7 @@ zitadel:
   setupJob:
     initContainers:
       - name: wait-for-db
-        image: busybox:1.36
+        image: busybox:1.36.1@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
         command:
           - sh
           - -c
@@ -176,7 +176,7 @@ dagster:
   dagsterWebserver:
     extraPrependedInitContainers: &wait-for-dagster-db-prod
       - name: wait-for-dagster-db
-        image: postgres:17-alpine
+        image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
         command:
           - sh
           - -c
@@ -218,7 +218,7 @@ dagster:
       - name: srdp-etl
         image:
           repository: "rg.nl-ams.scw.cloud/srdp-registry/srdp-etl" # Set from srdp.toml by the Justfile
-          tag: "v1.0"
+          tag: "0.3.1" # release-tag
           pullPolicy: IfNotPresent
         dagsterApiGrpcArgs:
           - "-m"
@@ -226,7 +226,7 @@ dagster:
         port: 3030
         initContainers:
           - name: wait-for-ducklake-db
-            image: postgres:17-alpine
+            image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
             command:
               - sh
               - -c

@@ -2,10 +2,11 @@
 Blocks pod start until <user> can log in to <db>. Logging in with the
 consumer's own password also waits out a password change the setup hook
 hasn't applied yet. Literal copies live in values*.yaml, keep them in step.
+The image is Compose's postgres image, tests/deploy checks every copy.
 */}}
 {{- define "srdp.waitForDbLogin" -}}
 - name: wait-for-{{ .db }}-db
-  image: postgres:17-alpine
+  image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
   command:
     - sh
     - -c
@@ -88,7 +89,9 @@ Usage: {{ include "srdp.image" (list . .Values.api.image) }}
 {{- define "srdp.image" -}}
 {{- $root := index . 0 -}}
 {{- $image := index . 1 -}}
-{{- printf "%s/%s:%s" (trimSuffix "/" $root.Values.global.srdpRegistry) $image.repository $image.tag | quote -}}
+{{- $registry := ternary $root.Values.global.platformRegistry $root.Values.global.srdpRegistry (default false $image.platform) -}}
+{{- $tag := $image.tag | default $root.Values.global.imageTag | default $root.Chart.AppVersion -}}
+{{- printf "%s/%s:%s" (trimSuffix "/" $registry) $image.repository $tag | quote -}}
 {{- end -}}
 
 {{/*

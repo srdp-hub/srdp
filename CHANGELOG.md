@@ -7,7 +7,7 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 ### Added
 
 - Signed platform images: every release builds `srdp-setup`, `dagster-webserver`, `duckdb-ui` and `hub` for amd64 and arm64, scans them for critical vulnerabilities, signs them with cosign, attests their provenance and publishes them to `ghcr.io/srdp-hub` once all four pass, tagged with the exact version (which never moves) and `latest` for the newest stable release. Pull requests and pushes to `main` that touch the images build and scan them without publishing. See "Verifying published images" in the deployment docs.
-- Dependabot for GitHub Actions and the platform images' base images, which are pinned by digest.
+- Renovate proposes one weekly PR for the images, the chart dependencies and the Dagster packages. It needs a `RENOVATE_TOKEN` secret. Dependabot stays for GitHub Actions.
 - `just pre-commit`, which runs every pre-commit hook on all files.
 - `srdp-setup` service that creates every service database and role before the services that need them start, on Docker Compose and Kubernetes.
   It runs on every deploy, so it also repairs an existing volume that is missing a database, and it resets each role's password to the configured value.
@@ -56,7 +56,20 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 - The chart's setup Job runs before Zitadel's hooks, gives up after 2 retries or 4 minutes, and can be switched off with `setup.enabled`.
   It stays after it succeeds, until the next install or upgrade, so `kubectl logs job/srdp-setup` always shows the last run.
   Each connection attempt times out after 5 seconds, so an unreachable host can't use up those 4 minutes.
-- `just build-and-push` also builds and pushes the `srdp-setup` image, and stops on the first failed build or push.
+- `just build-and-push` stops on the first failed build or push.
+- Every third-party container image is pinned to an exact version, by digest where possible, and Compose and the chart run the same version of each. A test checks it.
+  Existing `values-prod.yaml` files must pin the same images in their wait containers, since their lists replace the chart's.
+- Postgres is major 18 on both targets, up from 17 on Compose.
+  The volume mounts at `/var/lib/postgresql`, so a Postgres 17 `srdp-pgdata` volume does not start.
+  Remove it with `docker volume rm srdp-pgdata` (deletes the local data), or run `pg_dumpall` first.
+- The platform images (`srdp-setup`, `dagster-webserver`, `duckdb-ui`, `hub`) come from `ghcr.io/srdp-hub` at the release version instead of `v1.0`, and local builds are tagged `dev`.
+  `just docker-up` builds from source and `just docker-up-release <version>` pulls a release.
+  This breaks `values-prod.yaml` files that set image tags, which must drop them, and `just build-and-push` no longer pushes `srdp-setup`.
+  Until the first release publishes the images, production cannot pull them. The ghcr packages must be public, and the `public` job of `images.yml` checks it after a release.
+- On Kubernetes the Dagster webserver and daemon run the `dagster-webserver` image built from `uv.lock`, and the Dagster subchart is 1.13.20. Only a fresh install was tested.
+- For development only, the Compose override and `values-local.yaml` set `OPENSSL_armcap=0` on the Dagster containers, because `cryptography` 47 to 50 crashes on import on Colima on an Apple M4 (tested on that host only).
+- One Python build in every image, from one `python` and one `uv` reference. A test checks it.
+- Streamlit and Marimo are dependency groups in `pyproject.toml`, installed with `uv sync --group`.
 
 ### Removed
 

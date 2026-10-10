@@ -53,6 +53,14 @@ Issues = "https://github.com/srdp-hub/srdp/issues"
 Documentation = "https://docs.srdphub.com"
 
 [dependency-groups]
+# Runtime tools of the example apps. They are not part of the published srdp
+# package, so they are groups and the app images install them with --group.
+streamlit = [
+    "streamlit>=1.50.0",
+]
+marimo = [
+    "marimo>=0.13",
+]
 dev = [
     { include-group = "lint" },
     { include-group = "test" },

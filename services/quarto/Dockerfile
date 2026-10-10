@@ -1,5 +1,5 @@
 # Stage 1: Build the static site using the official Quarto image
-FROM ghcr.io/quarto-dev/quarto:1.8.24 AS builder
+FROM ghcr.io/quarto-dev/quarto:1.8.24@sha256:866dead91b280186bc9de568a084daa7893f7e93ba528794b94bd8998b1f32cc AS builder
 
 # Copy the Quarto source file into the container
 WORKDIR /app
@@ -12,7 +12,7 @@ RUN quarto render
 # ---
 
 # Stage 2: Serve the static files using a lightweight Nginx image
-FROM nginx:1.28-alpine-slim
+FROM nginx:1.28-alpine-slim@sha256:b33eedfdf089be1f83759ced27b4deec5b6f1b6fc2a6819ebce0ae351a4406e5
 
 # Copy the custom Nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf

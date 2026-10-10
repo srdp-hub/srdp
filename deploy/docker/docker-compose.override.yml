@@ -3,3 +3,15 @@ services:
     volumes:
       - "./certs/selfsigned.crt:/etc/certs/selfsigned.crt:ro"
       - "./certs/selfsigned.key:/etc/certs/selfsigned.key:ro"
+
+  # Dev only. cryptography 47+ crashes in OpenSSL's ARM probe on Colima on an
+  # M4 (exit 132), and this skips the probe. Production keeps it on.
+  dagster-daemon:
+    environment:
+      OPENSSL_armcap: "0"
+  dagster-webserver:
+    environment:
+      OPENSSL_armcap: "0"
+  dagster-code:
+    environment:
+      OPENSSL_armcap: "0"
