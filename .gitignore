@@ -16,6 +16,9 @@ login-client.pat
 # Zensical build output
 site/
 
+# Exported docs PDFs (just docs-pdf)
+dist/
+
 # Terraform
 .terraform
 terraform.tfstate

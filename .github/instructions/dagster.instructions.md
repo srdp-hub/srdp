@@ -11,27 +11,31 @@ applyTo:
 
 ### Runtime architecture
 
-Dagster runs as a multi-process server, not a single script:
+Dagster runs as three kinds of processes.
 
-- **Webserver**: serves the UI and GraphQL API (stateless, horizontally scalable).
-- **Daemon**: runs schedules, sensors, and run queue (single instance).
-- **User code server**: gRPC process loading your definitions (can be multiple per project).
+- The webserver serves the UI and the GraphQL API. It is stateless and can scale out.
+- The daemon runs schedules, sensors and the run queue. Run only one daemon.
+- A code server is a gRPC process that loads the definitions. A project can have several.
 
-PostgreSQL is the stateful backend. It stores run history, event logs, schedules, and asset metadata. Treat it as critical state: back it up, never delete its PVC without understanding the consequences.
+PostgreSQL stores run history, event logs, schedules and asset metadata.
+Back it up. Never delete its volume or PVC.
 
 ### Assets
 
-- Use typed return annotations: `Output[pl.DataFrame]`, `Output[str]`.
-- Register `ducklake_io_manager` under the `"io_manager"` key, so it's every asset's default instead of an opt-in. An asset that can't produce a `pl.DataFrame`/`pl.LazyFrame` needs an explicit, differently-named `io_manager_key` to opt out visibly.
-- `defs = Definitions(...)` is the only top-level export in `definitions.py`.
+- Annotate return types, such as `Output[pl.DataFrame]` or `Output[str]`.
+- Register `ducklake_io_manager` under the `"io_manager"` key, so every asset uses it by default.
+- Give an asset that cannot return a `pl.DataFrame` or `pl.LazyFrame` its own `io_manager_key`.
+- Export only `defs = Definitions(...)` from `definitions.py`.
 
 ### K8s resource profiles
 
-Import from `srdp.resources.k8s`, never redefine inline:
+Import these profiles from `srdp.resources.k8s`. Do not define them again.
 
-- `BASE_RUN_K8S_CONFIG`: standard workloads
-- `FAST_LANE_K8S_CONFIG`: latency-sensitive
-- `BACKFILL_K8S_CONFIG`: batch processing
+| Profile | Use |
+|:---|:---|
+| `BASE_RUN_K8S_CONFIG` | Standard workloads |
+| `FAST_LANE_K8S_CONFIG` | Latency-sensitive runs |
+| `BACKFILL_K8S_CONFIG` | Batch processing |
 
 ### Priority scheme
 
@@ -44,7 +48,7 @@ Import from `srdp.resources.k8s`, never redefine inline:
 
 ### Project structure
 
-- Client assets live in `projects/<name>/src/etl/assets/`.
-- The module is loaded via `-m etl.definitions`.
-- To add a new client: copy `projects/cbs-example/` and rename.
-- Reusable platform code belongs in `src/srdp/`, not in a project.
+- Put client assets in `projects/<name>/src/etl/assets/`.
+- Load the module with `-m etl.definitions`.
+- To add a client, copy `projects/cbs-example/` and rename it.
+- Put reusable platform code in `src/srdp/`.

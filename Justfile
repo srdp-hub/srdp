@@ -216,6 +216,10 @@ fix:
 	uv run ruff check --fix src/ projects/
 	uv run ruff format src/ projects/
 
+# Export a docs page to a GitHub-styled PDF in dist/pdf/, see scripts/docs-pdf.sh
+docs-pdf page:
+	scripts/docs-pdf.sh {{quote(page)}}
+
 # Cut a release: bump version, run CI, commit, tag
 release version:
 	./scripts/release.sh "{{version}}"

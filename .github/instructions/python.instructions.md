@@ -6,15 +6,17 @@ applyTo: "**/*.py"
 
 ### Imports
 
-- Do NOT add `from __future__ import annotations` — the repo targets Python 3.12+ where native type hints work without it.
-- Group order: stdlib → third-party → first-party (`srdp.*`) → local.
-- No relative imports anywhere. Always absolute.
-- Use `TYPE_CHECKING` guards for imports only needed at type-check time.
+- Do not add `from __future__ import annotations`. Python 3.12 supports native type hints.
+- Order imports as stdlib, third-party, first-party (`srdp.*`), then local.
+- Use absolute imports only.
+- Put imports that only type checking needs under `TYPE_CHECKING`.
 
-### Every public symbol needs a docstring
+### Docstrings
+
+Give every public symbol a docstring.
 
 ```python
-# ✅ correct
+# Correct
 def table_ref(self, asset_key_path: list[str]) -> str:
     """Derive a fully-qualified DuckLake table reference from an asset key path.
 
@@ -25,39 +27,43 @@ def table_ref(self, asset_key_path: list[str]) -> str:
         Fully-qualified reference like ``ducklake.raw.orders``.
     """
 
-# ❌ wrong — missing docstring
+# Wrong: no docstring
 def table_ref(self, asset_key_path: list[str]) -> str:
     ...
 ```
 
-### All signatures fully annotated — native syntax only
+### Type annotations
+
+Annotate every signature fully. Use native syntax only.
 
 ```python
-# ✅ correct
+# Correct
 def create_connection(
     settings: DuckLakeSettings,
     backend: StorageBackend | None = None,
 ) -> duckdb.DuckDBPyConnection:
 
-# ❌ wrong — missing annotations
+# Wrong: no annotations
 def create_connection(settings, backend=None):
 
-# ❌ wrong — legacy typing module
+# Wrong: legacy typing module
 def create_connection(
     settings: DuckLakeSettings,
     backend: Optional[StorageBackend] = None,
 ) -> duckdb.DuckDBPyConnection:
 ```
 
-### Small, focused functions
+### Functions
+
+Give each function one responsibility.
 
 ```python
-# ✅ correct — one responsibility per function
+# Correct
 def _ensure_schema(conn: duckdb.DuckDBPyConnection, schema: str) -> None:
     """Create the DuckLake schema if it does not already exist."""
     conn.execute(f"CREATE SCHEMA IF NOT EXISTS ducklake.{schema}")  # noqa: S608
 
-# ❌ wrong — doing too many things at once
+# Wrong: too many responsibilities
 def setup_and_write(settings, df, schema, table):
     conn = duckdb.connect()
     conn.execute("INSTALL ducklake")
@@ -65,56 +71,62 @@ def setup_and_write(settings, df, schema, table):
     conn.execute(f"CREATE TABLE {schema}.{table} AS SELECT * FROM df")
 ```
 
-### Settings via pydantic-settings
+### Settings
+
+Read configuration through pydantic-settings. Do not read `os.environ`.
 
 ```python
-# ✅ correct
+# Correct
 class DuckLakeSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DUCKLAKE_", env_file=".env")
     pg_host: str = Field(default="localhost")
-    pg_password: str  # required — no default
+    pg_password: str  # required, no default
 
-# ❌ wrong — reading os.environ directly
+# Wrong
 pg_host = os.environ.get("DUCKLAKE_PG_HOST", "localhost")
 ```
 
 ### Logging
 
+Use `logging`. Do not use `print()`.
+
 ```python
-# ✅ correct
+# Correct
 import logging
 logger = logging.getLogger(__name__)
 logger.info("Processing %d rows.", count)
 
-# ❌ wrong
+# Wrong
 print(f"Processing {count} rows")
 ```
 
 ### SQL safety
 
+Put only validated identifiers in SQL strings. Never put user input in SQL.
+
 ```python
-# ✅ acceptable — identifiers come from validated asset keys, not user input
+# Correct: identifiers come from validated asset keys
 conn.execute(f"SELECT * FROM {ref}")  # noqa: S608
 
-# ❌ never — user-controlled strings in SQL
+# Wrong: user input in SQL
 conn.execute(f"SELECT * FROM {user_input}")
 ```
 
 ### Classes
 
-- Use classes to group related functionality, not to hold mutable state.
-- Prefer returning values over mutating arguments.
-- Don't put logic in `__init__.py` — only imports and a module-level docstring.
+- Use classes to group related functions. Do not use them to hold mutable state.
+- Return values. Do not change arguments.
+- Put only imports and a module docstring in `__init__.py`.
 
 ### Code organization
 
-- Reusable platform code belongs in `src/srdp/`, not in a project directory.
-- Each submodule should be self-contained with clear boundaries.
-- Assets and definitions go in `src/srdp/assets/` or `projects/<name>/src/etl/assets/`, not in core or utils.
+- Put reusable platform code in `src/srdp/`. Do not put it in a project.
+- Keep each submodule self-contained.
+- Put assets and definitions in `src/srdp/assets/` or `projects/<name>/src/etl/assets/`.
 
 ### Testing
 
-- Use `pytest` for all tests. Write tests as plain functions, not inside classes.
+- Use `pytest`. Write tests as plain functions.
 - Use fixtures for shared setup.
-- Only test our own code, not functionality from external packages.
-- Test files mirror the source structure under `tests/`.
+- Test only our own code.
+- Mirror the source structure under `tests/`.

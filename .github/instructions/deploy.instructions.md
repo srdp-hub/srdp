@@ -10,59 +10,67 @@ applyTo:
 
 ### Task runner
 
-Always use `just`. Run `just` at the repo root to list all commands.
+Use `just` for every task. Run `just` at the repo root to list the recipes.
 
 ### Secrets
 
-Never commit secrets. These are gitignored:
+Never commit secrets. Git ignores `.env`, `secrets.sh`, `values-prod.yaml`, `kubeconfig.yaml` and `certs/`.
 
-- `.env`, `secrets.sh`, `values-prod.yaml`, `kubeconfig.yaml`, `certs/`
+Create each secret file from its example.
 
-Work from example counterparts:
+| Example | Copy to |
+|:---|:---|
+| `deploy/docker/.env.example` | `deploy/docker/.env` |
+| `deploy/opentofu/scaleway/secrets.sh.example` | `secrets.sh` |
+| `deploy/kubernetes/srdp-chart/values-prod.example.yaml` | `values-prod.yaml` |
 
-- `deploy/docker/.env.example` → `deploy/docker/.env`
-- `deploy/opentofu/scaleway/secrets.sh.example` → secrets.sh
-- `deploy/kubernetes/srdp-chart/values-prod.example.yaml` → values-prod.yaml
-
-Placeholders use the `CHANGE_ME_*` prefix convention.
+Start placeholder values with `CHANGE_ME_`.
 
 ### Helm chart
 
-- Release name: `srdp`, so services are `srdp-<component>`.
-- Namespace: always `srdp`.
-- Values layering: `values.yaml` (base) → `values-local.yaml` → `values-prod.yaml` (gitignored).
-- Every template guarded by `{{- if .Values.<component>.enabled }}`.
-- Domain: `global.domain` is the single source of truth.
-- TLS: check `{{ if .Values.traefik.certResolver }}` for ACME vs local cert.
-- IngressClass: `srdp-traefik`.
+- Use the release name `srdp`, so services are named `srdp-<component>`.
+- Use the namespace `srdp`.
+- Layer the values as `values.yaml`, then `values-local.yaml`, then `values-prod.yaml`.
+- Guard every template with `{{- if .Values.<component>.enabled }}`.
+- Set the domain only in `global.domain`.
+- Check `{{ if .Values.traefik.certResolver }}` to choose between ACME and a local certificate.
+- Use the IngressClass `srdp-traefik`.
 
 ### Container images
 
-Registry: `[deploy] registry` in `srdp.toml`.
-The Justfile passes it to builds and to the chart, so never hardcode it elsewhere.
+Set the registry in `[deploy] registry` in `srdp.toml`.
+The Justfile passes it to builds and to the chart. Do not hardcode it elsewhere.
 
-The images and their Dockerfiles are listed in the `kind-load-images` recipe in the `Justfile`.
-Images that are built from the repo root (the Python ones copy `pyproject.toml`, `uv.lock`, `src/` and `projects/`) need the repo root as build context.
-`just build-and-push` pushes to that registry, and CI publishes the platform images to ghcr.io (`.github/workflows/images.yml`).
+The `kind-load-images` recipe in the `Justfile` lists every image and its Dockerfile.
+Build the Python images with the repo root as context, because they copy `pyproject.toml`, `uv.lock`, `src/` and `projects/`.
+`just build-and-push` pushes to the registry.
+CI publishes the platform images to ghcr.io (`.github/workflows/images.yml`).
 
 ### PostgreSQL
 
-One Postgres instance serves the `zitadel`, `dagster`, `marquez` and `ducklake` databases, as a container in Compose and the Bitnami subchart (`zitadel-db`) in Kubernetes.
-The `srdp-setup` service (Compose) or Job (Kubernetes) creates every database and role from `srdp.toml` `[setup]` or `values.yaml` `setup.databases`, and resets each role's password to the configured value on every deploy.
+One Postgres instance serves the `zitadel`, `dagster`, `marquez` and `ducklake` databases.
+It runs as a container in Compose and as the Bitnami subchart `zitadel-db` in Kubernetes.
+
+`srdp-setup` creates every database and role from `srdp.toml` `[setup]` or `values.yaml` `setup.databases`.
+It runs as a service in Compose and as a Job in Kubernetes.
+It resets each role password to the configured value on every deploy.
+
 Never delete the Postgres volume or PVC to fix a password mismatch, because that destroys all data.
 Rerun the deploy instead, as `docs/06-troubleshooting.md` describes.
 
-No password lives in the chart's values files.
-Every consumer reads a Secret with a fixed name: `srdp-postgres`, `srdp-zitadel`, `srdp-oauth2-proxy`, `srdp-dagster-postgresql` and `srdp-marquez` (keys listed in `values.yaml`).
+Do not put passwords in the chart values files.
+Each consumer reads a Secret with a fixed name, and `values.yaml` lists the keys.
+The Secrets are `srdp-postgres`, `srdp-zitadel`, `srdp-oauth2-proxy`, `srdp-dagster-postgresql` and `srdp-marquez`.
 In kind, `templates/local-secrets.yaml` creates them from `localSecrets` in `values-local.yaml`.
-Elsewhere, External Secrets creates them.
-The Zitadel master key in `srdp-zitadel` must be exactly 32 characters.
+In other clusters, External Secrets creates them.
 
-### Known gotchas
+### Known problems
 
-- Zitadel master key must be exactly 32 characters.
-- `imagePullPolicy: Never` in local, so `ImagePullBackOff` means the image isn't loaded into kind (`just kind-load-images`).
-- `tofu destroy` fails if LB not released first. Run `just prod-uninstall` before destroy.
-- Traefik stuck in Init: `ReadWriteOnce` PVC held by previous pod. Delete old pod/PVC.
-- OAuth login loops: domain mismatch between `global.domain`, Zitadel OIDC redirect, and oauth2-proxy `--oidc-issuer-url`.
-- Dagster CrashLoopBackOff with "password authentication failed": rerun `just local-deploy` (or `helm upgrade`) so `srdp-setup` resets the role password, see `docs/06-troubleshooting.md`.
+| Symptom | Cause and fix |
+|:---|:---|
+| Zitadel does not start | The master key in `srdp-zitadel` must be exactly 32 characters. |
+| `ImagePullBackOff` in kind | Local uses `imagePullPolicy: Never`. Run `just kind-load-images`. |
+| `tofu destroy` fails | The load balancer still exists. Run `just prod-uninstall` first. |
+| Traefik stays in Init | The old pod holds the `ReadWriteOnce` PVC. Delete the old pod or PVC. |
+| OAuth login loops | `global.domain`, the Zitadel OIDC redirect and the oauth2-proxy `--oidc-issuer-url` do not match. |
+| Dagster `CrashLoopBackOff` with "password authentication failed" | Rerun `just local-deploy` or `helm upgrade`, so `srdp-setup` resets the password. See `docs/06-troubleshooting.md`. |
