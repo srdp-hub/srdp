@@ -154,7 +154,8 @@ services:
   zitadel-init:
     image: '${ZITADEL_IMAGE:-ghcr.io/zitadel/zitadel:v4.11.1@sha256:a9f1ed98e0ab7f98cadecab90a47226b735ffad3ed0f318abd7817839518fb1a}'
     container_name: srdp-zitadel-init
-    command: init
+    # srdp-setup created the role and database, so Zitadel never needs the superuser.
+    command: init zitadel
     depends_on:
       srdp-setup:
         condition: service_completed_successfully

@@ -206,9 +206,9 @@ not change the pod spec, so without it a pod keeps the old value after a
 redeploy, e.g. Marquez after srdp-setup resets its role's password. Hashes
 the whole local-secrets.yaml, so any local Secret change rolls every reader.
 Kind only: External Secrets (#69) covers this in the cloud. Subcharts get the
-same annotation from the Justfile's local_secrets_args. Zitadel is left out on
-purpose: nothing resets its role's password until #78, so a rolled Zitadel pod
-would fail to log in with a changed password.
+same annotation from the Justfile's local_secrets_args. A rolled pod waits in
+its login init container until the srdp-setup hook has reset the role's
+password, so a changed password needs no manual restart.
 */}}
 {{- define "srdp.localSecretsChecksum" -}}
 {{- if .Values.localSecrets.enabled -}}

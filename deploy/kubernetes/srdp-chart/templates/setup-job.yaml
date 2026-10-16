@@ -44,6 +44,11 @@ spec:
                   key: postgres-password
             # Same Secret keys the consumers read, otherwise the Job resets a
             # role to a password its application does not know.
+            - name: SETUP_PASSWORDS__ZITADEL
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-zitadel
+                  key: db-password
             - name: SETUP_PASSWORDS__DAGSTER
               valueFrom:
                 secretKeyRef:
