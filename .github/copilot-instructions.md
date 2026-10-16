@@ -1,10 +1,10 @@
-# SRDP — GitHub Copilot Instructions
+# SRDP: GitHub Copilot instructions
 
-All coding conventions and project rules are defined in [AGENTS.md](../AGENTS.md) at the repository root.
-Domain-specific instructions are in `.github/instructions/` and load automatically based on file patterns.
+[AGENTS.md](../AGENTS.md) at the repository root has all coding conventions and project rules.
+`.github/instructions/` has the rules for each domain, and Copilot loads them by file pattern.
 
-This file extends those with GitHub Copilot-specific configuration.
+This file adds settings that apply only to GitHub Copilot.
 
 ## Skills
 
-- Skills are in `.github/instructions/skills/` for Copilot-specific workflows.
+Copilot-specific workflows are in `.github/instructions/skills/`.
