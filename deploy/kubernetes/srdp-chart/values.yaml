@@ -21,9 +21,9 @@ global:
 # Credentials: none live in this file. Every password and key comes from a
 # Secret with a fixed name, created outside the chart (External Secrets in the
 # cloud, templates/local-secrets.yaml in kind):
-#   srdp-postgres            postgres-password, password (zitadel user),
+#   srdp-postgres            postgres-password (superuser, never read by Zitadel),
 #                            replication-password (replication only)
-#   srdp-zitadel             masterkey, config-yaml
+#   srdp-zitadel             masterkey, db-password, admin-password
 #   srdp-oauth2-proxy        client-id, client-secret, cookie-secret
 #   srdp-dagster-postgresql  postgresql-password
 #   srdp-marquez             db-password
@@ -57,13 +57,11 @@ traefik:
 zitadel-db:
   enabled: true
   fullnameOverride: "db-postgresql"
+  # Only the superuser comes from this subchart, srdp-setup creates the zitadel role.
   auth:
-    database: zitadel
-    username: zitadel
     existingSecret: srdp-postgres
     secretKeys:
       adminPasswordKey: postgres-password
-      userPasswordKey: password
       replicationPasswordKey: replication-password
   # Bitnami publishes only `latest`, so these are pinned by digest. This one is
   # PostgreSQL 18.6.0, the Compose major. Renovate does not track them, so bump
@@ -109,11 +107,8 @@ zitadel-db:
 zitadel:
   enabled: true
   zitadel:
-    # masterkey (32 characters) and config-yaml, which holds the database
-    # passwords and the first admin's password, merged with configmapConfig.
+    # Zitadel uses its own role, never the superuser. The masterkey must be 32 characters.
     masterkeySecretName: srdp-zitadel
-    configSecretName: srdp-zitadel
-    configSecretKey: config-yaml
     configmapConfig:
       ExternalDomain: auth.srdp.localhost
       ExternalPort: 443
@@ -132,13 +127,63 @@ zitadel:
             Username: zitadel
             SSL:
               Mode: verify-full
-          Admin:
-            Username: postgres
-            SSL:
-              Mode: verify-full
-    dbSslCaCrtSecret: postgres-cert
-    dbSslAdminCrtSecret: postgres-cert
+    # CA only, postgres-cert also holds the server key.
+    dbSslCaCrtSecret: postgres-ca
     dbSslUserCrtSecret: zitadel-cert
+    # Shared by the Deployment and both jobs. Like srdp.waitForDbLogin, but verifies the server.
+    initContainers:
+      - name: wait-for-zitadel-db
+        image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+        command:
+          - sh
+          - -c
+          - |
+            for i in $(seq 1 60); do
+              psql -tAc "SELECT 1" >/dev/null && exit 0
+              echo "waiting for $PGUSER to log in to $PGDATABASE ($i/60)..."
+              sleep 2
+            done
+            exit 1
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 70
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: [ALL]
+        env:
+          - name: PGHOST
+            value: db-postgresql
+          - name: PGUSER
+            value: zitadel
+          - name: PGDATABASE
+            value: zitadel
+          - name: PGPASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: srdp-zitadel
+                key: db-password
+          # Verify the server before sending the password, with the CA the chart mounts.
+          - name: PGSSLMODE
+            value: verify-full
+          - name: PGSSLROOTCERT
+            value: /db-ssl-ca-crt/ca.crt
+        volumeMounts:
+          - name: db-ssl-ca-crt
+            mountPath: /db-ssl-ca-crt
+            readOnly: true
+  # Same variable names as Compose.
+  env:
+    - name: ZITADEL_DATABASE_POSTGRES_USER_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: srdp-zitadel
+          key: db-password
+    - name: ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: srdp-zitadel
+          key: admin-password
   image:
     tag: "v4.11.1"
 
@@ -158,19 +203,8 @@ zitadel:
       "helm.sh/hook-weight": "-5"
       "helm.sh/hook-delete-policy": before-hook-creation
     activeDeadlineSeconds: 900
-    initContainers:
-      - name: wait-for-db
-        image: busybox:1.36.1@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
-        command:
-          - sh
-          - -c
-          - |
-            echo "Waiting for PostgreSQL at db-postgresql:5432..."
-            until nc -z -v -w 2 db-postgresql 5432; do
-              echo "Waiting for DB..."
-              sleep 2;
-            done
-            echo "PostgreSQL is up!"
+    # srdp-setup made the role and database. The full `init` would need the superuser.
+    command: zitadel
 
   setupJob:
     annotations:
@@ -183,19 +217,6 @@ zitadel:
       image:
         repository: alpine/k8s
         tag: "1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4"
-    initContainers:
-      - name: wait-for-db
-        image: busybox:1.36.1@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
-        command:
-          - sh
-          - -c
-          - |
-            echo "Waiting for PostgreSQL at db-postgresql:5432..."
-            until nc -z -v -w 2 db-postgresql 5432; do
-              echo "Waiting for DB..."
-              sleep 2;
-            done
-            echo "PostgreSQL is up!"
 
 # O-Auth2 Proxy
 oauth2-proxy:
@@ -553,11 +574,14 @@ quarto:
 # Setup: database/role bootstrap Job
 setup:
   # When disabled, the databases must exist already, consumers wait for them.
+  # Zitadel needs the Job, see templates/validate.yaml.
   enabled: true
   image:
     repository: srdp-setup
     platform: true
     pullPolicy: IfNotPresent
+  # false when someone else creates the databases and roles. The Job then only checks them.
+  manageDatabases: true
   # The whole Job, retries included. It must cover the database wait plus the
   # Garage step's wait (DATABASE_WAIT_SECONDS and GARAGE_WAIT_SECONDS in
   # src/srdp/setup/), a test checks. A deadline kill fails `helm install`, so
@@ -565,12 +589,8 @@ setup:
   activeDeadlineSeconds: 900
   # Keep in step with srdp.toml [setup]. A new role needs its SETUP_PASSWORDS__<ROLE> on the Job.
   databases:
-    # Owned by the zitadel-db subchart's auth.* fields instead, a second
-    # source for the same role could silently diverge. #78 moves it into
-    # srdp-setup, like every other database.
     - name: zitadel
       role: zitadel
-      enabled: false
     - name: dagster
       role: dagster
     - name: marquez

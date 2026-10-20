@@ -29,11 +29,11 @@ domain_hosts := '"' + domain + '" "*.' + domain + '" "auth.' + domain + '" "mari
 # Subcharts cannot hash the parent's Secrets, so local-deploy passes them a hash of
 # values-local.yaml, which holds every local Secret value.
 local_secrets_sum := `uv run --no-project python -c 'import hashlib, sys; sys.stdout.write(hashlib.sha256(open("deploy/kubernetes/srdp-chart/values-local.yaml", "rb").read()).hexdigest())'`
-local_secrets_args := "--set-string 'oauth2-proxy.podAnnotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'dagster.dagsterWebserver.annotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'dagster.dagsterDaemon.annotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'dagster.dagster-user-deployments.deployments[0].annotations.checksum/local-secrets=" + local_secrets_sum + "'"
+local_secrets_args := "--set-string 'oauth2-proxy.podAnnotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'dagster.dagsterWebserver.annotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'dagster.dagsterDaemon.annotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'dagster.dagster-user-deployments.deployments[0].annotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'zitadel.podAnnotations.checksum/local-secrets=" + local_secrets_sum + "'"
 # Staged prod rollout: apps that every partial stage leaves off.
-prod_apps_off := "--set dagster.enabled=false --set marimo.enabled=false --set quarto.enabled=false --set streamlit.enabled=false --set api.enabled=false --set duckdbUi.enabled=false --set marquez.enabled=false --set setup.enabled=false"
-# Traefik and the hub page only, to get the first LoadBalancer IP.
-prod_traefik_only_args := "--set zitadel.enabled=false --set zitadel-db.enabled=false --set oauth2-proxy.enabled=false " + prod_apps_off
+prod_apps_off := "--set dagster.enabled=false --set marimo.enabled=false --set quarto.enabled=false --set streamlit.enabled=false --set api.enabled=false --set duckdbUi.enabled=false --set marquez.enabled=false"
+# Traefik only, for the first LoadBalancer IP. No login gate yet, so nothing behind it runs.
+prod_traefik_only_args := "--set zitadel.enabled=false --set zitadel-db.enabled=false --set oauth2-proxy.enabled=false --set setup.enabled=false --set hub.enabled=false " + prod_apps_off
 # Traefik, the hub page and the auth stack (Zitadel, its database, OAuth2-Proxy).
 prod_auth_only_args := "--set zitadel.enabled=true --set oauth2-proxy.enabled=true " + prod_apps_off
 kubeconfig := justfile_directory() + "/deploy/opentofu/scaleway/kubeconfig.yaml"
@@ -155,7 +155,7 @@ prod-get-values:
 	@if [ ! -f "{{kubeconfig}}" ]; then echo "kubeconfig not found, run 'just prod-use-kubeconfig' first"; exit 1; fi
 	@KUBECONFIG="{{kubeconfig}}" kubectl get svc srdp-traefik -n {{namespace}} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' | xargs -I{} printf "LOAD_BALANCER_IP:\t%s\n" "{}"
 
-# Deploy only Traefik and the hub page, to get the first LoadBalancer IP
+# Deploy only Traefik, to get the first LoadBalancer IP
 prod-traefik-only:
 	cd deploy/kubernetes && \
 		if [ ! -f "{{kubeconfig}}" ]; then echo "kubeconfig not found, run 'just prod-use-kubeconfig' first"; exit 1; fi; \

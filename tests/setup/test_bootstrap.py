@@ -12,6 +12,7 @@ from srdp.setup.bootstrap import (
     DatabaseTarget,
     SetupSettings,
     _connect_with_retry,
+    check_targets,
     ensure_target,
 )
 
@@ -229,6 +230,33 @@ def test_connect_retries_with_a_per_attempt_timeout(monkeypatch: pytest.MonkeyPa
     assert _connect_with_retry(_settings()) is connection
     assert len(calls) == 3
     assert all(call["connect_timeout"] == CONNECT_TIMEOUT_SECONDS for call in calls)
+
+
+def test_unmanaged_databases_need_no_role_passwords() -> None:
+    settings = SetupSettings(  # ty: ignore[missing-argument]
+        databases=[DatabaseTarget(name="marquez", role="marquez")], manage_databases=False
+    )
+
+    assert settings.manage_databases is False
+
+
+def test_unmanaged_databases_are_only_checked() -> None:
+    targets = [DatabaseTarget(name="marquez", role="marquez"), DatabaseTarget(name="ducklake")]
+    cur = FakeCursor(existing_roles=set(), existing_databases={"marquez", "ducklake"})
+    settings = SetupSettings(databases=targets, manage_databases=False)  # ty: ignore[missing-argument]
+
+    check_targets(cur, settings)
+
+    assert not any(("CREATE" in s) or ("ALTER" in s) for s in cur.statements)
+
+
+def test_unmanaged_missing_database_fails() -> None:
+    targets = [DatabaseTarget(name="marquez", role="marquez"), DatabaseTarget(name="ducklake")]
+    cur = FakeCursor(existing_roles=set(), existing_databases={"marquez"})
+    settings = SetupSettings(databases=targets, manage_databases=False)  # ty: ignore[missing-argument]
+
+    with pytest.raises(RuntimeError, match="ducklake"):
+        check_targets(cur, settings)
 
 
 GARAGE_TOML = """
