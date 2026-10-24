@@ -26,3 +26,7 @@ jobs:
           RENOVATE_REPOSITORIES: ${{ github.repository }}
           RENOVATE_ONBOARDING: "false"
           RENOVATE_REQUIRE_CONFIG: required
+          RENOVATE_HOST_RULES: >-
+            [{"matchHost": "dhi.io", "hostType": "docker",
+            "username": "${{ secrets.DHI_USERNAME }}",
+            "password": "${{ secrets.DHI_TOKEN }}"}]

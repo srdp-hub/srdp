@@ -17,6 +17,7 @@ nav = [
   { "Contributing" = "08-contributing.md" },
   { "OSS Tool References" = "09-references.md" },
   { "Kubernetes Primer" = "10-kubernetes-primer.md" },
+  { "Security in our DevOps Process" = "security.md" },
   { "Architectural Decision Records" = [
     "adr/index.md",
     { "Platform architecture and distribution" = "adr/0001-platform-architecture-and-distribution.md" },

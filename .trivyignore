@@ -3,3 +3,9 @@
 #
 # CVE-YYYY-NNNNN exp:YYYY-MM-DD
 # (reason: why it doesn't apply or why it can't be fixed yet)
+
+CVE-2023-54404 exp:2026-12-31
+# zod 4.4.3 in marimo's bundled Copilot language server, a Node.js program that
+# only `marimo edit` starts. The image runs `marimo run` and has no Node.js, so
+# the code cannot run. The CVE is a memory exhaustion (availability only).
+# marimo 0.25.2 is the newest release and still bundles it.
