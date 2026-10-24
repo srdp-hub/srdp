@@ -13,6 +13,9 @@ secrets.sh
 certs/
 login-client.pat
 
+# Let's Encrypt account and certificate keys (docker-compose.prod.yml)
+letsencrypt/
+
 # Zensical build output
 site/
 

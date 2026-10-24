@@ -95,7 +95,11 @@ def test_every_workflow_action_is_pinned_to_a_commit() -> None:
 def test_every_pre_commit_hook_is_pinned_to_a_commit() -> None:
     """The hooks run on every developer machine and in CI, so a movable tag would change that code."""
     config = yaml.safe_load((REPO_ROOT / ".pre-commit-config.yaml").read_text())
-    unpinned = [repo["repo"] for repo in config["repos"] if repo["repo"] != "local" and not re.fullmatch(r"[0-9a-f]{40}", repo["rev"])]
+    unpinned = [
+        repo["repo"]
+        for repo in config["repos"]
+        if repo["repo"] != "local" and not re.fullmatch(r"[0-9a-f]{40}", repo["rev"])
+    ]
     assert not unpinned, unpinned
 
 
