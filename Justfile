@@ -67,6 +67,10 @@ kind-up:
 kind-down:
 	kind delete cluster --name srdp
 
+# Log in to dhi.io, the Docker Hardened Images registry. Building the SRDP images from source needs it.
+dhi-login:
+	docker login dhi.io
+
 # Build all images, tagged dev, and load them into kind
 kind-load-images: kind-up
 	docker build -t {{platform_registry}}/srdp-setup:dev -f deploy/docker/srdp-setup.Dockerfile .

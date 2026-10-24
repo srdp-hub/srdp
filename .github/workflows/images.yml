@@ -8,6 +8,10 @@ name: Images
 # On a published release every image is pushed by digest, scanned, signed
 # and attested, and only when all of them pass do they get version tags,
 # so a tag never points at an image that failed a check.
+#
+# The Dockerfiles build on dhi.io, which needs a login. The DHI_USERNAME and
+# DHI_TOKEN repository secrets hold a Docker ID and a read-only access token.
+# Pull requests from forks have no access to them, so their builds fail.
 on:
   pull_request:
     paths: &image-inputs
@@ -19,6 +23,7 @@ on:
       - "deploy/docker/dagster-webserver.Dockerfile"
       - "services/duckdb-ui/**"
       - "services/hub/**"
+      - "projects/cbs-example/**"
       - "config/dagster/**"
       - "src/**"
       - "pyproject.toml"
@@ -50,7 +55,9 @@ jobs:
       security-events: write
     strategy:
       fail-fast: false
-      matrix: &images
+      # The platform images, which a release publishes, and the images of the example
+      # project, which are built and scanned here and published to the project registry.
+      matrix:
         include:
           - name: srdp-setup
             context: .
@@ -64,6 +71,18 @@ jobs:
           - name: hub
             context: services/hub
             dockerfile: services/hub/Dockerfile
+          - name: srdp-etl
+            context: .
+            dockerfile: projects/cbs-example/Dockerfile
+          - name: srdp-api
+            context: .
+            dockerfile: projects/cbs-example/api/Dockerfile
+          - name: marimo
+            context: .
+            dockerfile: projects/cbs-example/notebooks/Dockerfile
+          - name: streamlit
+            context: .
+            dockerfile: projects/cbs-example/streamlit/Dockerfile
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -180,7 +199,21 @@ jobs:
       attestations: write
     strategy:
       fail-fast: true
-      matrix: *images
+      # The platform images only, a test checks they are in the check matrix too.
+      matrix:
+        include:
+          - name: srdp-setup
+            context: .
+            dockerfile: deploy/docker/srdp-setup.Dockerfile
+          - name: dagster-webserver
+            context: .
+            dockerfile: deploy/docker/dagster-webserver.Dockerfile
+          - name: duckdb-ui
+            context: .
+            dockerfile: services/duckdb-ui/Dockerfile
+          - name: hub
+            context: services/hub
+            dockerfile: services/hub/Dockerfile
     env:
       IMAGE: ghcr.io/srdp-hub/${{ matrix.name }}
     steps:

@@ -7,8 +7,8 @@ ENV UV_PYTHON_DOWNLOADS=never \
 
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --frozen --no-dev --extra infra --no-install-project \
-    && mkdir -p /opt/dagster/dagster_home
+RUN uv sync --locked --no-dev --extra infra --no-install-project \
+    && mkdir -p /opt/dagster/dagster_home /app/compute_logs
 
 FROM dhi.io/python:3.12@sha256:71d4576b1118498ce4de72e9bdf8be7d2f4d368f05c329504041f2b8c100ccf1
 
@@ -16,6 +16,7 @@ FROM dhi.io/python:3.12@sha256:71d4576b1118498ce4de72e9bdf8be7d2f4d368f05c329504
 COPY --from=builder /usr/bin/bash /usr/bin/bash
 # The chart's DAGSTER_HOME, writable for the non-root user.
 COPY --from=builder --chown=65532:65532 /opt/dagster/dagster_home /opt/dagster/dagster_home
+COPY --from=builder --chown=65532:65532 /app/compute_logs /app/compute_logs
 
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv

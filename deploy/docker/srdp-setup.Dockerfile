@@ -9,13 +9,16 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock README.md ./
 COPY src/ src/
-RUN uv sync --frozen --no-dev --extra ducklake --no-editable
+RUN uv sync --locked --no-dev --extra ducklake --no-editable \
+    && mkdir -p /data/ducklake
 
 # The runtime stage doesn't need uv.
 FROM dhi.io/python:3.12@sha256:71d4576b1118498ce4de72e9bdf8be7d2f4d368f05c329504041f2b8c100ccf1
 
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
+# srdp-setup is the first to mount the ducklake-data volume, which inherits this ownership.
+COPY --from=builder --chown=65532:65532 /data/ducklake /data/ducklake
 
 ENV PATH="/app/.venv/bin:${PATH}"
 

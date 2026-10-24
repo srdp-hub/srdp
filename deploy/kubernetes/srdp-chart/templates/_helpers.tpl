@@ -59,7 +59,7 @@ writer Secret; keep the two in step.
 */}}
 {{- define "srdp.waitForDucklakeBucket" -}}
 - name: wait-for-ducklake-bucket
-  image: curlimages/curl:8.22.0
+  image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
   securityContext:
     runAsNonRoot: true
     runAsUser: 100
@@ -160,21 +160,52 @@ ReadWriteOnce volume would pin them to the node that holds it. Each renders
 its whole key, or nothing.
 */}}
 {{- define "srdp.ducklakeVolumeMounts" -}}
-{{- if eq .Values.ducklakeStorage.backend "local" -}}
 volumeMounts:
+  - name: tmp
+    mountPath: /tmp
+  - name: home
+    mountPath: /home/nonroot
+{{- if eq .Values.ducklakeStorage.backend "local" }}
   - name: ducklake-data
     mountPath: {{ .Values.ducklakeData.mountPath | quote }}
     readOnly: true
-{{- end -}}
+{{- end }}
 {{- end -}}
 
 {{- define "srdp.ducklakeVolumes" -}}
-{{- if eq .Values.ducklakeStorage.backend "local" -}}
 volumes:
+  - name: tmp
+    emptyDir: {}
+  - name: home
+    emptyDir: {}
+{{- if eq .Values.ducklakeStorage.backend "local" }}
   - name: ducklake-data
     persistentVolumeClaim:
       claimName: ducklake-data
+{{- end }}
 {{- end -}}
+
+{{/*
+The security context every SRDP workload gets, the Kubernetes equivalent of the
+x-hardened block in docker-compose.yml. The user comes from global.securityContext.
+The root filesystem is read-only, so a workload mounts an emptyDir where it writes.
+*/}}
+{{- define "srdp.podSecurityContext" -}}
+securityContext:
+  runAsNonRoot: true
+  runAsUser: {{ .Values.global.securityContext.runAsUser }}
+  runAsGroup: {{ .Values.global.securityContext.runAsGroup }}
+  fsGroup: {{ .Values.global.securityContext.fsGroup }}
+  seccompProfile:
+    type: RuntimeDefault
+{{- end -}}
+
+{{- define "srdp.containerSecurityContext" -}}
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
 {{- end -}}
 
 {{/*

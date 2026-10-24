@@ -9,7 +9,7 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock README.md ./
 COPY src/ src/
-RUN uv sync --frozen --no-dev --extra ducklake --no-editable
+RUN uv sync --locked --no-dev --extra ducklake --no-editable
 
 # The runtime stage doesn't need uv.
 FROM dhi.io/python:3.12@sha256:71d4576b1118498ce4de72e9bdf8be7d2f4d368f05c329504041f2b8c100ccf1

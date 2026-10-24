@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: cef0300fd0fc4d2a87a85fa2093c6b283ea36f4b  # frozen: v5.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -16,7 +16,7 @@ repos:
       - id: detect-private-key
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.0
+    rev: 0470f7c8a653e950f7cc5a653204ceb3fde4c02a  # frozen: v0.15.0
     hooks:
       - id: ruff
       - id: ruff-format
@@ -24,7 +24,7 @@ repos:
   # Terraform (Scaleway landing zone). Scoped to deploy/scaleway so the
   # superseded deploy/opentofu tree doesn't fail hooks it never ran under.
   - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.106.0
+    rev: d61ded22bf9aa0f757303ebcbb0d6d71c4b54015  # frozen: v1.106.0
     hooks:
       - id: terraform_fmt
         files: ^deploy/scaleway/
@@ -34,14 +34,14 @@ repos:
           - --args=--config=__GIT_WORKING_DIR__/deploy/scaleway/.tflint.hcl
 
   - repo: https://github.com/adrienverge/yamllint
-    rev: v1.38.0
+    rev: cba56bcde1fdd01c1deb3f945e69764c291a6530  # frozen: v1.38.0
     hooks:
       - id: yamllint
         files: ^deploy/(scaleway|gitops)/
         args: [-c, deploy/scaleway/.yamllint]
 
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.30.1
+    rev: 83d9cd684c87d95d656c1458ef04895a7f1cbd8e  # frozen: v8.30.1
     hooks:
       - id: gitleaks
 
