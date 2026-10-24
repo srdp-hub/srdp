@@ -48,6 +48,9 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 - Garage runs hardened.
   In the chart it runs as a non-root user with a read-only root filesystem, no capabilities, RuntimeDefault seccomp and no service account token.
   In Compose it gets a read-only root filesystem, no capabilities and `no-new-privileges`.
+- The Python images no longer trust the compromised eMudhra (emSign) CA.
+  `certifi` is at 2026.10.19, the build copies uv 0.13.5, and the `python:3.12-slim-bookworm` base carries Debian `ca-certificates` 20250419~deb12u2.
+  Running deployments keep trusting it until their images are rebuilt and redeployed.
 
 ### Changed
 
