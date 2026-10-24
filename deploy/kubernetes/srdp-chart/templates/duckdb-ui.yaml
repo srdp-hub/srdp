@@ -25,7 +25,7 @@ spec:
           image: {{ include "srdp.image" (list . .Values.duckdbUi.image) }}
           imagePullPolicy: {{ .Values.duckdbUi.image.pullPolicy }}
           ports:
-            - containerPort: 4213
+            - containerPort: 8080
           envFrom:
             {{- include "srdp.ducklakeEnvFrom" . | nindent 12 }}
           env:
@@ -43,5 +43,5 @@ spec:
   ports:
     - protocol: TCP
       port: 80
-      targetPort: 4213
+      targetPort: 8080
 {{- end }}
