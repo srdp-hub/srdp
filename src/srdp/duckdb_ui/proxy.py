@@ -140,7 +140,7 @@ async def _relay(
         to_client = asyncio.create_task(_pipe(upstream_reader, client_writer))
         tasks = [to_upstream, to_client]
         await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        if to_upstream.done() and not to_client.done():
+        if to_upstream.done() and not to_upstream.exception() and not to_client.done():
             # The client stopped sending but may still read the response.
             await asyncio.wait([to_client], timeout=_HALF_CLOSE_GRACE)
         for task in tasks:

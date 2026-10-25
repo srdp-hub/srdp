@@ -113,9 +113,7 @@ def test_unreachable_garage_fails_after_the_databases_and_names_garage(
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root can write anywhere")
-def test_unwritable_data_dir_stops_setup_before_postgres(
-    monkeypatch: pytest.MonkeyPatch, events: list[str], tmp_path: Path
-) -> None:
+def test_unwritable_data_dir_stops_setup(monkeypatch: pytest.MonkeyPatch, events: list[str], tmp_path: Path) -> None:
     (tmp_path / "main").mkdir()
     (tmp_path / "main").chmod(0o500)
     monkeypatch.setenv("SETUP_DATA_DIR", str(tmp_path))

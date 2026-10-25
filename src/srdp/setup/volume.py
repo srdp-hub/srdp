@@ -44,6 +44,6 @@ def check_data_dir(data_dir: Path | None) -> None:
     fix = _FIX.format(uid=os.geteuid(), gid=os.getegid())
     msg = (
         f"{blocked} is not writable by uid {os.geteuid()}. An earlier release created it as root. "
-        f"Run this once, then deploy again, no data is lost: {fix}"
+        f"Run this command once and deploy again. It keeps all data. {fix}"
     )
     raise VolumeNotWritableError(msg)

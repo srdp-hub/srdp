@@ -18,7 +18,7 @@ def test_writable_data_dir_passes(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root can write anywhere")
-def test_foreign_directory_inside_the_volume_names_the_fix(tmp_path: Path) -> None:
+def test_foreign_directory_names_the_fix(tmp_path: Path) -> None:
     table = tmp_path / "main" / "orders"
     table.mkdir(parents=True)
     table.chmod(0o500)

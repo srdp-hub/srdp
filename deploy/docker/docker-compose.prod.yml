@@ -75,8 +75,8 @@ services:
         chown 65532:65532 /acme && chmod 700 /acme
     volumes:
       - ./letsencrypt:/acme
-    networks:
-      - app
+    network_mode: none
+    restart: "no"
 
   traefik:
     depends_on:

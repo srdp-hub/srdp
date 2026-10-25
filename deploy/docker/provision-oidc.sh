@@ -12,8 +12,8 @@
 #      to projects/apps (see the ADR-style note at the bottom of this file).
 #   2. Grants that user ORG_OWNER, generates it a PAT, and stores that PAT in
 #      .env as ZITADEL_ADMIN_PAT. Skips all of this if .env already has one.
-#   3. Reads the gated hostname list straight out of docker-compose.yml's
-#      oauth2-proxy Host() rule (the existing single source of truth, not a
+#   3. Reads the gated hostname list straight out of the oauth2-proxy router rule
+#      in config/traefik/dynamic/srdp.yml (the single source of truth, not a
 #      second list to keep in sync by hand).
 #   4. Fetches the oauth2-proxy OIDC app's current redirect URIs, unions in
 #      any hostnames missing a callback, and PUTs the result. No-ops cleanly
@@ -58,40 +58,53 @@ admin_api() {
 # 1-2. Find or create the admin machine user + PAT, stored in .env
 # ---------------------------------------------------------------------------
 
-# Set KEY=VALUE in .env, replacing an existing line. Python, so a secret needs no shell escaping.
-set_env() {
-  python3 - "$ENV_FILE" "$1" "$2" <<'EOF'
+# Change .env in place: set KEY=VALUE, or remove KEY when the value is "-unset".
+# The value goes through the environment, so a secret never shows in the process list,
+# and the file is replaced in one step, so an interrupted run cannot truncate it.
+edit_env() {
+  ENV_EDIT_VALUE="$2" python3 - "$ENV_FILE" "$1" <<'EOF'
+import os
 import sys
-path, key, value = sys.argv[1:4]
-lines = open(path).read().splitlines()
-out, done = [], False
-for line in lines:
-    if line.startswith(f"{key}="):
-        out.append(f"{key}={value}")
-        done = True
-    else:
-        out.append(line)
-if not done:
-    out.append(f"{key}={value}")
-open(path, "w").write("\n".join(out) + "\n")
+import tempfile
+
+path, key = sys.argv[1:3]
+value = os.environ["ENV_EDIT_VALUE"]
+exists = os.path.exists(path)
+lines = open(path).read().splitlines() if exists else []
+if value == "-unset":
+    out = [line for line in lines if not line.startswith(f"{key}=")]
+elif any(line.startswith(f"{key}=") for line in lines):
+    out = [f"{key}={value}" if line.startswith(f"{key}=") else line for line in lines]
+else:
+    out = [*lines, f"{key}={value}"]
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(path)))
+with os.fdopen(fd, "w") as handle:
+    handle.write("\n".join(out) + "\n")
+os.chmod(tmp, os.stat(path).st_mode if exists else 0o600)
+os.replace(tmp, path)
 EOF
 }
+set_env() { edit_env "$1" "$2"; }
+unset_env() { edit_env "$1" "-unset"; }
 
 ADMIN_PAT=$(grep -m1 '^ZITADEL_ADMIN_PAT=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
 
-# A PAT from a Zitadel that was reset since (a wiped volume) is useless, so mint a new one.
+# A PAT from a Zitadel that was reset since (a wiped volume) is rejected, so mint a new one.
+# Any other answer, such as a stopped Zitadel, must not throw a valid PAT away.
 if [ -n "$ADMIN_PAT" ]; then
-  STATUS=$(curl -s -o /dev/null -w '%{http_code}' "https://$AUTH_HOST/management/v1/orgs/me" -H "Authorization: Bearer $ADMIN_PAT")
-  if [ "$STATUS" != "200" ]; then
-    echo "ZITADEL_ADMIN_PAT in .env is not accepted (HTTP $STATUS), minting a new one..."
-    python3 - "$ENV_FILE" <<'EOF'
-import sys
-path = sys.argv[1]
-kept = [l for l in open(path).read().splitlines() if not l.startswith("ZITADEL_ADMIN_PAT=")]
-open(path, "w").write("\n".join(kept) + "\n")
-EOF
-    ADMIN_PAT=""
-  fi
+  STATUS=$(curl -s -o /dev/null -w '%{http_code}' "https://$AUTH_HOST/management/v1/orgs/me" -H "Authorization: Bearer $ADMIN_PAT") || STATUS=000
+  case "$STATUS" in
+    200) ;;
+    401 | 403)
+      echo "ZITADEL_ADMIN_PAT in .env is not accepted (HTTP $STATUS), minting a new one..."
+      unset_env ZITADEL_ADMIN_PAT
+      ADMIN_PAT=""
+      ;;
+    *)
+      echo "error: Zitadel answered HTTP $STATUS at https://$AUTH_HOST, is the stack up?" >&2
+      exit 1
+      ;;
+  esac
 fi
 
 if [ -z "$ADMIN_PAT" ]; then
@@ -188,7 +201,7 @@ if [ "$APP_CLIENT_ID" != "$ENV_CLIENT_ID" ]; then
   echo ".env had another client ID, saved the client ID and a new secret of '$APP_NAME'"
 fi
 
-python3 - "$CURRENT" "$HOSTS" <<'PYEOF' >/tmp/oidc-config-payload.json
+PAYLOAD=$(python3 - "$CURRENT" "$HOSTS" <<'PYEOF'
 import json, sys
 
 current, hosts_raw = json.loads(sys.argv[1]), sys.argv[2].splitlines()
@@ -211,9 +224,9 @@ payload = {
 }
 json.dump(payload, sys.stdout)
 PYEOF
+)
 
-RESPONSE=$(admin_api PUT "projects/$PROJECT_ID/apps/$APP_ID/oidc_config" "$(cat /tmp/oidc-config-payload.json)")
-rm -f /tmp/oidc-config-payload.json
+RESPONSE=$(admin_api PUT "projects/$PROJECT_ID/apps/$APP_ID/oidc_config" "$PAYLOAD")
 
 if echo "$RESPONSE" | grep -q '"code":9'; then
   echo "no changes needed, redirect URIs already up to date"

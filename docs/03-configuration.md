@@ -73,7 +73,9 @@ just docker-up
 This builds the local images and starts every service defined in `deploy/docker/docker-compose.yml`.
 The first run takes a few minutes while images are pulled and built.
 
-Quarto is disabled by default, its base image bundles a full Pandoc/TinyTeX/Deno toolchain sized for scientific publishing, heavy for a single static page with no current use. Its source stays at `services/quarto/`, wire it back into `deploy/docker/docker-compose.yml` and `config/traefik/traefik.yml` when it's needed again.
+Quarto is disabled by default, because it has no current use.
+The chart can run it with `quarto.enabled: true`. Its image builds from `services/quarto/` on a Docker Hardened Image, runs as uid 65532 and listens on 8080.
+Docker Compose has no Quarto service. To add one, copy the `hub` service and route it in `config/traefik/dynamic/srdp.yml`.
 
 To stop the stack:
 
