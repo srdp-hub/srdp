@@ -112,6 +112,34 @@ def test_proxy_forwards_rewritten_request_and_returns_response() -> None:
     asyncio.run(run())
 
 
+def test_proxy_delivers_the_response_after_the_client_half_closes() -> None:
+    """A client that stops sending still receives the response."""
+
+    async def upstream(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        await reader.read()
+        await asyncio.sleep(0.2)
+        writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+        await writer.drain()
+        writer.close()
+
+    async def check(port: int) -> None:
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(b"GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+        writer.write_eof()
+        assert (await asyncio.wait_for(reader.read(), 5)).endswith(b"ok")
+        writer.close()
+
+    async def run() -> None:
+        up_port = _free_port()
+        server = await asyncio.start_server(upstream, "127.0.0.1", up_port)
+        try:
+            await _with_proxy(up_port, check)
+        finally:
+            server.close()
+
+    asyncio.run(run())
+
+
 def test_proxy_answers_502_when_upstream_is_down() -> None:
     """An unreachable DuckDB server gives a clean 502."""
 

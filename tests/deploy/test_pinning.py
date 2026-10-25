@@ -12,6 +12,10 @@ DIGEST = re.compile(r"@sha256:[0-9a-f]{64}")
 OWN_IMAGE = re.compile(r"\$\{SRDP_PLATFORM_REGISTRY|^local-|^ghcr\.io/srdp-hub/")
 
 
+# Structured chart images that SRDP builds, which follow the release version.
+OWN_CHART_IMAGE = re.compile(r"^ghcr\.io/srdp-hub/|/srdp-etl:")
+
+
 def repo_files(*patterns: str) -> list[Path]:
     """Return the repo files matching the patterns, without vendored directories."""
     return [
@@ -59,6 +63,9 @@ def chart_images(node: object, trail: str = "") -> list[tuple[str, str]]:
         image = node.get("image")
         if isinstance(image, dict) and "tag" in image and "repository" not in image and "registry" not in image:
             found.append((f"{trail}.image", f"tag={image['tag']}"))
+        elif isinstance(image, dict) and "repository" in image and ("tag" in image or "digest" in image):
+            digest = f"@{image['digest']}" if "digest" in image else ""
+            found.append((f"{trail}.image", f"{image['repository']}:{image.get('tag', '')}{digest}"))
         for key, value in node.items():
             if key == "image" and isinstance(value, str):
                 found.append((f"{trail}.image", value))
@@ -75,7 +82,12 @@ def test_every_chart_image_has_a_digest() -> None:
     unpinned = []
     for path in repo_files("deploy/kubernetes/srdp-chart/values*.yaml"):
         for where, reference in chart_images(yaml.safe_load(path.read_text())):
-            if "release-tag" in reference or reference == "tag=dev" or DIGEST.search(reference):
+            if (
+                "release-tag" in reference
+                or reference == "tag=dev"
+                or DIGEST.search(reference)
+                or OWN_CHART_IMAGE.search(reference)
+            ):
                 continue
             unpinned.append(f"{path.name} {where}: {reference}")
     assert not unpinned, unpinned
@@ -110,3 +122,9 @@ def test_every_published_image_is_also_built_and_scanned_on_pull_requests() -> N
     published = {tuple(sorted(entry.items())) for entry in jobs["build"]["strategy"]["matrix"]["include"]}
     assert published, "the build job publishes nothing"
     assert published <= checked, published - checked
+
+
+def test_chart_images_collects_structured_references() -> None:
+    """A structured image with a tag but no digest is found, so the pinning test can fail it."""
+    values = {"busybox": {"image": {"repository": "docker.io/busybox", "tag": "latest"}}}
+    assert chart_images(values) == [(".busybox.image", "docker.io/busybox:latest")]

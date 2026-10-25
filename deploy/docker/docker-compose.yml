@@ -77,6 +77,8 @@ services:
     security_opt: [no-new-privileges:true]
     environment:
       SETUP_PG_HOST: postgres
+      # Setup stops before it changes anything when this volume belongs to another user.
+      SETUP_DATA_DIR: /data/ducklake
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
       SETUP_PASSWORDS__ZITADEL: "${ZITADEL_DATABASE_POSTGRES_USER_PASSWORD}"
       SETUP_PASSWORDS__DAGSTER: "${DAGSTER_PG_PASSWORD}"
@@ -370,6 +372,7 @@ services:
       - db
     volumes:
       - ducklake-data:/data/ducklake
+      - dagster-compute-logs:/app/compute_logs
     depends_on:
       srdp-setup:
         condition: service_completed_successfully

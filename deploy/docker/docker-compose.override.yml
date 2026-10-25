@@ -3,6 +3,9 @@ services:
     # Local development only. A production run lists its files explicitly
     # (-f docker-compose.yml -f docker-compose.prod.yml), so Compose skips this
     # file and none of the below reaches production.
+    # The mkcert key is mode 0600 and owned by the developer, so Traefik runs as
+    # that user here. just docker-up sets SRDP_UID and SRDP_GID.
+    user: "${SRDP_UID:-65532}:${SRDP_GID:-65532}"
     ports:
       # Traefik dashboard (api.insecure in config/traefik/traefik.yml).
       - "8080:8080"

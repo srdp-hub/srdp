@@ -25,7 +25,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
-COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 LOGIN_CLIENT_PAT_FILE="$SCRIPT_DIR/login-client.pat"
 AUTH_HOST="auth.srdp.localhost"
 ADMIN_USERNAME="srdp-admin-automation"
@@ -59,7 +58,41 @@ admin_api() {
 # 1-2. Find or create the admin machine user + PAT, stored in .env
 # ---------------------------------------------------------------------------
 
+# Set KEY=VALUE in .env, replacing an existing line. Python, so a secret needs no shell escaping.
+set_env() {
+  python3 - "$ENV_FILE" "$1" "$2" <<'EOF'
+import sys
+path, key, value = sys.argv[1:4]
+lines = open(path).read().splitlines()
+out, done = [], False
+for line in lines:
+    if line.startswith(f"{key}="):
+        out.append(f"{key}={value}")
+        done = True
+    else:
+        out.append(line)
+if not done:
+    out.append(f"{key}={value}")
+open(path, "w").write("\n".join(out) + "\n")
+EOF
+}
+
 ADMIN_PAT=$(grep -m1 '^ZITADEL_ADMIN_PAT=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
+
+# A PAT from a Zitadel that was reset since (a wiped volume) is useless, so mint a new one.
+if [ -n "$ADMIN_PAT" ]; then
+  STATUS=$(curl -s -o /dev/null -w '%{http_code}' "https://$AUTH_HOST/management/v1/orgs/me" -H "Authorization: Bearer $ADMIN_PAT")
+  if [ "$STATUS" != "200" ]; then
+    echo "ZITADEL_ADMIN_PAT in .env is not accepted (HTTP $STATUS), minting a new one..."
+    python3 - "$ENV_FILE" <<'EOF'
+import sys
+path = sys.argv[1]
+kept = [l for l in open(path).read().splitlines() if not l.startswith("ZITADEL_ADMIN_PAT=")]
+open(path, "w").write("\n".join(kept) + "\n")
+EOF
+    ADMIN_PAT=""
+  fi
+fi
 
 if [ -z "$ADMIN_PAT" ]; then
   echo "No ZITADEL_ADMIN_PAT in .env, provisioning the admin automation user..."
@@ -99,14 +132,19 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Derive the gated hostname list from docker-compose.yml itself
+# 3. Derive the gated hostname list from the Traefik routing file
 # ---------------------------------------------------------------------------
 
-HOSTS=$(grep 'traefik.http.routers.oauth2-proxy.rule=' "$COMPOSE_FILE" \
-  | grep -o 'Host(`[^`]*`)' | sed -E 's/Host\(`([^`]*)`\)/\1/')
+# The oauth2-proxy router in the Traefik routing file lists the gated hostnames.
+# Its Host() rules use the SRDP_DOMAIN template, which is the auth host without "auth.".
+TRAEFIK_FILE="$SCRIPT_DIR/../../config/traefik/dynamic/srdp.yml"
+SRDP_DOMAIN="${AUTH_HOST#auth.}"
+HOSTS=$(awk '/^    oauth2-proxy:$/ {found=1} found && /rule:/ {print; exit}' "$TRAEFIK_FILE" \
+  | grep -o 'Host(`[^`]*`)' | sed -E 's/Host\(`([^`]*)`\)/\1/' \
+  | sed "s/{{ env \"SRDP_DOMAIN\" }}/$SRDP_DOMAIN/" || true)
 
 if [ -z "$HOSTS" ]; then
-  echo "error: could not find any Host() entries on oauth2-proxy's rule line in $COMPOSE_FILE" >&2
+  echo "error: could not find any Host() entries on the oauth2-proxy rule in $TRAEFIK_FILE" >&2
   exit 1
 fi
 
@@ -118,19 +156,37 @@ PROJECT_ID=$(admin_api POST "projects/_search" \
   "{\"queries\":[{\"nameQuery\":{\"name\":\"$PROJECT_NAME\",\"method\":\"TEXT_QUERY_METHOD_EQUALS\"}}]}" \
   | jq_get "(d.get('result') or [{}])[0].get('id','')")
 if [ -z "$PROJECT_ID" ]; then
-  echo "error: project '$PROJECT_NAME' not found — run the OIDC bootstrap first" >&2
-  exit 1
+  PROJECT_ID=$(admin_api POST "projects" "{\"name\":\"$PROJECT_NAME\"}" | jq_get "d['id']")
+  echo "created project '$PROJECT_NAME' ($PROJECT_ID)"
 fi
 
 APP_ID=$(admin_api POST "projects/$PROJECT_ID/apps/_search" \
   "{\"queries\":[{\"nameQuery\":{\"name\":\"$APP_NAME\",\"method\":\"TEXT_QUERY_METHOD_EQUALS\"}}]}" \
   | jq_get "(d.get('result') or [{}])[0].get('id','')")
+NEW_CREDENTIALS=""
 if [ -z "$APP_ID" ]; then
-  echo "error: app '$APP_NAME' not found in project $PROJECT_ID — run the OIDC bootstrap first" >&2
-  exit 1
+  FIRST_HOST=$(echo "$HOSTS" | head -n1)
+  CREATED=$(admin_api POST "projects/$PROJECT_ID/apps/oidc" \
+    "{\"name\":\"$APP_NAME\",\"redirectUris\":[\"https://$FIRST_HOST/oauth2/callback\"],\"responseTypes\":[\"OIDC_RESPONSE_TYPE_CODE\"],\"grantTypes\":[\"OIDC_GRANT_TYPE_AUTHORIZATION_CODE\"],\"appType\":\"OIDC_APP_TYPE_WEB\",\"authMethodType\":\"OIDC_AUTH_METHOD_TYPE_BASIC\"}")
+  APP_ID=$(echo "$CREATED" | jq_get "d['appId']")
+  set_env OIDC_CLIENT_ID "$(echo "$CREATED" | jq_get "d['clientId']")"
+  set_env OIDC_CLIENT_SECRET "$(echo "$CREATED" | jq_get "d['clientSecret']")"
+  NEW_CREDENTIALS=1
+  echo "created app '$APP_NAME' ($APP_ID), saved its client ID and secret to .env"
 fi
 
 CURRENT=$(admin_api GET "projects/$PROJECT_ID/apps/$APP_ID")
+
+# The app is the source of truth. When .env holds another client ID, issue a new secret and save both.
+APP_CLIENT_ID=$(echo "$CURRENT" | jq_get "d['app']['oidcConfig']['clientId']")
+ENV_CLIENT_ID=$(grep -m1 '^OIDC_CLIENT_ID=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
+if [ "$APP_CLIENT_ID" != "$ENV_CLIENT_ID" ]; then
+  SECRET=$(admin_api POST "projects/$PROJECT_ID/apps/$APP_ID/oidc_config/_generate_client_secret" "{}" | jq_get "d['clientSecret']")
+  set_env OIDC_CLIENT_ID "$APP_CLIENT_ID"
+  set_env OIDC_CLIENT_SECRET "$SECRET"
+  NEW_CREDENTIALS=1
+  echo ".env had another client ID, saved the client ID and a new secret of '$APP_NAME'"
+fi
 
 python3 - "$CURRENT" "$HOSTS" <<'PYEOF' >/tmp/oidc-config-payload.json
 import json, sys
@@ -150,7 +206,7 @@ payload = {
     "grantTypes": cfg["grantTypes"],
     "appType": "OIDC_APP_TYPE_WEB",
     "authMethodType": "OIDC_AUTH_METHOD_TYPE_BASIC",
-    "devMode": cfg["devMode"],
+    "devMode": cfg.get("devMode", False),
     "allowedOrigins": sorted(allowed_origins),
 }
 json.dump(payload, sys.stdout)
@@ -163,6 +219,10 @@ if echo "$RESPONSE" | grep -q '"code":9'; then
   echo "no changes needed, redirect URIs already up to date"
 else
   echo "updated redirect URIs for: $(echo "$HOSTS" | tr '\n' ' ')"
+fi
+
+if [ -n "$NEW_CREDENTIALS" ]; then
+  echo "OIDC_CLIENT_ID and OIDC_CLIENT_SECRET changed in .env, run 'just docker-up -d' to recreate oauth2-proxy with them"
 fi
 
 # ---------------------------------------------------------------------------

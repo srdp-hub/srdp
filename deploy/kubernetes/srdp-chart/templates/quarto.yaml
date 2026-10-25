@@ -16,12 +16,28 @@ spec:
         app: quarto
     spec:
       {{- include "srdp.imagePullSecrets" . | nindent 6 }}
+      {{- include "srdp.podSecurityContext" . | nindent 6 }}
       containers:
         - name: quarto
           image: {{ include "srdp.image" (list . .Values.quarto.image) }}
           imagePullPolicy: {{ .Values.quarto.image.pullPolicy }}
+          {{- include "srdp.containerSecurityContext" . | nindent 10 }}
           ports:
-            - containerPort: 80
+            - containerPort: 8080
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /run/nginx
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -33,5 +49,5 @@ spec:
   ports:
     - protocol: TCP
       port: 80
-      targetPort: 80
+      targetPort: 8080
 {{- end }}

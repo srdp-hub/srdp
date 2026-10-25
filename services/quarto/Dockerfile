@@ -11,11 +11,8 @@ RUN quarto render
 
 # ---
 
-# Stage 2: Serve the static files using a lightweight Nginx image
-FROM nginx:1.28-alpine-slim@sha256:b33eedfdf089be1f83759ced27b4deec5b6f1b6fc2a6819ebce0ae351a4406e5
-
-# Copy the custom Nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Stage 2: Serve the static files using a hardened Nginx image
+FROM dhi.io/nginx:1.30@sha256:8a59b132d68c44e8b4e463a5239eea0ab6d81d4982de07eb921bd1f77ea4b1ee
 
 # Copy the built static site from the 'builder' stage
 COPY --from=builder /app/_site /usr/share/nginx/html

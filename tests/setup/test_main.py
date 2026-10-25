@@ -1,7 +1,9 @@
 """Tests for ``python -m srdp.setup``: the order of the steps and when it stops."""
 
 import json
+import os
 import urllib.error
+from pathlib import Path
 from typing import Any, Self
 
 import pytest
@@ -108,3 +110,26 @@ def test_unreachable_garage_fails_after_the_databases_and_names_garage(
     assert events[:2] == ["postgres connect", "postgres closed"]
     assert events[2:]
     assert all(event == "garage http://garage.test:3903/v2/GetClusterStatus" for event in events[2:])
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can write anywhere")
+def test_unwritable_data_dir_stops_setup_before_postgres(
+    monkeypatch: pytest.MonkeyPatch, events: list[str], tmp_path: Path
+) -> None:
+    (tmp_path / "main").mkdir()
+    (tmp_path / "main").chmod(0o500)
+    monkeypatch.setenv("SETUP_DATA_DIR", str(tmp_path))
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+
+    assert exc.value.code == 1
+    assert events == []
+
+
+def test_writable_data_dir_lets_setup_run(monkeypatch: pytest.MonkeyPatch, events: list[str], tmp_path: Path) -> None:
+    monkeypatch.setenv("SETUP_DATA_DIR", str(tmp_path))
+
+    main()
+
+    assert events == ["postgres connect", "postgres closed"]

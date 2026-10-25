@@ -26,6 +26,7 @@ _REQUEST_LINE = re.compile(rb"^[A-Z]{3,10} [^\s]+ HTTP/1\.[01]$")
 _HEADER_NAME = re.compile(rb"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 _HEAD_END = b"\r\n\r\n"
 _HEAD_TIMEOUT = 30.0
+_HALF_CLOSE_GRACE = 30.0
 
 
 class DuckDBUISettings(BaseSettings):
@@ -99,11 +100,13 @@ async def _read_head(reader: asyncio.StreamReader, limit: int) -> tuple[bytes, b
     return head, rest
 
 
-async def _pipe(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-    """Copy bytes until the reader ends."""
+async def _pipe(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, *, half_close: bool = False) -> None:
+    """Copy bytes until the reader ends, then optionally pass the end on."""
     while chunk := await reader.read(65536):
         writer.write(chunk)
         await writer.drain()
+    if half_close and writer.can_write_eof():
+        writer.write_eof()
 
 
 async def _reply(writer: asyncio.StreamWriter, status: str) -> None:
@@ -133,11 +136,13 @@ async def _relay(
         return
     try:
         upstream_writer.write(rewritten + rest)
-        tasks = [
-            asyncio.create_task(_pipe(client_reader, upstream_writer)),
-            asyncio.create_task(_pipe(upstream_reader, client_writer)),
-        ]
+        to_upstream = asyncio.create_task(_pipe(client_reader, upstream_writer, half_close=True))
+        to_client = asyncio.create_task(_pipe(upstream_reader, client_writer))
+        tasks = [to_upstream, to_client]
         await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        if to_upstream.done() and not to_client.done():
+            # The client stopped sending but may still read the response.
+            await asyncio.wait([to_client], timeout=_HALF_CLOSE_GRACE)
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)

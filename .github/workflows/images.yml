@@ -71,6 +71,9 @@ jobs:
           - name: hub
             context: services/hub
             dockerfile: services/hub/Dockerfile
+          - name: quarto
+            context: services/quarto
+            dockerfile: services/quarto/Dockerfile
           - name: srdp-etl
             context: .
             dockerfile: projects/cbs-example/Dockerfile

@@ -14,7 +14,7 @@ COPY src/ src/
 # needs it importable: launching a run means it deserializes the platform's
 # DagsterInstance, which references Postgres-backed storage.
 RUN uv sync --locked --no-dev --no-editable --extra ducklake --extra dbt --extra dagster-postgres --extra openlineage \
-    && mkdir -p /opt/dagster/dagster_home
+    && mkdir -p /opt/dagster/dagster_home /app/compute_logs
 
 COPY projects/cbs-example/ projects/cbs-example/
 RUN mkdir -p projects/cbs-example/dbt/target projects/cbs-example/dbt/logs
@@ -28,6 +28,10 @@ COPY --from=builder /app/projects/cbs-example/src projects/cbs-example/src
 # dbt writes its manifest and logs next to the project.
 COPY --from=builder --chown=65532:65532 /app/projects/cbs-example/dbt projects/cbs-example/dbt
 COPY --from=builder --chown=65532:65532 /opt/dagster/dagster_home /opt/dagster/dagster_home
+# Dagster captures step output with `tail`, which the runtime image does not have.
+COPY --from=builder /usr/bin/tail /usr/bin/tail
+# The run launcher captures step output here, and Compose mounts the shared volume over it.
+COPY --from=builder --chown=65532:65532 /app/compute_logs /app/compute_logs
 
 ENV DAGSTER_HOME=/opt/dagster/dagster_home
 ENV PYTHONPATH="/app/projects/cbs-example/src"

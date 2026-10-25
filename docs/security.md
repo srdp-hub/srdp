@@ -5,46 +5,86 @@ icon: lucide/shield-check
 
 # Security in our DevOps process
 
-SRDP builds security into each step of its DevOps process.
-This page lists the main mechanisms, the step where each one applies and the reason for it.
-A mechanism with the status Planned is not active yet.
+SRDP follows three security principles.
+Every container gets the least privilege it needs.
+Every setting is secure by default.
+Everything SRDP builds can be traced to its source.
 
-## Mechanisms
+## Building SRDP
 
-| Step | Mechanism | Why | Status |
-|:---|:---|:---|:---|
-| Commit | Pre-commit hooks: gitleaks, private key detection, ruff, ty, yamllint, tflint | Find secrets and mistakes before anyone else sees them. | In place |
-| Push | GitHub secret scanning with push protection | Block known credential formats from reaching the repository. | In place |
-| Pull request | Tests that keep Docker Compose, the Helm chart and `srdp.toml` consistent | A change to one deployment target must not break the other. | In place |
-| Pull request | Review checklist: injection, least privilege, state consistency, failure order | Catch the typical mistakes in scripts, workflows and manifests. | In place |
-| Pull request | Required review and passing checks on `main` | Make sure no change merges unreviewed. | Planned |
-| Build | Frozen dependencies: `uv.lock` holds a hash for every package file | Every image contains exactly the packages that were reviewed, and a swapped package stops the build. | In place |
-| Build | Base images, `uv` and third-party images pinned by digest | A tag can move to a different image and a digest cannot. | Partly. Some chart images still use tags. |
-| Build | Actions and hooks pinned by commit SHA | Code that a moved tag could change must not run in our pipeline. | Partly. Two of six workflows. |
-| Build | Hardened runtime images with no shell and no package manager, running as non-root | An attacker finds little to use and can do little damage. | In place for four images |
-| Build | Hardened images and the scan for the project images and `srdp-api` | The same protection for every image we ship. | Planned |
-| Scan | Trivy on every image: fails a pull request on a critical vulnerability with a fix | Stop a known weakness before it merges. | In place |
-| Scan | Daily Trivy scan of `main` with the results in the Security tab | New vulnerabilities appear without a code change. | In place |
-| Scan | More Trivy modes: `fs` for the lock, `config` for manifests, `sbom` for released images | Cover dependencies and configuration, and re-check shipped images. | Planned |
-| Scan | `.trivyignore` with a reason and an expiry date for every accepted risk | An accepted risk gets looked at again. | In place |
-| Update | Renovate and Dependabot open pull requests | Stay current, with a person approving each version change. | In place |
-| Release | Images pushed by digest, scanned, signed, with build provenance and an SBOM. Version tags come last. | Prove who built an image and what it contains. A tag never points at an image that failed a check. | In place |
-| Release | Evidence bundle per release: image digests, SBOMs and scan reports | Give reviewers a fixed record per release. | Planned |
-| Deploy | Verify the signature before the first pull, as [Cloud Deployment](06-deployment.md) shows | Run only what SRDP built. | In place |
-| Deploy | Signed Compose file and Helm chart with every image resolved to its digest | Deployments pull by digest and never by tag. | Planned |
-| Run | Configurable `uid` and `gid` in `srdp.toml` for every container | Let the host limit the whole stack to one user. | Planned |
+### Development
 
-The `latest` tag exists for people who try SRDP out.
-No build, test or deploy flow of SRDP uses it.
+- Pre-commit hooks run before each commit. They look for secrets and private keys and check code style, types and YAML.
+- `just test` runs the tests that keep Docker Compose, the Helm chart and `srdp.toml` consistent.
+- Contributors and AI assistants follow a review checklist for injection, least privilege, state consistency and failure order.
 
-## Verify it yourself
+### Pull Request Gates
 
-- Check the signature of an image as [Cloud Deployment](06-deployment.md) describes.
-- Check the build provenance with `gh attestation verify oci://ghcr.io/srdp-hub/<image>@<digest> --owner srdp-hub`.
-- Read the SBOM with `docker buildx imagetools inspect ghcr.io/srdp-hub/<image>@<digest> --format '{{ json .SBOM }}'`.
-- Open the Images workflow run of a release in the Actions tab for the scan results.
+- CI runs the same hooks on all files, so skipping them locally does not get a change through.
+- A change reaches `main` only through a pull request with one approval and resolved review conversations.
+- A new push dismisses earlier approvals.
+- Direct pushes, force pushes and deletion of `main` are blocked for everyone.
 
-## Report a vulnerability
+### Dependencies and Updates
 
-Use GitHub's private vulnerability reporting, as `SECURITY.md` describes.
-SRDP does not claim compliance with a standard, and the controls here support the supply chain parts of requirements such as NEN 7510, ISO 27001, NIS2 and the EU Cyber Resilience Act.
+Dependencies are frozen, so a build contains exactly what was reviewed.
+
+- `uv.lock` holds a hash for every Python package file. A package that differs from the locked one stops the build.
+- Every Python image installs exactly the versions in `uv.lock`. The build fails when the lock file is out of date.
+- Base images, `uv` and third-party images are pinned by digest.
+- GitHub Actions and pre-commit hooks are pinned by commit SHA.
+- Tests fail on a base or third-party image without a digest and on an Action or hook without a commit SHA.
+- Renovate opens pull requests for new image and chart versions, and Dependabot does the same for GitHub Actions. A maintainer approves each one.
+
+### Container Images
+
+The runtime stage of every image is a Docker Hardened Image, so an attacker finds little to use.
+
+- The example project images follow the same pattern as the platform images.
+- Dagster sends no usage data.
+
+### Code and Image Scanning
+
+- Trivy scans the images that SRDP builds on every pull request that changes them, and every day.
+- Trivy scans the platform images again before a release, and a critical finding stops the release.
+- A pull request fails on a critical vulnerability that has a fix.
+- The daily scan reports to the GitHub Security tab and does not fail the build.
+- Dependabot alerts on vulnerable Python packages.
+- GitHub scans every push for secrets and blocks known credential formats.
+- Each accepted risk sits in `.trivyignore` with a reason and an expiry date.
+
+### Release Evidence
+
+Every published platform image comes with evidence of where it came from and what it contains.
+This evidence consists of build attestations.
+
+- The signature shows that the image came from the SRDP build workflow and that nobody changed it afterwards.
+- The build provenance records the commit, the workflow and the time of the build.
+- The SBOM, a list of every package inside the image, ships with the image.
+- Images are pushed by digest. Version tags are set last, so a tag never points at an image that failed a check.
+
+### Verify It Yourself
+
+- Check the signature and the build provenance as [Cloud Deployment](06-deployment.md#verifying-published-images) describes.
+- Read the SBOM with `docker buildx imagetools inspect ghcr.io/srdp-hub/<image>:<version> --format '{{ json .SBOM }}'`.
+
+## Running SRDP
+
+### Least Privilege
+
+Every part of SRDP gets only the access it needs.
+SRDP applies this to what an image contains, who runs it, what it can change and which credentials it holds.
+
+- A builder stage installs the packages, and the runtime stage has no package manager.
+- The runtime stage has no shell, except in the Dagster image. The upstream Helm chart starts Dagster pods with `bash`.
+- Every image that SRDP builds runs as a non-root user.
+- The SRDP services, Traefik, oauth2-proxy and Marquez have a read-only root filesystem, no capabilities and no privilege escalation.
+- Each service reads its credentials from its own Secret.
+- With S3 storage, the apps get a read-only key. Only Dagster and the setup service get the key that can write.
+
+## Reporting and Standards
+
+Report a vulnerability through [GitHub's private vulnerability reporting](https://github.com/srdp-hub/srdp/security/advisories/new).
+The [security policy](https://github.com/srdp-hub/srdp/blob/main/SECURITY.md) has the details.
+SRDP does not claim compliance with a standard.
+The controls on this page can support the supply chain part of an assessment under NEN 7510, ISO 27001, NIS2 or the EU Cyber Resilience Act.

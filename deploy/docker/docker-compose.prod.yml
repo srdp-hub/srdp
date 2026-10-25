@@ -57,7 +57,31 @@ services:
         "--read-only",
       ]
 
+  # Traefik runs as 65532 and stores its certificates in ./letsencrypt. This
+  # one-shot service gives that directory (and an acme.json from an earlier
+  # run) to that user, keeps acme.json at mode 0600, and exits.
+  traefik-acme-init:
+    image: busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, DAC_READ_SEARCH]
+    security_opt: [no-new-privileges:true]
+    command:
+      - sh
+      - -c
+      - >-
+        if [ -f /acme/acme.json ]; then chown 65532:65532 /acme/acme.json && chmod 600 /acme/acme.json; fi &&
+        chown 65532:65532 /acme && chmod 700 /acme
+    volumes:
+      - ./letsencrypt:/acme
+    networks:
+      - app
+
   traefik:
+    depends_on:
+      traefik-acme-init:
+        condition: service_completed_successfully
     command: ["--configFile=/etc/traefik/traefik.prod.yaml"]
     healthcheck:
       test: ["CMD", "traefik", "healthcheck", "--ping", "--configFile=/etc/traefik/traefik.prod.yaml"]
