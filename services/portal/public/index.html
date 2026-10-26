@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>SRDP portal</title>
+  <link rel="icon" href="/favicon.png">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topheader">
+    <a class="brand" href="#" aria-label="SRDP portal, back to the overview">
+      <img src="/favicon.png" alt="" width="32" height="32">
+      <span class="brand-title">SRDP</span>
+    </a>
+    <div class="account">
+      <span id="user" class="user" hidden></span>
+      <a class="logout" href="/oauth2/sign_out" target="_top">Sign out</a>
+    </div>
+  </header>
+
+  <div class="shell">
+    <nav id="sidebar" class="sidebar" aria-label="Tools"></nav>
+
+    <main id="main" class="main">
+      <div id="home" class="page">
+        <section class="hero">
+          <h1 id="welcome">Welcome</h1>
+          <p>All parts of the platform in one place, with a single sign-in.</p>
+        </section>
+        <div id="groups" aria-live="polite"></div>
+        <p id="empty" class="empty" hidden>There are no tools to show.</p>
+        <noscript><p class="empty">This portal needs JavaScript to show the tools.</p></noscript>
+      </div>
+
+      <section id="viewer" class="viewer" hidden>
+        <div class="viewer-bar">
+          <h1 id="viewer-title"></h1>
+          <a id="viewer-external" class="viewer-external" target="_blank" rel="noopener">Open in a new tab ↗</a>
+        </div>
+        <div id="viewer-fallback" class="viewer-fallback" role="alert" hidden>
+          <h2 id="viewer-fallback-title"></h2>
+          <p id="viewer-fallback-text"></p>
+          <div class="viewer-fallback-actions">
+            <button id="viewer-retry" class="btn" type="button">Try again</button>
+            <a id="viewer-fallback-open" class="btn btn-secondary" target="_blank" rel="noopener">Open in a new tab</a>
+          </div>
+        </div>
+        <iframe id="frame" title="" src="about:blank"></iframe>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

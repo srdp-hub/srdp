@@ -1,0 +1,53 @@
+{{- if .Values.portal.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portal
+  labels:
+    app: portal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: portal
+  template:
+    metadata:
+      labels:
+        app: portal
+    spec:
+      {{- include "srdp.imagePullSecrets" . | nindent 6 }}
+      {{- include "srdp.podSecurityContext" . | nindent 6 }}
+      containers:
+        - name: portal
+          image: {{ include "srdp.image" (list . .Values.portal.image) }}
+          imagePullPolicy: {{ .Values.portal.image.pullPolicy }}
+          {{- include "srdp.containerSecurityContext" . | nindent 10 }}
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /run/nginx
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: portal
+spec:
+  selector:
+    app: portal
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+{{- end }}
