@@ -231,6 +231,7 @@ def test_the_justfile_registry_moves_every_srdp_image() -> None:
         "srdp-setup",
         "duckdb-ui",
         "hub",
+        "portal",
         "dagster-webserver",
     }
     for name in ("marimo", "api", "streamlit", "srdp-setup"):

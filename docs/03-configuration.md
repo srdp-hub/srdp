@@ -131,7 +131,7 @@ just local-deploy
 
 This builds and loads the images (step 4), installs the chart, then reads back Traefik's actual (dynamically-assigned) ClusterIP and feeds it into `oauth2-proxy`'s pod-level host alias in a second pass, since that IP can't be known ahead of the first install. Re-run the same command to pick up updated values.
 
-The chart deploys the full stack: Traefik, PostgreSQL (in-cluster via Bitnami Helm chart), Zitadel, OAuth2-Proxy, Dagster (webserver + daemon + user code), Marimo, Streamlit, the API, DuckDB UI, Marquez, and the hub landing page.
+The chart deploys the full stack: Traefik, PostgreSQL (in-cluster via Bitnami Helm chart), Zitadel, OAuth2-Proxy, Dagster (webserver + daemon + user code), Marimo, Streamlit, the API, DuckDB UI, Marquez, the hub landing page, and the portal.
 Quarto is disabled by default (`quarto.enabled: false` in `values.yaml`), flip it back on when it's needed again.
 PostgreSQL hosts the `zitadel`, `dagster`, `marquez`, and `ducklake` databases.
 The Bitnami subchart's `auth.*` fields create `zitadel`, and the `srdp-setup` Job creates the rest from the `setup.databases` list in `values.yaml` on every install and upgrade.

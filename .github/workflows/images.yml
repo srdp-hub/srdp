@@ -19,6 +19,7 @@ on:
       - "deploy/docker/dagster-webserver.Dockerfile"
       - "services/duckdb-ui/**"
       - "services/hub/**"
+      - "services/portal/**"
       - "config/dagster/**"
       - "src/**"
       - "pyproject.toml"
@@ -64,6 +65,9 @@ jobs:
           - name: hub
             context: services/hub
             dockerfile: services/hub/Dockerfile
+          - name: portal
+            context: services/portal
+            dockerfile: services/portal/Dockerfile
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1

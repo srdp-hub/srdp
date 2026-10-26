@@ -510,6 +510,20 @@ services:
     networks:
       - app
 
+  # ---------------------------------------------
+  # Portal: one page with cards for every tool, grouped by purpose
+  # ---------------------------------------------
+  # Same approach as the hub: plain nginx + static files, behind SSO. It lives on
+  # portal.<domain>, so the bare domain keeps showing the hub.
+  portal:
+    image: ${SRDP_PLATFORM_REGISTRY:-ghcr.io/srdp-hub}/portal:${SRDP_VERSION:-dev}
+    build:
+      context: ../../services/portal
+      dockerfile: Dockerfile
+    container_name: srdp-portal
+    networks:
+      - app
+
 
 # A file, because a read-only service cannot get inline config content.
 # The secrets come from .env, Garage reads them from the environment.

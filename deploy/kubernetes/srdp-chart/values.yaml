@@ -10,7 +10,7 @@ global:
   # default must match srdp.toml, tests/deploy checks it.
   srdpRegistry: "rg.nl-ams.scw.cloud/srdp-registry"
   # Registry of the platform images SRDP publishes (srdp-setup, dagster-webserver,
-  # duckdb-ui, hub). Images marked `platform: true` come from here.
+  # duckdb-ui, hub, portal). Images marked `platform: true` come from here.
   platformRegistry: "ghcr.io/srdp-hub"
   # Tag of every image this repo builds. Empty means the chart's appVersion,
   # which is the SRDP release. Local development sets "dev".
@@ -599,6 +599,14 @@ hub:
   enabled: true
   image:
     repository: hub
+    platform: true
+    pullPolicy: IfNotPresent
+
+# Static portal page with a card for every tool, served on portal.<domain>
+portal:
+  enabled: true
+  image:
+    repository: portal
     platform: true
     pullPolicy: IfNotPresent
 

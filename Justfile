@@ -31,7 +31,7 @@ domain_hosts := '"' + domain + '" "*.' + domain + '" "auth.' + domain + '" "mari
 local_secrets_sum := `uv run --no-project python -c 'import hashlib, sys; sys.stdout.write(hashlib.sha256(open("deploy/kubernetes/srdp-chart/values-local.yaml", "rb").read()).hexdigest())'`
 local_secrets_args := "--set-string 'oauth2-proxy.podAnnotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'dagster.dagsterWebserver.annotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'dagster.dagsterDaemon.annotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'dagster.dagster-user-deployments.deployments[0].annotations.checksum/local-secrets=" + local_secrets_sum + "'"
 # Staged prod rollout: apps that every partial stage leaves off.
-prod_apps_off := "--set dagster.enabled=false --set marimo.enabled=false --set quarto.enabled=false --set streamlit.enabled=false --set api.enabled=false --set duckdbUi.enabled=false --set marquez.enabled=false --set setup.enabled=false"
+prod_apps_off := "--set dagster.enabled=false --set marimo.enabled=false --set quarto.enabled=false --set streamlit.enabled=false --set api.enabled=false --set duckdbUi.enabled=false --set marquez.enabled=false --set portal.enabled=false --set setup.enabled=false"
 # Traefik and the hub page only, to get the first LoadBalancer IP.
 prod_traefik_only_args := "--set zitadel.enabled=false --set zitadel-db.enabled=false --set oauth2-proxy.enabled=false " + prod_apps_off
 # Traefik, the hub page and the auth stack (Zitadel, its database, OAuth2-Proxy).
@@ -73,6 +73,7 @@ kind-load-images: kind-up
 	docker build -t {{platform_registry}}/dagster-webserver:dev -f deploy/docker/dagster-webserver.Dockerfile .
 	docker build -t {{platform_registry}}/duckdb-ui:dev -f services/duckdb-ui/Dockerfile .
 	docker build -t {{platform_registry}}/hub:dev services/hub
+	docker build -t {{platform_registry}}/portal:dev services/portal
 	docker build -t {{registry}}/marimo:dev -f projects/cbs-example/notebooks/Dockerfile .
 	docker build -t {{registry}}/srdp-etl:dev -f projects/cbs-example/Dockerfile .
 	docker build -t {{registry}}/srdp-api:dev -f projects/cbs-example/api/Dockerfile .
@@ -82,6 +83,7 @@ kind-load-images: kind-up
 		{{platform_registry}}/dagster-webserver:dev \
 		{{platform_registry}}/duckdb-ui:dev \
 		{{platform_registry}}/hub:dev \
+		{{platform_registry}}/portal:dev \
 		{{registry}}/marimo:dev \
 		{{registry}}/srdp-etl:dev \
 		{{registry}}/srdp-api:dev \
@@ -127,7 +129,7 @@ docker-up *args:
 
 # Start the Docker Compose stack with the published platform images of a release, e.g. `just docker-up-release 0.4.0 -d`.
 docker-up-release version *args:
-	cd deploy/docker && SRDP_DOMAIN='{{domain}}' SRDP_VERSION='{{version}}' docker compose pull srdp-setup dagster-webserver dagster-daemon duckdb-ui hub
+	cd deploy/docker && SRDP_DOMAIN='{{domain}}' SRDP_VERSION='{{version}}' docker compose pull srdp-setup dagster-webserver dagster-daemon duckdb-ui hub portal
 	cd deploy/docker && SRDP_DOMAIN='{{domain}}' SRDP_VERSION='{{version}}' docker compose up {{args}}
 
 # Stop the Docker Compose stack

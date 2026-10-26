@@ -1,0 +1,37 @@
+{{- if .Values.portal.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portal
+  labels:
+    app: portal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: portal
+  template:
+    metadata:
+      labels:
+        app: portal
+    spec:
+      {{- include "srdp.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: portal
+          image: {{ include "srdp.image" (list . .Values.portal.image) }}
+          imagePullPolicy: {{ .Values.portal.image.pullPolicy }}
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: portal
+spec:
+  selector:
+    app: portal
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+{{- end }}

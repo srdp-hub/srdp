@@ -36,7 +36,7 @@ http:
       rule: '(Host(`auth.{{ env "SRDP_DOMAIN" }}`) && PathPrefix(`/ui/v2/login`))'
     oauth2-proxy:
       service: "oauth2-proxy"
-      rule: '(Host(`auth.{{ env "SRDP_DOMAIN" }}`) || Host(`marimo.{{ env "SRDP_DOMAIN" }}`) || Host(`dagster.{{ env "SRDP_DOMAIN" }}`) || Host(`streamlit.{{ env "SRDP_DOMAIN" }}`) || Host(`{{ env "SRDP_DOMAIN" }}`) || Host(`marquez.{{ env "SRDP_DOMAIN" }}`) || Host(`api.{{ env "SRDP_DOMAIN" }}`) || Host(`duckdb.{{ env "SRDP_DOMAIN" }}`)) && PathPrefix(`/oauth2/`)'
+      rule: '(Host(`auth.{{ env "SRDP_DOMAIN" }}`) || Host(`marimo.{{ env "SRDP_DOMAIN" }}`) || Host(`dagster.{{ env "SRDP_DOMAIN" }}`) || Host(`streamlit.{{ env "SRDP_DOMAIN" }}`) || Host(`{{ env "SRDP_DOMAIN" }}`) || Host(`marquez.{{ env "SRDP_DOMAIN" }}`) || Host(`api.{{ env "SRDP_DOMAIN" }}`) || Host(`duckdb.{{ env "SRDP_DOMAIN" }}`) || Host(`portal.{{ env "SRDP_DOMAIN" }}`)) && PathPrefix(`/oauth2/`)'
     dagster:
       service: "dagster"
       rule: 'Host(`dagster.{{ env "SRDP_DOMAIN" }}`)'
@@ -86,6 +86,12 @@ http:
     marquez:
       service: "marquez-web"
       rule: 'Host(`marquez.{{ env "SRDP_DOMAIN" }}`)'
+      middlewares:
+        - "zitadel-errors"
+        - "zitadel-auth"
+    portal:
+      service: "portal"
+      rule: 'Host(`portal.{{ env "SRDP_DOMAIN" }}`)'
       middlewares:
         - "zitadel-errors"
         - "zitadel-auth"
@@ -140,6 +146,10 @@ http:
       loadBalancer:
         servers:
           - url: "http://hub:80"
+    portal:
+      loadBalancer:
+        servers:
+          - url: "http://portal:80"
   middlewares:
     zitadel-auth:
       forwardAuth:

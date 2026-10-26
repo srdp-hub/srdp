@@ -1,0 +1,78 @@
+{
+  "categories": [
+    {
+      "id": "analyze",
+      "name": "Analyze"
+    },
+    {
+      "id": "orchestrate",
+      "name": "Orchestrate"
+    },
+    {
+      "id": "administer",
+      "name": "Administer"
+    }
+  ],
+  "services": [
+    {
+      "id": "marimo",
+      "name": "Marimo",
+      "description": "Reactive Python notebooks and dashboards.",
+      "icon": "chart",
+      "category": "analyze",
+      "subdomain": "marimo"
+    },
+    {
+      "id": "streamlit",
+      "name": "Streamlit",
+      "description": "Data apps built with Streamlit.",
+      "icon": "chart",
+      "category": "analyze",
+      "subdomain": "streamlit"
+    },
+    {
+      "id": "duckdb",
+      "name": "DuckDB UI",
+      "description": "Run your own SQL queries on the lakehouse.",
+      "icon": "database",
+      "category": "analyze",
+      "subdomain": "duckdb",
+      "embed": false
+    },
+    {
+      "id": "dagster",
+      "name": "Dagster",
+      "description": "Orchestration of the data pipelines: runs, assets and schedules.",
+      "icon": "flow",
+      "category": "orchestrate",
+      "subdomain": "dagster"
+    },
+    {
+      "id": "marquez",
+      "name": "Marquez",
+      "description": "Data lineage and run history.",
+      "icon": "route",
+      "category": "orchestrate",
+      "subdomain": "marquez"
+    },
+    {
+      "id": "zitadel",
+      "name": "Zitadel",
+      "description": "Users, roles and sign-in.",
+      "icon": "users",
+      "category": "administer",
+      "subdomain": "auth",
+      "embed": false
+    },
+    {
+      "id": "api",
+      "name": "API token",
+      "description": "Get a token for the SRDP API.",
+      "icon": "key",
+      "category": "administer",
+      "subdomain": "api",
+      "path": "/token",
+      "embed": false
+    }
+  ]
+}

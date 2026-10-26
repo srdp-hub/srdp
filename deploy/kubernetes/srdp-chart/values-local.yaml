@@ -95,6 +95,10 @@ hub:
   image:
     pullPolicy: Never
 
+portal:
+  image:
+    pullPolicy: Never
+
 dagster:
   dagsterWebserver:
     image:
