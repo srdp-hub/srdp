@@ -13,6 +13,8 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
   Upgrading an existing Compose install needs one step.
   Older releases ran as root, so a `srdp-ducklake-data` volume that holds data can contain directories that uid 65532 cannot write to.
   `srdp-setup` checks this before it changes anything and prints the `chown` command that fixes it, so no data is lost.
+  The `srdp-dagster-compute-logs` volume can hold root-owned directories from an older release.
+  It only holds logs, so run `docker compose down` and `docker volume rm srdp-dagster-compute-logs` if step logs stop appearing.
   The production overlay starts `traefik-acme-init`, which gives `./letsencrypt` to uid 65532 and keeps `acme.json` at mode 0600.
   The local stack runs Traefik as your own user, because the mkcert key is private to you.
 - `deploy/docker/provision-oidc.sh` creates the `srdp` project and the `oauth2-proxy` application in Zitadel when they are missing, and saves their client ID and secret in `.env`.

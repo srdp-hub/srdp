@@ -14,11 +14,12 @@ class VolumeNotWritableError(Exception):
 
 
 def _unwritable_dir(data_dir: Path) -> Path | None:
-    """Return the first directory under data_dir that this user cannot write to."""
-    for dirpath, _, _ in os.walk(data_dir):
+    """Return the first directory under data_dir that this user cannot read or write."""
+    unreadable: list[OSError] = []
+    for dirpath, _, _ in os.walk(data_dir, onerror=unreadable.append):
         if not os.access(dirpath, os.W_OK | os.X_OK):
             return Path(dirpath)
-    return None
+    return Path(unreadable[0].filename) if unreadable else None
 
 
 def check_data_dir(data_dir: Path | None) -> None:

@@ -25,3 +25,16 @@ def test_foreign_directory_names_the_fix(tmp_path: Path) -> None:
 
     with pytest.raises(VolumeNotWritableError, match=r"orders is not writable.*chown busybox -R"):
         check_data_dir(tmp_path)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can read anywhere")
+def test_unreadable_directory_names_the_fix(tmp_path: Path) -> None:
+    table = tmp_path / "main" / "orders"
+    table.mkdir(parents=True)
+    table.chmod(0o000)
+
+    try:
+        with pytest.raises(VolumeNotWritableError, match=r"orders is not writable.*chown busybox -R"):
+            check_data_dir(tmp_path)
+    finally:
+        table.chmod(0o700)

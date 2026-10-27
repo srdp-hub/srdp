@@ -65,6 +65,9 @@ def setup_and_write(settings, df, schema, table):
     conn.execute(f"CREATE TABLE {schema}.{table} AS SELECT * FROM df")
 ```
 
+- Do not define a function inside a function. Use a module-level function, a class or a standard-library callable.
+- Decorators, function factories and small fakes inside tests may nest a function.
+
 ### Settings via pydantic-settings
 
 ```python

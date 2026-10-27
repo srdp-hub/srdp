@@ -17,8 +17,8 @@ global:
   imageTag: ""
   # Pod-level pull secrets for those images, e.g. [{name: registry-key}].
   imagePullSecrets: []
-  # The user every SRDP workload runs as. The images run as 65532 by default.
-  # fsGroup makes the volumes writable for that user.
+  # The user SRDP's own templates run as. fsGroup makes the volumes writable for it.
+  # The Dagster and Traefik subcharts set their own user, so change them together.
   securityContext:
     runAsUser: 65532
     runAsGroup: 65532

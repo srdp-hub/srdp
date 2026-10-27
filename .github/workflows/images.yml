@@ -23,6 +23,7 @@ on:
       - "deploy/docker/dagster-webserver.Dockerfile"
       - "services/duckdb-ui/**"
       - "services/hub/**"
+      - "services/quarto/**"
       - "projects/cbs-example/**"
       - "config/dagster/**"
       - "src/**"
