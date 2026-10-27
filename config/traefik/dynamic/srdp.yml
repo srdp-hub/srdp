@@ -77,7 +77,7 @@ http:
     # automatically, no explicit priority needed) keeps the real auth check
     # (zitadel-auth) but skips the rewrite for DuckDB's own API surface.
     # /localEvents is a long-lived EventSource (SSE) stream, not a
-    # request/response, see haproxy.cfg's timeout tunnel for why that matters.
+    # request/response, see src/srdp/duckdb_ui/proxy.py.
     duckdb-ui-internal:
       service: "duckdb-ui"
       rule: 'Host(`duckdb.{{ env "SRDP_DOMAIN" }}`) && (Path(`/localToken`) || Path(`/localEvents`) || PathPrefix(`/ddb/`))'
@@ -131,7 +131,7 @@ http:
     duckdb-ui:
       loadBalancer:
         servers:
-          - url: "http://duckdb-ui:4213"
+          - url: "http://duckdb-ui:8080"
     marquez-web:
       loadBalancer:
         servers:
@@ -139,7 +139,7 @@ http:
     hub:
       loadBalancer:
         servers:
-          - url: "http://hub:80"
+          - url: "http://hub:8080"
   middlewares:
     zitadel-auth:
       forwardAuth:

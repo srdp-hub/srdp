@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from srdp.setup.bootstrap import SetupSettings, bootstrap_databases
 from srdp.setup.garage import setup_garage
+from srdp.setup.volume import VolumeNotWritableError, check_data_dir
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,12 @@ def main() -> None:
         for error in exc.errors(include_input=False, include_url=False):
             location = ".".join(str(part) for part in error["loc"]) or "settings"
             logger.error("Invalid setup config (%s): %s", location, error["msg"])  # noqa: TRY400 -- a traceback would print the passwords
+        sys.exit(1)
+
+    try:
+        check_data_dir(settings.data_dir)
+    except VolumeNotWritableError as error:
+        logger.error("%s", error)  # noqa: TRY400 -- the message is the whole diagnosis
         sys.exit(1)
 
     bootstrap_databases(settings)

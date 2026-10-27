@@ -712,6 +712,17 @@ def test_garage_runs_hardened(local_s3: list[Manifest]) -> None:
     }
 
 
+def test_quarto_runs_hardened() -> None:
+    manifests = render("values.yaml", "values-local.yaml", set_values=("quarto.enabled=true",))
+    spec = find(manifests, "Deployment", "quarto")["spec"]["template"]["spec"]
+    assert spec["securityContext"]["runAsNonRoot"] is True
+    [container] = spec["containers"]
+    assert container["securityContext"]["readOnlyRootFilesystem"] is True
+    assert container["securityContext"]["capabilities"] == {"drop": ["ALL"]}
+    assert container["ports"] == [{"containerPort": 8080}]
+    assert find(manifests, "Service", "quarto")["spec"]["ports"][0]["targetPort"] == 8080
+
+
 def test_vhost_url_style_from_the_chart_reaches_the_bucket_wait(tmp_path: Path) -> None:
     manifests = render(
         "values.yaml", "values-local.yaml", "values-local-s3.yaml", set_values=("ducklakeStorage.s3.urlStyle=vhost",)

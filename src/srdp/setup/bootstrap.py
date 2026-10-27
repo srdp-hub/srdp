@@ -73,6 +73,8 @@ class SetupSettings(BaseSettings):
     pg_port: int = Field(default=5432)
     pg_user: str = Field(default="postgres")
     pg_password: SecretStr = Field(validation_alias="POSTGRES_PASSWORD")
+    # The DuckLake data volume, when this deployment mounts it into setup (Compose does).
+    data_dir: Path | None = Field(default=None)
     databases: list[DatabaseTarget]
     # Keyed by role name, e.g. SETUP_PASSWORDS__MARQUEZ -> passwords["marquez"].
     passwords: dict[str, SecretStr] = Field(default_factory=dict)

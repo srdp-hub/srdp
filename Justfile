@@ -67,6 +67,10 @@ kind-up:
 kind-down:
 	kind delete cluster --name srdp
 
+# Log in to dhi.io, the Docker Hardened Images registry. Building the SRDP images from source needs it.
+dhi-login:
+	docker login dhi.io
+
 # Build all images, tagged dev, and load them into kind
 kind-load-images: kind-up
 	docker build -t {{platform_registry}}/srdp-setup:dev -f deploy/docker/srdp-setup.Dockerfile .
@@ -123,12 +127,12 @@ local-delete:
 # Start the Docker Compose stack (local dev). Attached by default; pass -d to detach.
 # Builds from source and tags the platform images dev, whatever SRDP_VERSION says.
 docker-up *args:
-	cd deploy/docker && SRDP_DOMAIN='{{domain}}' SRDP_VERSION=dev docker compose up --build {{args}}
+	cd deploy/docker && SRDP_UID=$(id -u) SRDP_GID=$(id -g) SRDP_DOMAIN='{{domain}}' SRDP_VERSION=dev docker compose up --build {{args}}
 
 # Start the Docker Compose stack with the published platform images of a release, e.g. `just docker-up-release 0.4.0 -d`.
 docker-up-release version *args:
 	cd deploy/docker && SRDP_DOMAIN='{{domain}}' SRDP_VERSION='{{version}}' docker compose pull srdp-setup dagster-webserver dagster-daemon duckdb-ui hub
-	cd deploy/docker && SRDP_DOMAIN='{{domain}}' SRDP_VERSION='{{version}}' docker compose up {{args}}
+	cd deploy/docker && SRDP_UID=$(id -u) SRDP_GID=$(id -g) SRDP_DOMAIN='{{domain}}' SRDP_VERSION='{{version}}' docker compose up {{args}}
 
 # Stop the Docker Compose stack
 docker-down:
