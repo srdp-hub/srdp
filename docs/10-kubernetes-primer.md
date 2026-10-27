@@ -1,5 +1,5 @@
 ---
-title: 9. Kubernetes Primer
+title: Kubernetes Primer
 icon: lucide/ship-wheel
 ---
 

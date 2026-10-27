@@ -1,12 +1,12 @@
 ---
-title: 4. Usage & Verification
+title: Usage & Verification
 icon: lucide/circle-play
 ---
 
 # Usage & Verification
 
 All apps are protected behind OAuth2-Proxy, so opening one redirects to Zitadel for login first.
-You can use the admin credentials from [02-configuration.md](./02-configuration.md).
+You can use the admin credentials from [03-configuration.md](./03-configuration.md).
 The hub at `https://srdp.localhost` links to every service.
 
 ## Docker Compose

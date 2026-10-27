@@ -17,6 +17,7 @@ spec:
         app: api
     spec:
       {{- include "srdp.imagePullSecrets" . | nindent 6 }}
+      {{- include "srdp.podSecurityContext" . | nindent 6 }}
       initContainers:
         {{- include "srdp.waitForDucklakeDb" . | nindent 8 }}
         {{- include "srdp.waitForDucklakeBucket" "srdp-ducklake-s3-reader" | nindent 8 }}
@@ -24,6 +25,7 @@ spec:
         - name: api
           image: {{ include "srdp.image" (list . .Values.api.image) }}
           imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          {{- include "srdp.containerSecurityContext" . | nindent 10 }}
           ports:
             - containerPort: 8000
           envFrom:

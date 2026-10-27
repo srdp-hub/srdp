@@ -40,11 +40,15 @@ def test_every_dockerfile_python_is_the_pyproject_minor() -> None:
 
 
 def test_every_python_image_runs_the_same_python_build() -> None:
-    """Build and runtime stages of every image share one python image reference and one uv, so no container drifts a patch version."""
+    """Every image builds on one -dev reference and runs on the matching runtime reference, with one uv, so no container drifts a patch version."""
     texts = [path.read_text() for path in dockerfiles()]
-    pythons = {ref for text in texts for ref in re.findall(r"^FROM\s+(python:\S+)", text, re.MULTILINE)}
+    pythons = {ref for text in texts for ref in re.findall(r"^FROM\s+(dhi\.io/python:\S+)", text, re.MULTILINE)}
     uvs = {ref for text in texts for ref in re.findall(r"^COPY --from=(ghcr\.io/astral-sh/uv:\S+)", text, re.MULTILINE)}
-    assert len(pythons) == 1, pythons
+    builders = {ref for ref in pythons if "-dev@" in ref}
+    runtimes = pythons - builders
+    assert len(builders) == 1, builders
+    assert len(runtimes) == 1, runtimes
+    assert builders.pop().replace("-dev@", "@").split("@")[0] == runtimes.copy().pop().split("@")[0]
     assert len(uvs) == 1, uvs
     assert all("@sha256:" in ref for ref in pythons | uvs)
 

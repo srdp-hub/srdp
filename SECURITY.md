@@ -15,6 +15,8 @@ Include as much of the following as possible:
 
 We aim to acknowledge reports within 72 hours and will keep you informed as we work on a fix.
 
+The [security page](https://docs.srdphub.com/security/) describes how SRDP builds and hardens the platform.
+
 ## Supported versions
 
 Only the latest release is actively maintained. We do not backport security fixes to older versions.

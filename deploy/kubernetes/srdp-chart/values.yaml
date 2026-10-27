@@ -17,6 +17,12 @@ global:
   imageTag: ""
   # Pod-level pull secrets for those images, e.g. [{name: registry-key}].
   imagePullSecrets: []
+  # The user every SRDP workload runs as. The images run as 65532 by default.
+  # fsGroup makes the volumes writable for that user.
+  securityContext:
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
 
 # Credentials: none live in this file. Every password and key comes from a
 # Secret with a fixed name, created outside the chart (External Secrets in the
@@ -51,7 +57,12 @@ traefik:
       nodePort: 30443
   # Same version as Compose (tested). Subchart images without a digest field are pinned by tag.
   image:
-    tag: "v3.6.2"
+    tag: "v3.6.2@sha256:aaf0f6185419a50c74651448c1a5bf4606bd2d2ddb7b8749eed505d55bf8b8ea"
+  # The subchart already runs Traefik as 65532 without capabilities. PSA's
+  # restricted profile also asks for a seccomp profile.
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
 
 # Local PostgreSQL
 zitadel-db:
@@ -106,6 +117,22 @@ zitadel-db:
 # Zitadel auth service
 zitadel:
   enabled: true
+  # The same limits as the other pods (srdp.podSecurityContext). The subchart
+  # applies these to the Zitadel pod, its init and setup Jobs and their wait
+  # containers.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
   zitadel:
     # Zitadel uses its own role, never the superuser. The masterkey must be 32 characters.
     masterkeySecretName: srdp-zitadel
@@ -185,7 +212,7 @@ zitadel:
           name: srdp-zitadel
           key: admin-password
   image:
-    tag: "v4.11.1"
+    tag: "v4.11.1@sha256:a9f1ed98e0ab7f98cadecab90a47226b735ffad3ed0f318abd7817839518fb1a"
 
   ingress:
     enabled: false
@@ -195,7 +222,20 @@ zitadel:
     ingress:
       enabled: false
     image:
-      tag: "v4.11.1"
+      tag: "v4.11.1@sha256:8f9bae123fc63179c4afe4fb49d720aaaeb05f13ef4f9eb5e3b6d5da590c7b28"
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      fsGroup: 1000
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
 
   initJob:
     annotations:
@@ -259,7 +299,7 @@ oauth2-proxy:
         - "auth.srdp.localhost"
 
   image:
-    tag: "v7.13.0"
+    tag: "v7.13.0@sha256:56e3daedf765c7a1eea6e366fbe684be7d3084830ade14b6174570d3c7960954"
 
 # Dagster orchestration
 dagster:
@@ -270,6 +310,10 @@ dagster:
   # an exposed read-write UI would bypass the writer role (see ADR-0005).
   # The password comes from srdp-dagster-postgresql (key postgresql-password),
   # for the webserver, daemon, code location and run pods alike.
+  # No usage reporting to Dagster, as in Compose's config/dagster/dagster.yaml.
+  # Enabled telemetry also writes under DAGSTER_HOME, which is read-only here.
+  telemetry:
+    enabled: false
   global:
     postgresqlSecretName: srdp-dagster-postgresql
   generatePostgresqlPasswordSecret: false
@@ -280,6 +324,36 @@ dagster:
       repository: ghcr.io/srdp-hub/dagster-webserver
       tag: "0.3.1" # release-tag
       pullPolicy: IfNotPresent
+    # Same user and limits as templates/_helpers.tpl (srdp.podSecurityContext and
+    # srdp.containerSecurityContext) and as the x-hardened block in Compose.
+    # The subchart mounts dagster.yaml into DAGSTER_HOME, so the root filesystem
+    # stays read-only and the directories Dagster writes are emptyDirs.
+    podSecurityContext: &dagster-pod-security
+      runAsNonRoot: true
+      runAsUser: 65532
+      runAsGroup: 65532
+      fsGroup: 65532
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext: &dagster-container-security
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+    volumes: &dagster-scratch-volumes
+      - name: tmp
+        emptyDir: {}
+      - name: home
+        emptyDir: {}
+      - name: dagster-storage
+        emptyDir: {}
+    volumeMounts: &dagster-scratch-mounts
+      - name: tmp
+        mountPath: /tmp
+      - name: home
+        mountPath: /home/nonroot
+      - name: dagster-storage
+        mountPath: /opt/dagster/dagster_home/storage
     enableReadOnly: true
     extraPrependedInitContainers: &wait-for-dagster-db
       # Copy of srdp.waitForDbLogin (_helpers.tpl), the subchart doesn't tpl this.
@@ -342,6 +416,10 @@ dagster:
       repository: ghcr.io/srdp-hub/dagster-webserver
       tag: "0.3.1" # release-tag
       pullPolicy: IfNotPresent
+    podSecurityContext: *dagster-pod-security
+    securityContext: *dagster-container-security
+    volumes: *dagster-scratch-volumes
+    volumeMounts: *dagster-scratch-mounts
     extraPrependedInitContainers: *wait-for-dagster-db
     runCoordinator:
       enabled: true
@@ -359,6 +437,23 @@ dagster:
       k8sRunLauncher:
         loadInclusterConfig: true
         imagePullPolicy: IfNotPresent
+        # Run pods get the same user and limits as the code location they run.
+        # The Job pod needs the ducklake-data PVC owned by that user (fsGroup).
+        runK8sConfig:
+          podSpecConfig:
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 65532
+              runAsGroup: 65532
+              fsGroup: 65532
+              seccompProfile:
+                type: RuntimeDefault
+          containerConfig:
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: [ALL]
   dagster-user-deployments:
     enabled: true
     enableSubchart: true
@@ -410,7 +505,7 @@ dagster:
             # Same container as srdp.waitForDucklakeBucket in templates/_helpers.tpl,
             # with the writer key. includeConfigInLaunchedRuns copies it into
             # every run pod, so no run starts before the bucket exists.
-            image: curlimages/curl:8.22.0
+            image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
             securityContext:
               runAsNonRoot: true
               runAsUser: 100
@@ -466,13 +561,37 @@ dagster:
         # Writer side of the shared DuckLake volume (templates/ducklake-data-pvc.yaml).
         # includeConfigInLaunchedRuns (on by default) copies env and volumes
         # into every K8sRunLauncher run pod, which is where assets materialize.
+        # The code location and the run pods write the dbt manifest and logs next
+        # to the project, so those paths and the scratch directories are emptyDirs.
+        podSecurityContext: *dagster-pod-security
+        securityContext: *dagster-container-security
         volumes:
           - name: ducklake-data
             persistentVolumeClaim:
               claimName: ducklake-data
+          - name: tmp
+            emptyDir: {}
+          - name: home
+            emptyDir: {}
+          - name: dagster-home
+            emptyDir: {}
+          - name: dbt-target
+            emptyDir: {}
+          - name: dbt-logs
+            emptyDir: {}
         volumeMounts:
           - name: ducklake-data
             mountPath: /data/ducklake
+          - name: tmp
+            mountPath: /tmp
+          - name: home
+            mountPath: /home/nonroot
+          - name: dagster-home
+            mountPath: /opt/dagster/dagster_home
+          - name: dbt-target
+            mountPath: /app/projects/cbs-example/dbt/target
+          - name: dbt-logs
+            mountPath: /app/projects/cbs-example/dbt/logs
         # DUCKLAKE_STORAGE_BACKEND and the S3 settings, see ducklakeStorage.
         envConfigMaps:
           - name: srdp-ducklake-storage

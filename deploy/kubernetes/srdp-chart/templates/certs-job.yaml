@@ -52,6 +52,7 @@ spec:
     spec:
       restartPolicy: OnFailure
       serviceAccountName: certs-creator
+      {{- include "srdp.podSecurityContext" . | nindent 6 }}
       initContainers:
       - command:
           - /bin/ash
@@ -131,6 +132,7 @@ spec:
         image: alpine/openssl:3.5.9@sha256:59c5cb51e536d40587667229468b007a2a6cae1705397e59e5f7774c08b74029
         imagePullPolicy: IfNotPresent
         name: create-certs
+        {{- include "srdp.containerSecurityContext" . | nindent 8 }}
         volumeMounts:
           - mountPath: /secret
             name: secret
@@ -138,6 +140,7 @@ spec:
       - image: alpine/curl:8.22.0@sha256:3f21f10cf24835f7baae20931f18640cc30915ea4151363fe4d8fb59ee296dfb
         name: apply-certs
         imagePullPolicy: IfNotPresent
+        {{- include "srdp.containerSecurityContext" . | nindent 8 }}
         command:
           - /bin/ash
           - -c

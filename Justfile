@@ -67,6 +67,10 @@ kind-up:
 kind-down:
 	kind delete cluster --name srdp
 
+# Log in to dhi.io, the Docker Hardened Images registry. Building the SRDP images from source needs it.
+dhi-login:
+	docker login dhi.io
+
 # Build all images, tagged dev, and load them into kind
 kind-load-images: kind-up
 	docker build -t {{platform_registry}}/srdp-setup:dev -f deploy/docker/srdp-setup.Dockerfile .
@@ -123,12 +127,12 @@ local-delete:
 # Start the Docker Compose stack (local dev). Attached by default; pass -d to detach.
 # Builds from source and tags the platform images dev, whatever SRDP_VERSION says.
 docker-up *args:
-	cd deploy/docker && SRDP_DOMAIN='{{domain}}' SRDP_VERSION=dev docker compose up --build {{args}}
+	cd deploy/docker && SRDP_UID=$(id -u) SRDP_GID=$(id -g) SRDP_DOMAIN='{{domain}}' SRDP_VERSION=dev docker compose up --build {{args}}
 
 # Start the Docker Compose stack with the published platform images of a release, e.g. `just docker-up-release 0.4.0 -d`.
 docker-up-release version *args:
 	cd deploy/docker && SRDP_DOMAIN='{{domain}}' SRDP_VERSION='{{version}}' docker compose pull srdp-setup dagster-webserver dagster-daemon duckdb-ui hub
-	cd deploy/docker && SRDP_DOMAIN='{{domain}}' SRDP_VERSION='{{version}}' docker compose up {{args}}
+	cd deploy/docker && SRDP_UID=$(id -u) SRDP_GID=$(id -g) SRDP_DOMAIN='{{domain}}' SRDP_VERSION='{{version}}' docker compose up {{args}}
 
 # Stop the Docker Compose stack
 docker-down:
@@ -229,6 +233,27 @@ ci: lint typecheck test
 fix:
 	uv run ruff check --fix src/ projects/
 	uv run ruff format src/ projects/
+
+# ─── Architecture (LikeC4) ────────────────────────────────────────────────────
+
+# Pinned so the model renders the same for everyone.
+likec4 := "npx --yes likec4@1.60.0"
+
+# Serve the LikeC4 model with live reload, and open the overview
+c4-serve port="5173":
+	cd architecture && ( ( sleep 6; open "http://localhost:{{port}}/view/index/" || xdg-open "http://localhost:{{port}}/view/index/" ) >/dev/null 2>&1 & ) ; {{likec4}} start --port {{port}}
+
+# Check the LikeC4 model, and fail on warnings
+c4-validate:
+	cd architecture && out="$(mktemp -d)" && \
+		{{likec4}} validate > "$out/log" 2>&1; \
+		status=$?; cat "$out/log"; \
+		if grep -q 'WARN' "$out/log"; then echo "LikeC4 reported warnings" >&2; status=1; fi; \
+		rm -rf "$out"; exit $status
+
+# Build the LikeC4 viewer into the docs folder, for the docs site
+c4-build:
+	cd architecture && {{likec4}} build -o ../docs/architecture-viewer --base /architecture-viewer/ --use-hash-history
 
 # Cut a release: bump version, run CI, commit, tag
 release version:

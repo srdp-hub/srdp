@@ -80,7 +80,7 @@ security = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.11.28,<0.12.0"]
+requires = ["uv_build>=0.13.5,<0.14.0"]
 build-backend = "uv_build"
 
 # ---------------------------------------------------------------------------
@@ -128,6 +128,7 @@ ban-relative-imports = "all"
 strict = true
 
 [tool.ruff.lint.per-file-ignores]
+"scripts/*.py" = ["INP001"]  # standalone scripts, not a package
 "tests/**/*.py" = [
     "S101",    # assert in tests
     "S608",    # SQL in test assertions

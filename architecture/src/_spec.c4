@@ -1,0 +1,119 @@
+specification {
+
+  tag planned {
+    color #8a8f98
+  }
+  tag open {
+    color #e8a317
+  }
+  tag adr-0001 {
+    color #8b5cf6
+  }
+  tag adr-0002 {
+    color #8b5cf6
+  }
+  tag adr-0003 {
+    color #8b5cf6
+  }
+  tag adr-0004 {
+    color #8b5cf6
+  }
+  tag adr-0005 {
+    color #8b5cf6
+  }
+  tag adr-0006 {
+    color #8b5cf6
+  }
+  tag adr-0007 {
+    color #8b5cf6
+  }
+  tag adr-0008 {
+    color #8b5cf6
+  }
+  tag adr-0009 {
+    color #8b5cf6
+  }
+  tag adr-0011 {
+    color #8b5cf6
+  }
+  tag adr-0012 {
+    color #8b5cf6
+  }
+
+  // https://brand.mozilla.com/document/267#/visual-identity/color
+  color foundation-orange #F06C12
+  color foundation-yellow #EED800
+  color foundation-green #20C376
+  color foundation-blue #23A5E9
+  color mozilla-black #161616
+
+  element actor {
+    style {
+      shape person
+      color foundation-orange
+    }
+  }
+  element system {
+    style {
+      color foundation-blue
+    }
+  }
+  element external-system {
+    style {
+      color gray
+    }
+  }
+  element container {
+    style {
+      color foundation-green
+      shape component
+    }
+  }
+
+  element platform {
+    style {
+      color green
+    }
+  }
+
+  element service {
+    style {
+      color blue
+    }
+  }
+  element library {
+    style {
+      shape component
+      color muted
+    }
+  }
+  element component {
+    style {
+      color indigo
+    }
+  }
+  element database {
+    style {
+      shape storage
+      color amber
+    }
+  }
+  element concept {
+    style {
+      shape rectangle
+      color slate
+    }
+  }
+  element layer {
+    style {
+      shape storage
+      color sky
+    }
+  }
+  element bucket {
+    style {
+      shape storage
+      color sky
+    }
+  }
+}

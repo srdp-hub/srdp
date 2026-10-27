@@ -1,5 +1,5 @@
 ---
-title: 6. Troubleshooting
+title: Troubleshooting
 icon: lucide/life-buoy
 ---
 

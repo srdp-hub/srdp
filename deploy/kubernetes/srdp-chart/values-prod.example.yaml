@@ -287,7 +287,7 @@ dagster:
             # Same container as srdp.waitForDucklakeBucket in templates/_helpers.tpl,
             # with the writer key. includeConfigInLaunchedRuns copies it into
             # every run pod, so no run starts before the bucket exists.
-            image: curlimages/curl:8.22.0
+            image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
             securityContext:
               runAsNonRoot: true
               runAsUser: 100
@@ -340,6 +340,40 @@ dagster:
                 done
                 echo "bucket $DUCKLAKE_S3_BUCKET still unreachable with this pod's key after 60 attempts, giving up." >&2
                 exit 1
+        podSecurityContext:
+          runAsNonRoot: true
+          runAsUser: 65532
+          runAsGroup: 65532
+          fsGroup: 65532
+          seccompProfile:
+            type: RuntimeDefault
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: [ALL]
+        volumes:
+          - name: tmp
+            emptyDir: {}
+          - name: home
+            emptyDir: {}
+          - name: dagster-home
+            emptyDir: {}
+          - name: dbt-target
+            emptyDir: {}
+          - name: dbt-logs
+            emptyDir: {}
+        volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+          - name: home
+            mountPath: /home/nonroot
+          - name: dagster-home
+            mountPath: /opt/dagster/dagster_home
+          - name: dbt-target
+            mountPath: /app/projects/cbs-example/dbt/target
+          - name: dbt-logs
+            mountPath: /app/projects/cbs-example/dbt/logs
         # No ducklake-data volume: DuckLake keeps its files in the bucket, see
         # ducklakeStorage above.
         # DUCKLAKE_STORAGE_BACKEND and the S3 settings, see ducklakeStorage.

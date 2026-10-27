@@ -1,0 +1,34 @@
+specification {
+  deploymentNode machine {
+    description 'One physical or virtual machine.'
+  }
+  deploymentNode docker {
+    style {
+      icon tech:docker
+    }
+  }
+  deploymentNode cluster {
+    style {
+      icon tech:kubernetes
+    }
+  }
+  deploymentNode runtime
+  deploymentNode group
+  deploymentNode node-pool
+  deploymentNode namespace
+  deploymentNode tool
+  deploymentNode config-file
+  deploymentNode network-service
+  deploymentNode managed-service
+  deploymentNode zone
+  deploymentNode database {
+    style {
+      shape storage
+    }
+  }
+  deploymentNode object-store {
+    style {
+      shape bucket
+    }
+  }
+}

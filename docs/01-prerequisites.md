@@ -1,5 +1,5 @@
 ---
-title: 1. Prerequisites
+title: Prerequisites
 icon: lucide/list-todo
 ---
 

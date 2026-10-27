@@ -1,5 +1,5 @@
 ---
-title: 5. Cloud Deployment
+title: Cloud Deployment
 icon: lucide/cloud-cog
 ---
 
@@ -7,7 +7,7 @@ icon: lucide/cloud-cog
 
 This runbook uses OpenTofu to provision infrastructure and Helm to deploy the chart on Scaleway Kapsule (mutualized). All `just` commands should be run from the **repository root**. Steps that require manual commands specify their working directory explicitly.
 
-If you are new to Kubernetes, read the [Kubernetes primer](09-kubernetes-primer.md) first.
+If you are new to Kubernetes, read the [Kubernetes primer](10-kubernetes-primer.md) first.
 It explains each concept next to its Docker Compose equivalent.
 
 ## What OpenTofu provisions
@@ -37,7 +37,7 @@ just build-and-push
 This builds and pushes Marimo, srdp-etl (Dagster user code), the API and Streamlit to the registry in `srdp.toml` under `[deploy] registry`, tagged with the version in `pyproject.toml`.
 The platform images, including `srdp-setup`, come from `ghcr.io/srdp-hub` and need no push.
 Quarto is disabled by default (`quarto.enabled: false`).
-`docs/02-configuration.md` explains why.
+`docs/03-configuration.md` explains why.
 
 ## 3) Provision infrastructure with OpenTofu
 

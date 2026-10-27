@@ -1,0 +1,559 @@
+model {
+
+  engineer = actor 'Data Engineer' {
+    description 'Adds pipelines and services to the platform. Monitors the runs.'
+  }
+
+  consumer = actor 'Data Consumer' {
+    description 'Uses data products, dashboards and machine learning models to make decisions.'
+  }
+
+  admin = actor 'Platform admin' {
+    description 'Deploys and runs SRDP, in the organization or at a hosting company. Manages environments and access. Same role for single-tenant and multi-tenant setups.'
+  }
+
+  sources = external-system 'Data Sources' {
+    #adr-0004 #adr-0012
+    description 'Systems outside the platform that provide data.'
+    link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0004-data-organization-and-ingestion.md 'ADR-0004: Data organization and ingestion'
+    link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0012-dlt-alongside-dagster.md 'ADR-0012: dlt alongside Dagster'
+  }
+
+  ext-services = external-system 'External services' {
+    description 'Apps and tools outside the platform, for example a BI tool. They use the endpoints of the platform and the same front door.'
+  }
+
+  srdp = system 'SRDP' {
+    #adr-0001 #adr-0006
+    description 'A sovereign data platform. It uses open standards and open source components in one set configuration.'
+    link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0001-platform-architecture-and-distribution.md 'ADR-0001: Platform architecture and distribution'
+    link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0006-deployment-and-project-isolation-model.md 'ADR-0006: Deployment and project isolation model'
+
+    cli = container 'srdp CLI' {
+      #planned #open #adr-0001 #adr-0011
+      description 'Optional wrapper that reads srdp.toml, downloads the deployment files and starts the platform. Open: part of the package, or a separate light one.'
+      link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0001-platform-architecture-and-distribution.md 'ADR-0001: Platform architecture and distribution'
+      link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0011-project-onboarding-and-extension.md 'ADR-0011: Project onboarding and extension'
+    }
+
+    package = library 'srdp Python package' {
+      #adr-0001 #adr-0003
+      description 'The shared Python library. It holds the IO manager, the API, the setup service, the lineage bridge and the Kubernetes run profiles.'
+      link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0001-platform-architecture-and-distribution.md 'ADR-0001: Platform architecture and distribution'
+      link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0003-data-catalog-lineage-and-observability.md 'ADR-0003: Data catalog, lineage and observability'
+
+
+      io-manager = component 'DuckLake IO manager' {
+        description 'The Dagster IO manager. It writes and reads Polars data in DuckLake. The dlt helper and dbt write their own schemas. Extra: ducklake.'
+      }
+
+      connection = component 'DuckLake connection' {
+        description 'The settings, the catalog attach and the storage backends, local volume or S3. Every DuckLake client uses it.'
+      }
+
+      dbt-plugin = component 'dbt plugin' {
+        #open #adr-0003
+        description 'Connects dbt-duckdb to DuckLake with the same settings as Dagster. dbt writes directly, not through the IO manager. Extra: dbt.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0003-data-catalog-lineage-and-observability.md 'ADR-0003: Data catalog, lineage and observability'
+      }
+
+      lineage-bridge = component 'OpenLineage bridge' {
+        description 'Turns Dagster asset runs into OpenLineage events. Extra: openlineage.'
+      }
+
+      k8s-profiles = component 'Kubernetes run profiles' {
+        description 'The resource profiles for Dagster run pods: base, fast lane and backfill. Extra: infra.'
+      }
+
+      api-app = component 'API application' {
+        description 'The FastAPI app with catalog information and Dagster status. Extra: api.'
+      }
+
+      setup-steps = component 'Setup steps' {
+        description 'Creates the databases and roles, and the Garage bucket. It reads the setup section of srdp.toml.'
+      }
+
+      catalog-definition = component 'Catalog definition' {
+        #planned #adr-0012
+        description 'Defines each catalog: name, metadata schema, data path and the writer of each schema. Every DuckLake client reads it.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0012-dlt-alongside-dagster.md 'ADR-0012: dlt alongside Dagster'
+      }
+
+      auth = component 'Token validation' {
+        #planned #adr-0008 #adr-0011
+        description 'Validates the Zitadel tokens at every hop. Planned as srdp.auth. Extra: auth.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0008-identity-propagation-and-data-contracts.md 'ADR-0008: Identity propagation and data contracts'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0011-project-onboarding-and-extension.md 'ADR-0011: Project onboarding and extension'
+      }
+
+      dlt-helper = component 'dlt helper' {
+        #planned #adr-0012
+        description 'A thin wrapper over dagster-dlt (srdp.ingest.dlt). It loads into the landing zone, or straight into raw with the SRDP rules on.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0012-dlt-alongside-dagster.md 'ADR-0012: dlt alongside Dagster'
+      }
+
+      pep = component 'Policy enforcement point' {
+        #planned #adr-0005 #adr-0008
+        description 'Validates the identity token and checks the grants. Issues a short-lived capability token and a scoped, read-only connection.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0005-authorization-and-data-access.md 'ADR-0005: Authorization and data access'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0008-identity-propagation-and-data-contracts.md 'ADR-0008: Identity propagation and data contracts'
+      }
+
+      evaluator = component 'Contract evaluator' {
+        #planned #adr-0008
+        description 'Maps a capability token, a contract version and a request to allow or deny, with the allowed columns and row filter.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0008-identity-propagation-and-data-contracts.md 'ADR-0008: Identity propagation and data contracts'
+      }
+
+      credentials = component 'Credential materialization' {
+        #planned #open #adr-0009
+        description 'Turns a capability token into scoped engine, storage and compute credentials. Open: PostgreSQL roles, scoped tokens or a Quack server.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0009-data-plane-credential-materialization.md 'ADR-0009: Data-plane credential materialization'
+      }
+
+      pep -> auth 'validates tokens with'
+      pep -> evaluator 'checks requests with'
+      pep -> credentials 'asks for credentials from'
+      io-manager -> connection 'attaches through'
+      connection -> catalog-definition 'reads the catalogs from'
+      dlt-helper -> catalog-definition 'builds the dlt destination from'
+      dlt-helper -> lineage-bridge 'records the table names for'
+      dbt-plugin -> connection 'attaches through'
+      api-app -> connection 'reads the catalog through'
+    }
+
+    tenant = concept 'Tenant' {
+      #planned #adr-0005 #adr-0006
+      description 'An organization in Zitadel. One tenant owns the deployment. By default, its projects share one DuckLake catalog.'
+      link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0005-authorization-and-data-access.md 'ADR-0005: Authorization and data access'
+      link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0006-deployment-and-project-isolation-model.md 'ADR-0006: Deployment and project isolation model'
+    }
+
+    project = concept 'Project' {
+      #adr-0006 #adr-0011
+      description 'A bundle of code locations, services and endpoints that a tenant owns. It can split into its own catalog.'
+      link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0006-deployment-and-project-isolation-model.md 'ADR-0006: Deployment and project isolation model'
+      link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0011-project-onboarding-and-extension.md 'ADR-0011: Project onboarding and extension'
+    }
+
+    postgres = container 'PostgreSQL' {
+      #adr-0003 #adr-0006
+      description 'One database server for Zitadel, Dagster, Marquez and the DuckLake catalog. Each has its own database.'
+      link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0003-data-catalog-lineage-and-observability.md 'ADR-0003: Data catalog, lineage and observability'
+      link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0006-deployment-and-project-isolation-model.md 'ADR-0006: Deployment and project isolation model'
+    }
+
+    setup = container 'Setup service' {
+      description 'Creates the databases, the roles and the storage bucket. Runs again on every deploy.'
+    }
+
+    core = system 'SRDP Core' {
+      #adr-0001
+      description 'The lakehouse and the workflow orchestrator. They store the data and run the pipelines.'
+      link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0001-platform-architecture-and-distribution.md 'ADR-0001: Platform architecture and distribution'
+
+      lakehouse = system 'Lakehouse' {
+        #adr-0004
+        description 'Stores structured and unstructured data. It combines a data lake and a data warehouse.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0004-data-organization-and-ingestion.md 'ADR-0004: Data organization and ingestion'
+        link https://doi.org/10.1007/s42979-024-02737-0 'Overview paper.'
+
+        ducklake = system 'DuckLake' {
+          #adr-0003 #adr-0006
+          description 'A lakehouse format built on SQL.'
+          link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0003-data-catalog-lineage-and-observability.md 'ADR-0003: Data catalog, lineage and observability'
+          link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0006-deployment-and-project-isolation-model.md 'ADR-0006: Deployment and project isolation model'
+          link https://ducklake.select
+
+          storage = container 'Storage' {
+            #adr-0009
+            description 'S3-compatible object storage. It holds the data files.'
+            link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0009-data-plane-credential-materialization.md 'ADR-0009: Data-plane credential materialization'
+          }
+
+          catalog = container 'Catalog' {
+            #adr-0003 #adr-0006
+            description 'Keeps the list of tables, schemas and data files. It manages the files in storage.'
+            link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0003-data-catalog-lineage-and-observability.md 'ADR-0003: Data catalog, lineage and observability'
+            link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0006-deployment-and-project-isolation-model.md 'ADR-0006: Deployment and project isolation model'
+            -> storage 'manages metadata and data files in'
+          }
+
+          raw = layer 'Raw (bronze)' {
+            #adr-0004 #adr-0012
+            description 'The first layer DuckLake manages. Source-faithful, with validated schema and types. Append-only by default.'
+            link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0004-data-organization-and-ingestion.md 'ADR-0004: Data organization and ingestion'
+            link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0012-dlt-alongside-dagster.md 'ADR-0012: dlt alongside Dagster'
+          }
+
+          curated = layer 'Curated (silver)' {
+            #adr-0004
+            description 'Business rules applied, enriched and joined. Always reproducible from raw. A project can add layers.'
+            link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0004-data-organization-and-ingestion.md 'ADR-0004: Data organization and ingestion'
+            -> raw 'is rebuilt from'
+          }
+        }
+
+        landing-zone = container 'Landing zone' {
+          #planned #adr-0004 #adr-0012
+          description 'Quarantine for unvalidated data, in front of raw. DuckLake does not manage it. It is storage and an area of the platform, which is not built yet. A Dagster asset validates it and promotes it through the IO manager.'
+          link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0004-data-organization-and-ingestion.md 'ADR-0004: Data organization and ingestion'
+          link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0012-dlt-alongside-dagster.md 'ADR-0012: dlt alongside Dagster'
+        }
+
+        compute = container 'Compute' {
+          #adr-0007
+          description 'Runs the work of Dagster. This includes ingestion, transformations, scheduled jobs, and machine learning training and inference.'
+          link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0007-compute-and-scaling.md 'ADR-0007: Compute, execution and scaling'
+        }
+
+        direct-read = container 'Direct read (tier A)' {
+          #planned #adr-0005 #adr-0007
+          description 'The default read path. A tool reads DuckLake in its own process through a scoped, read-only connection.'
+          link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0005-authorization-and-data-access.md 'ADR-0005: Authorization and data access'
+          link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0007-compute-and-scaling.md 'ADR-0007: Compute, execution and scaling'
+        }
+
+        logged-read = container 'Logged read (tier B)' {
+          #planned #adr-0007
+          description 'A read path with a log for each query. A platform wrapper logs the query before it runs in the tool.'
+          link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0007-compute-and-scaling.md 'ADR-0007: Compute, execution and scaling'
+        }
+
+        query-engine = container 'Query engine (tier C)' {
+          #planned #open #adr-0007 #adr-0008 #adr-0009
+          description 'A gateway for untrusted code or central audit. Dagster does not run interactive queries. Open: the protocol, such as OData, Quack or Flight SQL.'
+          link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0007-compute-and-scaling.md 'ADR-0007: Compute, execution and scaling'
+          link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0008-identity-propagation-and-data-contracts.md 'ADR-0008: Identity propagation and data contracts'
+          link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0009-data-plane-credential-materialization.md 'ADR-0009: Data-plane credential materialization'
+        }
+
+        compute -> ducklake 'reads and writes data in'
+        query-engine -> ducklake 'reads data in'
+        direct-read -> ducklake 'reads data in'
+        logged-read -> ducklake 'reads data in'
+      }
+
+      orchestrator = system 'Workflow Orchestrator' {
+        #adr-0007 #adr-0012
+        description 'Schedules and runs the data pipelines in the correct order.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0007-compute-and-scaling.md 'ADR-0007: Compute, execution and scaling'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0012-dlt-alongside-dagster.md 'ADR-0012: dlt alongside Dagster'
+        link https://docs.dagster.io/ 'Dagster as preferred open source workflow orchestrator.'
+
+        code-location = container 'Code Location' {
+          #adr-0011 #adr-0012
+          description 'A set of assets and jobs deployed in one environment.'
+          link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0011-project-onboarding-and-extension.md 'ADR-0011: Project onboarding and extension'
+          link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0012-dlt-alongside-dagster.md 'ADR-0012: dlt alongside Dagster'
+
+          asset = component 'Asset' {
+            description 'A unit of data, such as a table, dataset or machine learning model. Assets depend on other assets.'
+          }
+
+          job = component 'Job' {
+            description 'Code that runs on data. It takes assets as input and produces assets.'
+          }
+
+          data-contract = component 'Data contract' {
+            #planned #adr-0008
+            description 'A versioned YAML file next to the asset code. It defines the schema, the exposed columns and rows, the terms and the quality checks.'
+            link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0008-identity-propagation-and-data-contracts.md 'ADR-0008: Identity propagation and data contracts'
+          }
+
+          source-asset = component 'Source asset' {
+            description 'Pulls data from a source and returns a Polars dataframe. The IO manager writes it to raw.'
+          }
+
+          polars-asset = component 'Polars asset' {
+            description 'Reads tables as lazy frames and returns a dataframe. The IO manager writes it to the next layer.'
+          }
+
+          dbt-assets = component 'dbt assets' {
+            description 'The dbt models as Dagster assets. dbt builds them in the curated layer.'
+          }
+
+          landing-sensor = component 'Landing zone sensor' {
+            #planned #adr-0004
+            description 'Detects new data in the landing zone and starts the promotion asset.'
+            link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0004-data-organization-and-ingestion.md 'ADR-0004: Data organization and ingestion'
+          }
+
+          promotion = component 'Promotion asset' {
+            #planned #adr-0004 #adr-0012
+            description 'Checks the schema and content of landed data. Valid data goes to raw through the IO manager.'
+            link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0004-data-organization-and-ingestion.md 'ADR-0004: Data organization and ingestion'
+            link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0012-dlt-alongside-dagster.md 'ADR-0012: dlt alongside Dagster'
+          }
+        }
+
+        ui = container 'Web UI' {
+          #adr-0005
+          description 'Shows the status of pipelines and runs. The exposed UI is read-only in production. A read-write instance stays internal.'
+          link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0005-authorization-and-data-access.md 'ADR-0005: Authorization and data access'
+          -> daemon 'manually triggers, in read-write mode only'
+          -> code-location 'loads definitions from'
+        }
+
+        daemon = container 'Daemon' {
+          description 'Long-running process that starts the job runs.'
+          -> code-location 'manages runs from'
+        }
+      }
+
+    }
+
+    observability = system 'Observability' {
+      #adr-0003
+      description 'Monitors the platform. It covers lineage, metrics and alerts.'
+      link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0003-data-catalog-lineage-and-observability.md 'ADR-0003: Data catalog, lineage and observability'
+      link https://opentelemetry.io/ 'OpenTelemetry as preferred open source observability framework.'
+
+      data-lineage = system 'Data Lineage' {
+        #open #adr-0003
+        description 'Tracks where data comes from and how it changes (OpenLineage). Dagster and dbt supply it. Open: whether dbt reports through Dagster or directly.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0003-data-catalog-lineage-and-observability.md 'ADR-0003: Data catalog, lineage and observability'
+        link https://openlineage.io/ 'OpenLineage specification.'
+        link https://marquezproject.ai/ 'Marquez as preferred open source implementation of OpenLineage.'
+        -> srdp.core 'receives lineage metadata from'
+
+        ui = container 'Web UI' {
+          description 'Shows data lineage as a graph of data and transformations.'
+          link https://github.com/MarquezProject/marquez/tree/main/web 'source code'
+          link https://hub.docker.com/r/marquezproject/marquez-web 'Docker image'
+        }
+
+        api = container 'REST API' {
+          description 'Gives programmatic access to lineage metadata.'
+          link https://github.com/MarquezProject/marquez/tree/main/api 'source code'
+          link https://hub.docker.com/r/marquezproject/marquez 'Docker image'
+        }
+      }
+
+      prometheus = container 'Prometheus' {
+        #planned #adr-0003
+        description 'Stores metrics and raises alerts. It is optional. Self-hosted by default, or a managed endpoint.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0003-data-catalog-lineage-and-observability.md 'ADR-0003: Data catalog, lineage and observability'
+        link https://prometheus.io/docs/introduction/overview/ 'Prometheus documentation'
+      }
+
+      metrics-ui = container 'Metrics UI (Grafana)' {
+        #planned #adr-0003
+        description 'Shows dashboards of the metrics in Prometheus.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0003-data-catalog-lineage-and-observability.md 'ADR-0003: Data catalog, lineage and observability'
+        link https://grafana.com/docs/ 'Grafana documentation'
+        -> prometheus 'queries metrics from'
+      }
+
+      alertmanager = container 'Alertmanager' {
+        #planned #adr-0003
+        description 'Groups and routes the alerts from Prometheus.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0003-data-catalog-lineage-and-observability.md 'ADR-0003: Data catalog, lineage and observability'
+        link https://prometheus.io/docs/alerting/latest/alertmanager/ 'Alertmanager documentation'
+      }
+
+      prometheus -> alertmanager 'sends alerts to'
+
+      telemetry = container 'Telemetry' {
+        #planned #open #adr-0003
+        description 'Collects telemetry from the platform components. Open: whether logs stay per service or go to one place.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0003-data-catalog-lineage-and-observability.md 'ADR-0003: Data catalog, lineage and observability'
+        link https://opentelemetry.io/docs/specs/otlp/ 'OpenTelemetry Protocol as the mandatory standard for monitoring'
+        link https://prometheus.io/docs/introduction/overview/ 'Prometheus as preferred open source monitoring solution.'
+
+        -> core 'monitors'
+        -> data-lineage 'monitors'
+        -> services 'monitors'
+        -> security 'monitors'
+        -> prometheus 'sends metrics to'
+      }
+    }
+
+    services = system 'Services' {
+      #adr-0001
+      description 'The APIs and apps that give users access to data products and dashboards.'
+      link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0001-platform-architecture-and-distribution.md 'ADR-0001: Platform architecture and distribution'
+
+      api = container 'APIs' {
+        #open #adr-0002 #adr-0005 #adr-0007 #adr-0008
+        description 'Today it gives catalog information and Dagster status. Planned: endpoints for reading data and dropping data into the landing zone. Open: whether queries use a separate query endpoint, such as a Quack server.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0002-api-and-access-strategy.md 'ADR-0002: API and access strategy'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0005-authorization-and-data-access.md 'ADR-0005: Authorization and data access'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0007-compute-and-scaling.md 'ADR-0007: Compute, execution and scaling'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0008-identity-propagation-and-data-contracts.md 'ADR-0008: Identity propagation and data contracts'
+        link https://swagger.io/specification/ 'OpenAPI specification.'
+        link https://fastapi.tiangolo.com/ 'FastAPI as preferred open source framework for building APIs.'
+      }
+
+      apps = system 'Apps' {
+        #adr-0011
+        description 'User interfaces for data products, dashboards and machine learning models. Apps in the platform should be trusted and read-only. The platform does not enforce this yet. Apps outside it are external services.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0011-project-onboarding-and-extension.md 'ADR-0011: Project onboarding and extension'
+        link https://shiny.posit.co/py/docs/overview.html 'Shiny for Python as recommended open source framework for building data apps.'
+        link https://streamlit.io/ 'Streamlit as recommended open source framework for building data apps.'
+
+        marimo = container 'marimo' {
+          description 'Notebooks for exploring and presenting data.'
+          link https://marimo.io/ 'marimo documentation'
+        }
+
+        streamlit = container 'Streamlit' {
+          description 'Dashboards written in Python.'
+          link https://streamlit.io/ 'Streamlit documentation'
+        }
+
+        duckdb-ui = container 'DuckDB UI' {
+          description 'SQL console for ad hoc queries on DuckLake.'
+          link https://duckdb.org/docs/ 'DuckDB documentation'
+        }
+
+        quarto = container 'Quarto' {
+          description 'Static reporting site from a generic runtime. Off by default, and only in the Helm chart.'
+          link https://quarto.org/ 'Quarto documentation'
+        }
+      }
+
+      hub = container 'Hub page' {
+        description 'Landing page with links to the apps of the platform.'
+      }
+    }
+
+    security = system 'Security' {
+      #adr-0002 #adr-0005
+      description 'Protects the platform with zero trust architecture (ZTA).'
+      link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0002-api-and-access-strategy.md 'ADR-0002: API and access strategy'
+      link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0005-authorization-and-data-access.md 'ADR-0005: Authorization and data access'
+      link https://doi.org/10.6028/NIST.SP.800-207 'Authoritative description of ZTA.'
+
+      reverse-proxy = container 'Reverse Proxy' {
+        #adr-0002
+        description 'The single entry point for all user requests. OAuth2 Proxy and Zitadel authenticate each request first.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0002-api-and-access-strategy.md 'ADR-0002: API and access strategy'
+        link https://traefik.io/traefik 'Traefik as preferred open source reverse proxy solution.'
+      }
+
+      idp = container 'Identity Provider' {
+        #adr-0002 #adr-0005
+        description 'Manages users, login and access rights.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0002-api-and-access-strategy.md 'ADR-0002: API and access strategy'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0005-authorization-and-data-access.md 'ADR-0005: Authorization and data access'
+        link https://zitadel.com/docs 'Zitadel as preferred open source identity provider solution.'
+
+        login = component 'Login UI' {
+          description 'The Zitadel login screen.'
+        }
+
+        init = component 'Init job' {
+          description 'Prepares the first Zitadel instance. Runs once.'
+        }
+      }
+
+      audit-log = container 'Audit log' {
+        #planned #adr-0002 #adr-0007
+        description 'Records each query on the logged and gateway read paths, and the main platform actions.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0002-api-and-access-strategy.md 'ADR-0002: API and access strategy'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0007-compute-and-scaling.md 'ADR-0007: Compute, execution and scaling'
+      }
+
+      forward-auth = container 'Forward Authentication' {
+        #adr-0002
+        description 'Checks each request with an identity provider before the proxy passes it on.'
+        link https://github.com/srdp-hub/srdp/blob/main/docs/adr/0002-api-and-access-strategy.md 'ADR-0002: API and access strategy'
+        link https://oauth2-proxy.github.io/oauth2-proxy/ 'OAuth2 Proxy as the preferred open source forwarding authentication service.'
+      }
+
+      -> core 'secures'
+      -> services 'secures'
+      -> observability 'secures'
+
+      reverse-proxy -> forward-auth 'forwards authentication check to'
+      idp -> forward-auth 'provides authentication via'
+
+    }
+  }
+
+  engineer -> srdp.core.orchestrator 'adds pipelines and monitors runs'
+  engineer -> srdp.services 'adds apps and services'
+  admin -> srdp 'deploys and operates'
+  admin -> srdp.cli 'deploys with'
+  consumer -> services 'consumes data products, dashboards'
+
+  orchestrator.asset -> srdp.core.lakehouse 'persisted/materialized on'
+  orchestrator.code-location -> srdp.core.lakehouse.compute 'runs on'
+  sources -> srdp.services.api 'pushes data through' {
+    #planned
+    style {
+      line dashed
+    }
+  }
+  sources -> srdp.core.lakehouse.landing-zone 'drops files into'
+  srdp.services.api -> srdp.core.lakehouse.landing-zone 'lands pushed data in' {
+    #planned
+    style {
+      line dashed
+    }
+  }
+  srdp.core.orchestrator.code-location -> srdp.core.lakehouse.landing-zone 'detects and processes files in'
+  srdp.core.orchestrator.code-location -> sources 'pulls data from'
+  consumer -> srdp.services.api 'runs analytics and connects dashboards through'
+  srdp.services.apps -> srdp.core.lakehouse.direct-read 'read data by default through'
+  srdp.services.api -> srdp.core.lakehouse.query-engine 'serves read requests through'
+  srdp.security.reverse-proxy -> srdp.services.api 'routes to'
+  srdp.security.reverse-proxy -> srdp.services.apps.marimo 'routes to'
+  srdp.security.reverse-proxy -> srdp.services.apps.streamlit 'routes to'
+  srdp.security.reverse-proxy -> srdp.services.apps.duckdb-ui 'routes to'
+  srdp.security.reverse-proxy -> srdp.services.apps.quarto 'routes to'
+  srdp.security.reverse-proxy -> srdp.services.hub 'routes to'
+  srdp.security.reverse-proxy -> srdp.core.orchestrator.ui 'routes to'
+  srdp.security.reverse-proxy -> srdp.observability.data-lineage.ui 'routes to'
+  srdp.security.reverse-proxy -> srdp.security.idp 'routes to'
+  srdp.security.reverse-proxy -> srdp.security.idp.login 'routes the login path to'
+  srdp.security.idp.init -> srdp.postgres 'initializes the Zitadel database in'
+  srdp.observability.data-lineage.ui -> srdp.observability.data-lineage.api 'reads lineage from'
+  ext-services -> srdp.services.api 'reads data and sends queries through'
+  srdp.core.lakehouse.ducklake.catalog -> srdp.postgres 'is stored in'
+  srdp.security.idp -> srdp.postgres 'stores data in'
+  srdp.core.orchestrator.ui -> srdp.postgres 'reads run history from'
+  srdp.core.orchestrator.daemon -> srdp.postgres 'stores run history in'
+  srdp.observability.data-lineage.api -> srdp.postgres 'stores lineage in'
+  srdp.setup -> srdp.postgres 'creates databases and roles in'
+  srdp.core.orchestrator.code-location -> srdp.package.io-manager 'writes assets with'
+  srdp.core.orchestrator.code-location -> srdp.package.lineage-bridge 'emits lineage with'
+  srdp.core.orchestrator.code-location -> srdp.package.k8s-profiles 'sets the run resources with'
+  srdp.core.orchestrator.code-location -> srdp.package.dbt-plugin 'runs dbt through'
+  srdp.package.connection -> srdp.core.lakehouse.ducklake 'attaches the catalog and the storage of'
+  srdp.package.lineage-bridge -> srdp.observability.data-lineage 'sends OpenLineage events to'
+  srdp.package.k8s-profiles -> srdp.core.lakehouse.compute 'sets the resources of'
+  srdp.package.api-app -> srdp.core.orchestrator.ui 'reads run status from'
+  srdp.package.api-app -> srdp.package.pep 'enforces access with'
+  srdp.package.auth -> srdp.security.idp 'checks tokens against'
+  srdp.core.orchestrator.code-location -> srdp.package.dlt-helper 'loads data with'
+  srdp.package.dlt-helper -> srdp.core.lakehouse.landing-zone 'loads data into'
+  srdp.package.dlt-helper -> srdp.core.lakehouse.ducklake.raw 'writes with the strict rules into'
+  srdp.package.io-manager -> srdp.core.lakehouse.ducklake.raw 'appends to'
+  srdp.package.io-manager -> srdp.core.lakehouse.ducklake.curated 'writes to'
+  srdp.package.dbt-plugin -> srdp.core.lakehouse.ducklake.curated 'writes directly to'
+  srdp.core.orchestrator.code-location.source-asset -> sources 'pulls data from'
+  srdp.core.orchestrator.code-location.source-asset -> srdp.package.io-manager 'returns dataframes to'
+  srdp.core.orchestrator.code-location.polars-asset -> srdp.package.io-manager 'reads and writes through'
+  srdp.core.orchestrator.code-location.dbt-assets -> srdp.package.dbt-plugin 'run through'
+  srdp.core.orchestrator.code-location.landing-sensor -> srdp.core.lakehouse.landing-zone 'watches'
+  srdp.core.orchestrator.code-location.landing-sensor -> srdp.core.orchestrator.code-location.promotion 'starts'
+  srdp.core.orchestrator.code-location.promotion -> srdp.core.lakehouse.landing-zone 'checks the data in'
+  srdp.core.orchestrator.code-location.promotion -> srdp.package.io-manager 'promotes valid data with'
+  srdp.services.api -> srdp.package.api-app 'is built from'
+  srdp.setup -> srdp.package.setup-steps 'is built from'
+  srdp.setup -> srdp.core.lakehouse.ducklake.storage 'creates the bucket in'
+  srdp.package.pep -> srdp.core.lakehouse.direct-read 'provisions the scoped connection for'
+  srdp.package.evaluator -> srdp.core.lakehouse.query-engine 'limits columns and rows in'
+  srdp.package.credentials -> srdp.core.lakehouse.ducklake 'issues scoped access to'
+  srdp.core.orchestrator.code-location.data-contract -> srdp.package.evaluator 'is read by'
+  srdp.core.lakehouse.logged-read -> srdp.security.audit-log 'logs queries in'
+  srdp.core.lakehouse.query-engine -> srdp.security.audit-log 'logs queries in'
+  srdp.services.apps -> srdp.package.auth 'validate their own token with'
+  srdp.tenant -> srdp.project 'owns'
+  srdp.tenant -> srdp.security.idp 'is an organization in'
+  srdp.project -> srdp.core.orchestrator.code-location 'has one or more'
+  srdp.project -> srdp.core.lakehouse.ducklake.catalog 'uses the tenant catalog, or a dedicated one'
+
+}

@@ -16,17 +16,17 @@ jobs:
   pre-commit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           enable-cache: true
       # The terraform_fmt/terraform_tflint hooks below (deploy/scaleway/)
       # shell out to the `terraform` and `tflint` binaries directly, pre-commit
       # doesn't install these itself the way it does its Python/JS hook envs.
-      - uses: hashicorp/setup-terraform@v4
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
         with:
           terraform_wrapper: false
-      - uses: terraform-linters/setup-tflint@v6
+      - uses: terraform-linters/setup-tflint@6ffdbaa3be476b3431f7275c26966ef32ff60337 # v6
       # The local `ty` hook shells out to `uv run ty check`, which needs the
       # project's own env synced first, pre-commit's own hook envs (ruff,
       # gitleaks, terraform, yamllint) install themselves. The extras below
@@ -39,16 +39,27 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           enable-cache: true
       # tests/deploy renders the chart with `helm template`, against the
       # subcharts `just chart-deps` fetches from Chart.lock.
-      - uses: azure/setup-helm@v5
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
         with:
           version: v4.3.0
-      - uses: extractions/setup-just@v4
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
       - run: uv sync --group dev --extra ducklake --extra openlineage --extra api --extra dbt
       - run: just chart-deps
       - run: uv run pytest tests
+  architecture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+      # The Justfile reads srdp.toml through `uv` for every recipe, so just needs uv here too.
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+      - run: just c4-validate

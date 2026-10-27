@@ -1,0 +1,166 @@
+global {
+  // Dashed means planned. Dotted amber means still open for discussion.
+  styleGroup status {
+    style element.tag = #planned {
+      border dashed
+      opacity 60%
+    }
+    style element.tag = #open {
+      border dotted
+      color amber
+    }
+  }
+}
+
+views {
+
+  // The standard C4 levels: context, containers, then components.
+  view context {
+    title '1. Context and containers / System context'
+    description 'Who uses SRDP. The system is a single box here.'
+    include engineer, consumer, admin, sources, ext-services, srdp
+    autoLayout TopBottom
+  }
+
+  view containers of srdp {
+    title '1. Context and containers / SRDP containers'
+    description 'The parts SRDP is made of and the people around it.'
+    include *
+    global style status
+    autoLayout TopBottom
+  }
+
+  view core of srdp.core {
+    title '2. Components / Core'
+    description 'Inside the core: the lakehouse and the workflow orchestrator.'
+    include *
+    global style status
+    autoLayout TopBottom
+  }
+
+  view index {
+    title 'SRDP overview'
+    description 'Dashed means planned. Dotted amber means still open for discussion.'
+    include srdp, srdp.*, srdp.core.orchestrator, srdp.core.orchestrator.*, srdp.core.lakehouse.*, srdp.core.lakehouse.ducklake.*, srdp.observability.*, srdp.observability.data-lineage.*, srdp.services, srdp.services.*, srdp.security, srdp.security.*
+    global style status
+    autoLayout BottomTop
+  }
+
+  view dataflow {
+    title '2. Components / Orchestration, compute and storage'
+    description 'How data comes in, gets processed and gets stored. Dashed means planned. Dotted amber means still open for discussion.'
+    include sources, srdp.core.lakehouse.landing-zone, srdp.core.orchestrator, srdp.package.io-manager, srdp.package.connection, srdp.core.lakehouse.compute, srdp.core.lakehouse.ducklake, srdp.core.lakehouse.ducklake.*, srdp.core.lakehouse.query-engine
+    global style status
+    autoLayout LeftRight
+  }
+
+  view layers {
+    title '2. Components / Ingestion and layers'
+    description 'How data enters and moves through the layers. Dashed means planned.'
+    include sources, srdp.services.api, srdp.core.lakehouse.landing-zone, srdp.core.lakehouse.ducklake.raw, srdp.core.lakehouse.ducklake.curated, srdp.core.orchestrator.code-location.*, srdp.package.io-manager, srdp.package.dlt-helper, srdp.package.dbt-plugin
+    global style status
+    autoLayout LeftRight
+  }
+
+  view access {
+    title '2. Components / Access to data'
+    description 'How a request becomes access to data. Dashed means planned. Dotted amber means still open for discussion.'
+    include srdp.services.api, srdp.services.apps, srdp.security.idp, srdp.security.audit-log, srdp.package.api-app, srdp.package.auth, srdp.package.pep, srdp.package.evaluator, srdp.package.credentials, srdp.core.orchestrator.code-location.data-contract, srdp.core.lakehouse.direct-read, srdp.core.lakehouse.logged-read, srdp.core.lakehouse.query-engine, srdp.core.lakehouse.ducklake
+    global style status
+    autoLayout LeftRight
+  }
+
+  view tenancy {
+    title '2. Components / Tenants and projects'
+    description 'Who owns what. A tenant owns projects, and its projects share one catalog by default.'
+    include srdp.tenant, srdp.project, srdp.security.idp, srdp.core.orchestrator.code-location, srdp.core.lakehouse.ducklake.catalog
+    global style status
+    autoLayout LeftRight
+  }
+
+  view observability of srdp.observability {
+    title '2. Components / Observability'
+    description 'Lineage, metrics and alerting. Dashed means planned. Dotted amber means still open for discussion.'
+    include *
+    global style status
+    autoLayout TopBottom
+  }
+
+  view lineage of srdp.observability.data-lineage {
+    title '2. Components / Data lineage'
+    description 'Dotted amber means still open for discussion.'
+    include *
+    global style status
+    autoLayout TopBottom
+  }
+
+  view services of srdp.services {
+    title '2. Components / Services'
+    description 'How data products, dashboards and apps are served.'
+    include *
+    global style status
+    autoLayout TopBottom
+  }
+
+  view security of srdp.security {
+    title '2. Components / Security'
+    description 'The reverse proxy, the identity provider and forward authentication.'
+    include *
+    global style status
+    autoLayout TopBottom
+  }
+
+  view of srdp.services.apps {
+    title '2. Components / Apps'
+    description 'The user interfaces that run in the platform.'
+    include *
+    global style status
+    autoLayout TopBottom
+  }
+
+  view of srdp.core.orchestrator.code-location {
+    title '2. Components / Code location'
+    description 'The assets and jobs of a project.'
+    include *
+    global style status
+    autoLayout TopBottom
+  }
+
+  view of srdp.package {
+    title '2. Components / srdp Python package'
+    description 'The modules of the package and the exact components they plug into. Dashed means planned.'
+    include srdp.package.*, srdp.core.orchestrator.code-location, srdp.core.orchestrator.ui, srdp.core.lakehouse.ducklake, srdp.core.lakehouse.compute, srdp.core.lakehouse.landing-zone, srdp.observability.data-lineage, srdp.security.idp, srdp.services.api, srdp.setup
+    global style status
+    autoLayout LeftRight
+  }
+
+  view of srdp.core.lakehouse {
+    title '2. Components / Lakehouse'
+    description 'Dashed means planned. Dotted amber means still open for discussion.'
+    include *
+    global style status
+    autoLayout TopBottom
+  }
+
+  view of srdp.core.lakehouse.ducklake {
+    title '2. Components / DuckLake'
+    include *
+    global style status
+    autoLayout TopBottom
+  }
+
+  view of srdp.core.orchestrator {
+    title '2. Components / Workflow orchestrator'
+    description 'Dotted amber means still open for discussion.'
+    include *
+    global style status
+    autoLayout TopBottom
+  }
+
+  view of dagster {
+    title '2. Components / Dagster concepts'
+    include *
+    global style status
+    autoLayout TopBottom
+  }
+}

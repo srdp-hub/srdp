@@ -1,5 +1,5 @@
 ---
-title: 2. Local Configuration & Setup
+title: Local Configuration & Setup
 icon: lucide/locate-fixed
 ---
 
@@ -73,7 +73,9 @@ just docker-up
 This builds the local images and starts every service defined in `deploy/docker/docker-compose.yml`.
 The first run takes a few minutes while images are pulled and built.
 
-Quarto is disabled by default, its base image bundles a full Pandoc/TinyTeX/Deno toolchain sized for scientific publishing, heavy for a single static page with no current use. Its source stays at `services/quarto/`, wire it back into `deploy/docker/docker-compose.yml` and `config/traefik/traefik.yml` when it's needed again.
+Quarto is disabled by default, because it has no current use.
+The chart can run it with `quarto.enabled: true`. Its image builds from `services/quarto/` on a Docker Hardened Image, runs as uid 65532 and listens on 8080.
+Docker Compose has no Quarto service. To add one, copy the `hub` service and route it in `config/traefik/dynamic/srdp.yml`.
 
 To stop the stack:
 
@@ -96,7 +98,7 @@ cd srdp
 
 ### 2) Reach the cluster
 
-The chart uses `*.srdp.localhost` by default. On the local `kind` cluster this repo is set up for, Traefik's ports are mapped to `127.0.0.1:18080`/`127.0.0.1:18443` (see `deploy/kubernetes/kind-config.yaml`), so `127.0.0.1` is always the right host, but every URL needs the `:18443` (or `:18080` for plain HTTP) suffix. Those aren't 80/443 on purpose: Docker Compose already publishes 80, 443, and 8080 on the host (`deploy/docker/docker-compose.yml`), and both stacks are meant to run side by side without tearing one down to use the other. On any other cluster, point these hostnames at whatever IP you use to reach Traefik: a LoadBalancer's external IP once it's up, or a port-forward's `127.0.0.1` if it isn't reachable directly (see `docs/06-troubleshooting.md`).
+The chart uses `*.srdp.localhost` by default. On the local `kind` cluster this repo is set up for, Traefik's ports are mapped to `127.0.0.1:18080`/`127.0.0.1:18443` (see `deploy/kubernetes/kind-config.yaml`), so `127.0.0.1` is always the right host, but every URL needs the `:18443` (or `:18080` for plain HTTP) suffix. Those aren't 80/443 on purpose: Docker Compose already publishes 80, 443, and 8080 on the host (`deploy/docker/docker-compose.yml`), and both stacks are meant to run side by side without tearing one down to use the other. On any other cluster, point these hostnames at whatever IP you use to reach Traefik: a LoadBalancer's external IP once it's up, or a port-forward's `127.0.0.1` if it isn't reachable directly (see `docs/07-troubleshooting.md`).
 
 ### 3) Install the local CA, create the kind cluster, and generate TLS certificates
 
