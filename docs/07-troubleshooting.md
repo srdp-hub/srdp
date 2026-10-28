@@ -14,7 +14,9 @@ icon: lucide/life-buoy
 
 ### `kind create cluster` fails with "port is already allocated"
 
-- `deploy/kubernetes/kind-config.yaml` deliberately maps host ports 18080/18443, not 80/443/8080, because `deploy/docker/docker-compose.yml` already publishes exactly those three (http, https, the Traefik dashboard), and both stacks are meant to run side by side. If you still hit this error, something else on your machine is already using 18080/18443, check `lsof -i :18443` (or the equivalent) and either free it or pick different ports in `kind-config.yaml`, matching them up with `values.yaml`'s `traefik.ports.*.nodePort`.
+- `deploy/kubernetes/kind-config.yaml` maps host ports 80 and 443, which `deploy/docker/docker-compose.yml` also publishes.
+- Stop the Compose stack (`just docker-down`) and create the cluster again.
+- If the error stays, check what holds the port with `lsof -i :443`.
 
 ### Pods stuck in `Pending`
 
