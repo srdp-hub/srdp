@@ -75,7 +75,7 @@ class SetupSettings(BaseSettings):
     # The DuckLake data volume, when this deployment mounts it into setup (Compose does).
     data_dir: Path | None = Field(default=None)
     databases: list[DatabaseTarget]
-    # False when someone else manages the databases, e.g. managed Postgres. Setup then only checks them.
+    # False for a managed Postgres. Setup then only checks the databases.
     manage_databases: bool = True
     # Keyed by role name, e.g. SETUP_PASSWORDS__MARQUEZ -> passwords["marquez"].
     passwords: dict[str, SecretStr] = Field(default_factory=dict)

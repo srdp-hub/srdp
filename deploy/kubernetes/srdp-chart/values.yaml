@@ -134,7 +134,7 @@ zitadel:
     capabilities:
       drop: [ALL]
   zitadel:
-    # Zitadel uses its own role, never the superuser. The masterkey must be 32 characters.
+    # The masterkey must be 32 characters.
     masterkeySecretName: srdp-zitadel
     configmapConfig:
       ExternalDomain: auth.srdp.localhost
@@ -190,7 +190,6 @@ zitadel:
               secretKeyRef:
                 name: srdp-zitadel
                 key: db-password
-          # Verify the server before sending the password, with the CA the chart mounts.
           - name: PGSSLMODE
             value: verify-full
           - name: PGSSLROOTCERT
@@ -199,7 +198,6 @@ zitadel:
           - name: db-ssl-ca-crt
             mountPath: /db-ssl-ca-crt
             readOnly: true
-  # Same variable names as Compose.
   env:
     - name: ZITADEL_DATABASE_POSTGRES_USER_PASSWORD
       valueFrom:
@@ -243,7 +241,7 @@ zitadel:
       "helm.sh/hook-weight": "-5"
       "helm.sh/hook-delete-policy": before-hook-creation
     activeDeadlineSeconds: 900
-    # srdp-setup made the role and database. The full `init` would need the superuser.
+    # Not `init`, which needs the superuser.
     command: zitadel
 
   setupJob:

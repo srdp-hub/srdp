@@ -32,7 +32,6 @@ local_secrets_sum := `uv run --no-project python -c 'import hashlib, sys; sys.st
 local_secrets_args := "--set-string 'oauth2-proxy.podAnnotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'dagster.dagsterWebserver.annotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'dagster.dagsterDaemon.annotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'dagster.dagster-user-deployments.deployments[0].annotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'zitadel.podAnnotations.checksum/local-secrets=" + local_secrets_sum + "'"
 # Staged prod rollout: apps that every partial stage leaves off.
 prod_apps_off := "--set dagster.enabled=false --set marimo.enabled=false --set quarto.enabled=false --set streamlit.enabled=false --set api.enabled=false --set duckdbUi.enabled=false --set marquez.enabled=false"
-# Traefik only, for the first LoadBalancer IP. No login gate yet, so nothing behind it runs.
 prod_traefik_only_args := "--set zitadel.enabled=false --set zitadel-db.enabled=false --set oauth2-proxy.enabled=false --set setup.enabled=false --set hub.enabled=false " + prod_apps_off
 # Traefik, the hub page and the auth stack (Zitadel, its database, OAuth2-Proxy).
 prod_auth_only_args := "--set zitadel.enabled=true --set oauth2-proxy.enabled=true " + prod_apps_off

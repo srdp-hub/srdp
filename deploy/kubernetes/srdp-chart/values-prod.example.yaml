@@ -16,7 +16,6 @@ global:
 # (srdp-postgres, srdp-zitadel, srdp-oauth2-proxy, srdp-dagster-postgresql,
 # srdp-marquez) before installing, e.g. with External Secrets. srdp-postgres
 # also needs replication-password here, because of architecture: replication.
-# srdp-zitadel holds masterkey, db-password and admin-password.
 # DuckLake runs on S3 below, so also create srdp-ducklake-s3-writer and
 # srdp-ducklake-s3-reader, each with DUCKLAKE_S3_KEY_ID and DUCKLAKE_S3_SECRET.
 
@@ -157,7 +156,6 @@ zitadel:
               secretKeyRef:
                 name: srdp-zitadel
                 key: db-password
-          # Verify the server before sending the password, with the CA the chart mounts.
           - name: PGSSLMODE
             value: verify-full
           - name: PGSSLROOTCERT

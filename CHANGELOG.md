@@ -97,7 +97,7 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
   It stays after it succeeds, until the next install or upgrade, so `kubectl logs job/srdp-setup` always shows the last run.
   Each connection attempt times out after 5 seconds, so an unreachable host can't use up those 4 minutes.
 - Zitadel uses its own database role on both targets and never gets the Postgres superuser password. `srdp-setup` creates the role, and Compose runs `init zitadel`.
-  The `srdp-zitadel` Secret holds `masterkey`, `db-password` and `admin-password`. This breaks existing `values-prod.yaml` files and Secrets, which must drop `config-yaml` and the `password` key of `srdp-postgres`, and add the new keys.
+  The `srdp-zitadel` Secret holds `masterkey`, `db-password` and `admin-password`. This breaks existing `values-prod.yaml` files and Secrets, which must drop `config-yaml`, the `password` key of `srdp-postgres`, and the `zitadel-db.auth.*`, `Admin`, `dbSslAdminCrtSecret` and `nc -z` wait blocks, and add the new keys.
   In kind, Zitadel waits for its login and restarts when `values-local.yaml` changes, and the Postgres pod restarts once on upgrade.
 - `[setup] manage_databases = false` in `srdp.toml`, and `setup.manageDatabases` in the chart, make `srdp-setup` only check the connection and that the databases exist.
 - `just build-and-push` stops on the first failed build or push.
