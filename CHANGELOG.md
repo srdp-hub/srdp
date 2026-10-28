@@ -78,7 +78,7 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 - Dagster queues runs and launches at most 3 at a time, of which at most one backfill (`workload_kind: backfill`), on both Compose and Kubernetes.
 - The base and fast-lane Kubernetes run profiles request 512Mi with a 1536Mi limit, since a full `srdp_etl_job` run peaks at about 1Gi.
 - `just prod-traefik-only` deploys only Traefik and the hub page, and `just prod-auth-only` adds only Zitadel, its database and OAuth2-Proxy.
-  Both leave every app and the `srdp-setup` Job off.
+  Both leave every app off, and only `prod-traefik-only` leaves the `srdp-setup` Job off.
 - `srdp-setup` and `duckdb-ui` build in the uv image and run on `python:3.12-slim-bookworm`, without uv at runtime, and the hub image applies Alpine security updates, so all platform images pass the critical vulnerability scan.
 - `just docker-tls` and `just local-tls` install mkcert's local CA themselves, so setup is install mkcert and run the recipe.
 - The setup docs link to each tool's own install instructions, drop the unneeded `/etc/hosts` steps, and use `just` recipes throughout.
@@ -96,6 +96,10 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 - The chart's setup Job runs before Zitadel's hooks, gives up after 2 retries or 4 minutes, and can be switched off with `setup.enabled`.
   It stays after it succeeds, until the next install or upgrade, so `kubectl logs job/srdp-setup` always shows the last run.
   Each connection attempt times out after 5 seconds, so an unreachable host can't use up those 4 minutes.
+- Zitadel uses its own database role on both targets and never gets the Postgres superuser password. `srdp-setup` creates the role, and Compose runs `init zitadel`.
+  The `srdp-zitadel` Secret holds `masterkey`, `db-password` and `admin-password`. This breaks existing `values-prod.yaml` files and Secrets, which must drop `config-yaml`, the `password` key of `srdp-postgres`, and the `zitadel-db.auth.*`, `Admin`, `dbSslAdminCrtSecret` and `nc -z` wait blocks, and add the new keys.
+  In kind, Zitadel waits for its login and restarts when `values-local.yaml` changes, and the Postgres pod restarts once on upgrade.
+- `[setup] manage_databases = false` in `srdp.toml`, and `setup.manageDatabases` in the chart, make `srdp-setup` only check the connection and that the databases exist.
 - `just build-and-push` stops on the first failed build or push.
 - Every third-party container image is pinned to an exact version, by digest where possible, and Compose and the chart run the same version of each. A test checks it.
   Existing `values-prod.yaml` files must pin the same images in their wait containers, since their lists replace the chart's.

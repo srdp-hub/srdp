@@ -118,7 +118,7 @@ What sits underneath is different.
 | Nodes | Docker containers on your laptop | Virtual machines in a node pool |
 | Control plane | Runs in a container | Managed by Scaleway |
 | Images | `kind load docker-image` from your laptop | Pulled from the Container Registry |
-| Load balancer | No real external IP, ports 18080 and 18443 on your laptop | A real load balancer with a public IP |
+| Load balancer | No real external IP, ports 80 and 443 on your laptop | A real load balancer with a public IP |
 | PVC | Folder on your laptop | Block Storage volume |
 | TLS | mkcert certificates | Let's Encrypt |
 | Secrets | From `values-local.yaml` | From Scaleway Secret Manager through External Secrets |

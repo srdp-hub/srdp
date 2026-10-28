@@ -14,7 +14,9 @@ icon: lucide/life-buoy
 
 ### `kind create cluster` fails with "port is already allocated"
 
-- `deploy/kubernetes/kind-config.yaml` deliberately maps host ports 18080/18443, not 80/443/8080, because `deploy/docker/docker-compose.yml` already publishes exactly those three (http, https, the Traefik dashboard), and both stacks are meant to run side by side. If you still hit this error, something else on your machine is already using 18080/18443, check `lsof -i :18443` (or the equivalent) and either free it or pick different ports in `kind-config.yaml`, matching them up with `values.yaml`'s `traefik.ports.*.nodePort`.
+- `deploy/kubernetes/kind-config.yaml` maps host ports 80 and 443, which `deploy/docker/docker-compose.yml` also publishes.
+- Stop the Compose stack (`just docker-down`) and create the cluster again.
+- If the error stays, check what holds the port with `lsof -i :443`.
 
 ### Pods stuck in `Pending`
 
@@ -41,13 +43,19 @@ icon: lucide/life-buoy
 
 - Let's Encrypt blocks `nip.io` frequently and requires public reachability on ports 80/443. Open those ports on the load balancer/security group, or temporarily point Traefik to the staging CA until production issuance succeeds.
 
+### Zitadel restarts a few times on the first Kubernetes install
+
+- Cause: Helm starts the Zitadel pod before the hooks that create its tables have run, so it exits with `relation "queue.river_queue" does not exist` and Kubernetes restarts it.
+- Fix: none needed. It starts once `zitadel-init` and `zitadel-setup` have completed, usually after 1 to 3 restarts. Check the hooks with `kubectl -n srdp get jobs`.
+- Compose is not affected, because `depends_on` orders the steps.
+
 ### Zitadel login-client missing
 
 - If the Postgres DB already contains Zitadel data, the `login-client` PAT will not be recreated. Use a fresh database (or drop the existing schema) before re-running the chart.
 
-### Dagster webserver CrashLoopBackOff with `password authentication failed for user "dagster"`
+### Dagster or Zitadel fails with `password authentication failed`
 
-- Cause: The `dagster` role's password doesn't match the Secret `srdp-dagster-postgresql`, key `postgresql-password` (locally `localSecrets.dagster.dbPassword` in `values-local.yaml`), or the `srdp-setup` Job that creates and re-syncs it didn't run or failed.
+- Cause: The role's password doesn't match its Secret, for example `dagster` and `srdp-dagster-postgresql` (key `postgresql-password`, locally `localSecrets.dagster.dbPassword` in `values-local.yaml`) or `zitadel` and `srdp-zitadel` (key `db-password`, locally `localSecrets.zitadel.dbPassword`), or the `srdp-setup` Job that creates and re-syncs it didn't run or failed.
 - Check the Job's logs with `kubectl -n srdp logs job/srdp-setup`.
   The Job stays until the next install or upgrade, so its logs show the last run, failed or successful.
   A missing `SETUP_PASSWORDS__<ROLE>` fails the Job before it touches Postgres.

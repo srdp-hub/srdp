@@ -98,7 +98,7 @@ cd srdp
 
 ### 2) Reach the cluster
 
-The chart uses `*.srdp.localhost` by default. On the local `kind` cluster this repo is set up for, Traefik's ports are mapped to `127.0.0.1:18080`/`127.0.0.1:18443` (see `deploy/kubernetes/kind-config.yaml`), so `127.0.0.1` is always the right host, but every URL needs the `:18443` (or `:18080` for plain HTTP) suffix. Those aren't 80/443 on purpose: Docker Compose already publishes 80, 443, and 8080 on the host (`deploy/docker/docker-compose.yml`), and both stacks are meant to run side by side without tearing one down to use the other. On any other cluster, point these hostnames at whatever IP you use to reach Traefik: a LoadBalancer's external IP once it's up, or a port-forward's `127.0.0.1` if it isn't reachable directly (see `docs/07-troubleshooting.md`).
+The chart uses `*.srdp.localhost` by default. On the local `kind` cluster this repo is set up for, Traefik's ports are mapped to host ports 80 and 443 (see `deploy/kubernetes/kind-config.yaml`), so the URLs have no port suffix. Docker Compose publishes the same ports, so run either the Compose stack or the kind cluster, not both. On any other cluster, point these hostnames at whatever IP you use to reach Traefik: a LoadBalancer's external IP once it's up, or a port-forward's `127.0.0.1` if it isn't reachable directly (see `docs/07-troubleshooting.md`).
 
 ### 3) Install the local CA, create the kind cluster, and generate TLS certificates
 
@@ -146,7 +146,7 @@ OAuth2-Proxy needs an OIDC client registered in Zitadel. Zitadel creates its fir
 
 ### 1) Sign in to the Zitadel console
 
-Open `https://auth.srdp.localhost` (Docker Compose) or `https://auth.srdp.localhost:18443` (the local `kind` cluster, see step 2 of Option B) and sign in as the first-instance admin. Zitadel derives the default admin login name from the configured `ExternalDomain`, so for the local stack it is:
+Open `https://auth.srdp.localhost` and sign in as the first-instance admin. Zitadel derives the default admin login name from the configured `ExternalDomain`, so for the local stack it is:
 
 - Login name: `zitadel-admin@zitadel.auth.srdp.localhost`
 - Password: for the Kubernetes chart, the value of `localSecrets.zitadel.adminPassword` in `values-local.yaml`.
@@ -161,7 +161,6 @@ If the login name differs, check it under **Users** in the Zitadel console.
 2. Use the **Code** authentication flow (client ID + secret).
 3. Add a redirect URI `https://<host>/oauth2/callback` for each host that OAuth2-Proxy protects.
    The host list is the `oauth2-proxy` router rule in `config/traefik/dynamic/srdp.yml`.
-   Docker Compose uses no port suffix, and the local `kind` cluster needs `:18443` on every URL (see step 2 of Option B).
 
 Zitadel then shows a **Client ID** and **Client Secret**.
 
