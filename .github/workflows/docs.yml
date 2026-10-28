@@ -6,6 +6,7 @@ on:
     paths:
       - "docs/**"
       - "zensical.toml"
+      - "architecture/**"
 permissions:
   contents: read
   pages: write
@@ -17,12 +18,18 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/configure-pages@v6
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+      # The viewer is a build output, so the repository does not hold it.
+      - run: just c4-build
       - run: uvx zensical build --clean
-      - uses: actions/upload-pages-artifact@v5
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: site
-      - uses: actions/deploy-pages@v5
+      - uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
         id: deployment

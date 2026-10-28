@@ -5,7 +5,7 @@ icon: lucide/landmark
 
 # Architectural Decision Records
 
-Decisions that shape the platform's architecture, recorded using the [MADR](https://adr.github.io/madr/) format. See [Contributing](../07-contributing.md#architectural-decision-records-adrs) for when and how to write an ADR.
+Decisions that shape the platform's architecture, recorded using the [MADR](https://adr.github.io/madr/) format. See [Contributing](../08-contributing.md#architectural-decision-records-adrs) for when and how to write an ADR.
 
 | ADR | Status | Decision |
 |:---|:---|:---|

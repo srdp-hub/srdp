@@ -1,5 +1,5 @@
 ---
-title: 7. Contributing
+title: Contributing
 icon: lucide/git-pull-request
 ---
 
@@ -33,6 +33,10 @@ Labels are managed in the GitHub UI under **Settings > Labels**. The set is inte
 | `needs decision` | `#5319E7` | Needs maintainer decision before proceeding |
 | `wontfix` | `#aaaaaa` | This will not be worked on |
 | `duplicate` | `#cfd3d7` | Already tracked elsewhere |
+
+Building the SRDP images from source needs a free Docker account, because the base images come from the Docker Hardened Images registry.
+Run `just dhi-login` once and log in with a Docker ID and an access token from your Docker account settings.
+You do not need this to run the released images, which come from ghcr.io.
 
 ## Branching
 
@@ -71,6 +75,22 @@ It publishes the images with the exact version tag only, so `latest` stays on th
 
 GitHub creates new container packages as private, and the chart pulls the platform images without credentials.
 After the first publish, set each package to public in its settings. The `public` job of `images.yml` fails after a release while one is still private.
+
+## Maintainer setup
+
+A few repository secrets keep the automation running.
+Set each one with `gh secret set <name> --repo srdp-hub/srdp`, or in the repository settings under Secrets and variables, Actions.
+The command asks for the value, so it stays out of your shell history.
+
+| Secret | Used by | What it holds |
+|:---|:---|:---|
+| `RENOVATE_TOKEN` | `renovate.yml` | A token for Renovate to open pull requests that run CI. |
+| `DHI_USERNAME` | `images.yml`, `renovate.yml` | The Docker ID that pulls the hardened base images. |
+| `DHI_TOKEN` | `images.yml`, `renovate.yml` | A Docker access token with the Public Repo Read-only permission and an expiry date. |
+
+The `DHI_TOKEN` token belongs to a maintainer's Docker account for now.
+When it expires, image builds and Renovate fail at the login step, so replace the secret before the expiry date.
+Pull requests from forks cannot read these secrets, so their image builds fail.
 
 ## Architectural Decision Records (ADRs)
 

@@ -1,0 +1,212 @@
+deployment {
+
+  single-machine = machine 'Single machine' {
+    description 'One host. Docker Compose and a one-node Kubernetes cluster run almost the same services.'
+
+    runtime = runtime 'Docker Compose or Kubernetes (kind)' {
+      front-door = group 'Front door' {
+        description 'Login and entry point for all requests.'
+        traefik = instanceOf srdp.security.reverse-proxy 'Traefik'
+        oauth2-proxy = instanceOf srdp.security.forward-auth 'OAuth2 Proxy'
+        zitadel = instanceOf srdp.security.idp 'Zitadel'
+        zitadel-login = instanceOf srdp.security.idp.login 'Zitadel login'
+        zitadel-init = instanceOf srdp.security.idp.init 'Zitadel init'
+      }
+
+      orchestration = group 'Orchestration' {
+        description 'Dagster runs the pipelines.'
+        dagster-ui = instanceOf srdp.core.orchestrator.ui 'Dagster webserver'
+        dagster-daemon = instanceOf srdp.core.orchestrator.daemon 'Dagster daemon'
+        dagster-code = instanceOf srdp.core.orchestrator.code-location 'Dagster code location'
+      }
+
+      services = group 'Services' {
+        description 'The APIs and apps for users.'
+        api = instanceOf srdp.services.api 'API'
+        marimo = instanceOf srdp.services.apps.marimo 'marimo'
+        streamlit = instanceOf srdp.services.apps.streamlit 'Streamlit'
+        duckdb-ui = instanceOf srdp.services.apps.duckdb-ui 'DuckDB UI'
+        hub = instanceOf srdp.services.hub 'Hub page'
+      }
+
+      lineage = group 'Lineage' {
+        marquez = instanceOf srdp.observability.data-lineage.api 'Marquez'
+        marquez-web = instanceOf srdp.observability.data-lineage.ui 'Marquez web'
+      }
+
+      setup = group 'Setup' {
+        description 'Prepares the databases, roles and bucket.'
+        setup = instanceOf srdp.setup 'Setup service'
+      }
+
+      data = group 'Data' {
+        description 'Databases and data files.'
+        postgres = instanceOf srdp.postgres 'PostgreSQL'
+        catalog = instanceOf srdp.core.lakehouse.ducklake.catalog 'DuckLake catalog'
+        storage = instanceOf srdp.core.lakehouse.ducklake.storage 'DuckLake storage (volume or Garage S3)'
+      }
+
+      compute = group 'Compute' {
+        description 'Runs the work of Dagster.'
+        run = instanceOf srdp.core.lakehouse.compute 'Dagster run (a subprocess on Compose, a pod on Kubernetes)'
+      }
+    }
+  }
+
+  admin-machine = machine 'Admin machine' {
+    description 'The computer of the platform admin.'
+    cli = instanceOf srdp.cli 'srdp CLI'
+    config = config-file 'srdp.toml' {
+      description 'A curated set of settings for platform admins, and the list of projects. Protects settings that must not change. Its shape is still open (#42).'
+    }
+    files = tool 'OpenTofu files' {
+      description 'The modules and the environment files. From a repository clone, a release archive, or downloaded by the CLI.'
+    }
+    tofu = tool 'OpenTofu' {
+      description 'Creates the cluster, the storage and the secrets store. Installs Flux. The CLI runs it, or an admin runs it directly.'
+    }
+  }
+
+  git-host = zone 'Git host' {
+    repo = tool 'Git repository' {
+      description 'Holds the chart and the Flux tree.'
+    }
+
+    base-images = tool 'Project base images' {
+      description 'The images that projects build on. Planned.'
+    }
+  }
+
+  project-repo = zone 'Project repository' {
+    description 'The repository of a project. It can be shared with other projects.'
+
+    ptoml = config-file 'srdp-project.toml' {
+      description 'Declares the code locations, services and endpoints of a project. Planned.'
+    }
+
+    image = tool 'Project image' {
+      description 'Built on a project base image. The deployment pins its version.'
+    }
+  }
+
+  cloud-zone = zone 'Cloud provider' {
+    description 'Scaleway today. Other providers supply the same values.'
+
+    object-storage = object-store 'Object storage (S3)' {
+      description 'Managed S3 service with a writer key and a reader key.'
+      storage = instanceOf srdp.core.lakehouse.ducklake.storage 'DuckLake storage'
+    }
+
+    secret-manager = managed-service 'Secret manager' {
+      description 'Holds the generated passwords and keys.'
+    }
+
+    lb = network-service 'Load balancer' {
+      description 'Public entry point. The cloud creates it for the Traefik service.'
+    }
+
+    cloud-k8s = cluster 'Kubernetes cluster' {
+      description 'One cluster for each environment. A system pool always runs, and a compute pool scales to zero.'
+
+      flux-ns = namespace 'Namespace flux-system' {
+        flux = tool 'Flux' {
+          description 'Syncs a Git path into the cluster. It installs External Secrets today. The SRDP chart is planned (#38).'
+        }
+      }
+
+      eso-ns = namespace 'Namespace external-secrets' {
+        eso = tool 'External Secrets' {
+          description 'Creates the Secrets from the secret manager. The mapping is planned.'
+        }
+      }
+
+      srdp-ns = namespace 'Namespace srdp' {
+        description 'The platform. Helm release srdp.'
+
+        front-door = group 'Front door' {
+          description 'Login and entry point for all requests.'
+          traefik = instanceOf srdp.security.reverse-proxy 'Traefik'
+          oauth2-proxy = instanceOf srdp.security.forward-auth 'OAuth2 Proxy'
+          zitadel = instanceOf srdp.security.idp 'Zitadel'
+          zitadel-login = instanceOf srdp.security.idp.login 'Zitadel login'
+          zitadel-init = instanceOf srdp.security.idp.init 'Zitadel init'
+        }
+
+        orchestration = group 'Orchestration' {
+          description 'Dagster runs the pipelines.'
+          dagster-ui = instanceOf srdp.core.orchestrator.ui 'Dagster webserver'
+          dagster-ui-readonly = instanceOf srdp.core.orchestrator.ui 'Dagster webserver, read-only'
+          dagster-daemon = instanceOf srdp.core.orchestrator.daemon 'Dagster daemon'
+          dagster-code = instanceOf srdp.core.orchestrator.code-location 'Dagster code location'
+        }
+
+        services = group 'Services' {
+          description 'The APIs and apps for users.'
+          api = instanceOf srdp.services.api 'API'
+          marimo = instanceOf srdp.services.apps.marimo 'marimo'
+          streamlit = instanceOf srdp.services.apps.streamlit 'Streamlit'
+          duckdb-ui = instanceOf srdp.services.apps.duckdb-ui 'DuckDB UI'
+          quarto = instanceOf srdp.services.apps.quarto 'Quarto, off by default'
+          hub = instanceOf srdp.services.hub 'Hub page'
+        }
+
+        lineage = group 'Lineage' {
+          marquez = instanceOf srdp.observability.data-lineage.api 'Marquez'
+          marquez-web = instanceOf srdp.observability.data-lineage.ui 'Marquez web'
+        }
+
+        setup = group 'Setup' {
+          description 'Prepares the databases, roles and bucket.'
+          setup = instanceOf srdp.setup 'Setup service'
+        }
+
+        data = group 'Data' {
+          description 'Databases and data files.'
+          postgres = instanceOf srdp.postgres 'PostgreSQL'
+          catalog = instanceOf srdp.core.lakehouse.ducklake.catalog 'DuckLake catalog'
+        }
+
+        compute = group 'Compute' {
+          description 'Runs the work of Dagster. Meant for the compute pool, which the chart does not pin yet.'
+          run = instanceOf srdp.core.lakehouse.compute 'Dagster run pods'
+        }
+
+        jobs = group 'Jobs' {
+          description 'Run once or on a schedule.'
+          certs-job = tool 'Certificate Job' {
+            description 'Creates the Postgres TLS Secrets before an install or upgrade.'
+          }
+          backup = tool 'Postgres backup' {
+            description 'A nightly backup of the database, with its own volume.'
+          }
+        }
+
+        query-and-metrics = group 'Query and metrics' {
+          description 'Planned.'
+          query-engine = instanceOf srdp.core.lakehouse.query-engine 'Query engine'
+          telemetry = instanceOf srdp.observability.telemetry 'Telemetry'
+          prometheus = instanceOf srdp.observability.prometheus 'Prometheus'
+          metrics-ui = instanceOf srdp.observability.metrics-ui 'Grafana'
+          alertmanager = instanceOf srdp.observability.alertmanager 'Alertmanager'
+        }
+      }
+    }
+  }
+
+  admin-machine.cli -> admin-machine.tofu 'runs'
+  admin-machine.cli -> admin-machine.config 'reads the settings from'
+  admin-machine.config -> project-repo.ptoml 'lists the project of'
+  admin-machine.cli -> project-repo.ptoml 'validates'
+  project-repo.image -> git-host.base-images 'is built on'
+  admin-machine.cli -> admin-machine.files 'downloads, when there is no clone'
+  admin-machine.files -> admin-machine.tofu 'supplies the files for'
+  admin-machine.tofu -> cloud-zone.cloud-k8s 'creates and configures'
+  admin-machine.tofu -> cloud-zone.object-storage 'creates'
+  admin-machine.tofu -> cloud-zone.secret-manager 'creates and fills'
+  admin-machine.tofu -> cloud-zone.cloud-k8s.flux-ns.flux 'installs'
+  cloud-zone.lb -> cloud-zone.cloud-k8s.srdp-ns.front-door.traefik 'sends user traffic to'
+  cloud-zone.cloud-k8s.flux-ns.flux -> git-host.repo 'pulls from'
+  cloud-zone.cloud-k8s.eso-ns.eso -> cloud-zone.secret-manager 'syncs secrets from'
+  cloud-zone.cloud-k8s.srdp-ns.jobs.certs-job -> cloud-zone.cloud-k8s.srdp-ns.data.postgres 'creates the TLS Secrets of'
+  cloud-zone.cloud-k8s.srdp-ns.jobs.backup -> cloud-zone.cloud-k8s.srdp-ns.data.postgres 'backs up'
+}

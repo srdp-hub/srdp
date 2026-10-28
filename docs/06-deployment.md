@@ -1,5 +1,5 @@
 ---
-title: 5. Cloud Deployment
+title: Cloud Deployment
 icon: lucide/cloud-cog
 ---
 
@@ -7,7 +7,7 @@ icon: lucide/cloud-cog
 
 This runbook uses OpenTofu to provision infrastructure and Helm to deploy the chart on Scaleway Kapsule (mutualized). All `just` commands should be run from the **repository root**. Steps that require manual commands specify their working directory explicitly.
 
-If you are new to Kubernetes, read the [Kubernetes primer](09-kubernetes-primer.md) first.
+If you are new to Kubernetes, read the [Kubernetes primer](10-kubernetes-primer.md) first.
 It explains each concept next to its Docker Compose equivalent.
 
 ## What OpenTofu provisions
@@ -37,7 +37,7 @@ just build-and-push
 This builds and pushes Marimo, srdp-etl (Dagster user code), the API and Streamlit to the registry in `srdp.toml` under `[deploy] registry`, tagged with the version in `pyproject.toml`.
 The platform images, including `srdp-setup`, come from `ghcr.io/srdp-hub` and need no push.
 Quarto is disabled by default (`quarto.enabled: false`).
-`docs/02-configuration.md` explains why.
+`docs/03-configuration.md` explains why.
 
 ## 3) Provision infrastructure with OpenTofu
 
@@ -70,8 +70,8 @@ just prod-use-kubeconfig   # from repo root
 
   | Secret | Keys |
   |:---|:---|
-  | `srdp-postgres` | `postgres-password` (superuser), `password` (zitadel user), `replication-password` (replication only) |
-  | `srdp-zitadel` | `masterkey`, `config-yaml` |
+  | `srdp-postgres` | `postgres-password` (superuser), `replication-password` (replication only) |
+  | `srdp-zitadel` | `masterkey`, `db-password` (the `zitadel` database role), `admin-password` (first admin) |
   | `srdp-oauth2-proxy` | `client-id`, `client-secret`, `cookie-secret` |
   | `srdp-dagster-postgresql` | `postgresql-password` |
   | `srdp-marquez` | `db-password` |
@@ -82,12 +82,16 @@ just prod-use-kubeconfig   # from repo root
 - With `ducklakeStorage.backend: s3`, Dagster and its run pods get the writer key and the four apps get the read-only key.
   Give the reader key read access to the lake prefix only, because a SQL console like duckdb-ui runs with the full authority of its key.
 
-- `config-yaml` in `srdp-zitadel` is a Zitadel config fragment with `Database.Postgres.User.Password`, `Database.Postgres.Admin.Password` and `FirstInstance.Org.Human.Password`.
-  The two database passwords must match `password` and `postgres-password` in `srdp-postgres`.
-- The `srdp-setup` Job reads `srdp-dagster-postgresql` and `srdp-marquez` too, and applies them to their roles on every install and upgrade.
+- Zitadel never gets the Postgres superuser password.
+  The `srdp-setup` Job creates the `zitadel` role from `db-password` in `srdp-zitadel`, and Zitadel logs in with that same value.
+- The `srdp-setup` Job reads `srdp-zitadel`, `srdp-dagster-postgresql` and `srdp-marquez`, and applies them to their roles on every install and upgrade.
+  Set `setup.manageDatabases: false` when someone else creates the databases and roles.
+  The Job then only checks that it can connect and that the databases exist.
 - **Changing an internal password**: these are service-to-service credentials, so change one only as a deliberate rotation.
   Change the value in its Secret, run `helm upgrade`, then restart the services that use it.
   Marquez restarts by itself. For Dagster, run `kubectl -n srdp rollout restart deploy/srdp-dagster-webserver deploy/srdp-dagster-webserver-read-only deploy/srdp-dagster-daemon deploy/srdp-dagster-user-deployments-srdp-etl`.
+  For Zitadel, run `kubectl -n srdp rollout restart deploy/srdp-zitadel`, because a running pod keeps the old password.
+  The new pod waits in an init container until its new password works.
 - **Master key format**: ZITADEL expects a 32-character master key string. Generate one, for example, with `tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32`.
 - **Password complexity**: Zitadel's first human/admin password must include uppercase, lowercase, digits, and at least one symbol. For example, use `SrdpTest123!` rather than `srdpTest123`.
 
@@ -95,7 +99,7 @@ The production values template enables PostgreSQL replication (`architecture: re
 
 ## 6) Deploy with Helm (staged rollout)
 
-### A. Bring up Traefik and the hub page only (to get the LB IP)
+### A. Bring up Traefik only (to get the LB IP)
 
 ```bash
 just prod-traefik-only
@@ -116,7 +120,8 @@ Replace every occurrence of the old LB IP in `values-prod.yaml` with `<LB_IP>.ni
 
 ### C. Enable Zitadel + OAuth2-Proxy
 
-The apps and the `srdp-setup` Job stay off until the final deploy.
+The apps stay off until the final deploy.
+The `srdp-setup` Job runs from this step on, because it creates Zitadel's database, so every Secret from section 5 must exist before you run it.
 
 ```bash
 just prod-auth-only

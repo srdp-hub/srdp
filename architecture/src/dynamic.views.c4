@@ -1,0 +1,49 @@
+views {
+
+  dynamic view startup {
+    title '4. Sequences / Start of a deployment'
+    description 'The start order in Docker Compose. On Kubernetes the pods start together, and init containers wait for the database login.'
+
+    srdp.setup -> srdp.postgres 'waits until PostgreSQL is healthy, then creates the databases and roles'
+    srdp.setup -> srdp.core.lakehouse.ducklake.storage 'creates the bucket, when Garage runs'
+    srdp.security.idp -> srdp.setup 'Zitadel and its init job wait for the setup to finish'
+    srdp.security.reverse-proxy -> srdp.security.idp 'Traefik waits for Zitadel'
+    srdp.security.forward-auth -> srdp.security.reverse-proxy 'OAuth2 Proxy waits for Traefik and Zitadel'
+    srdp.core.orchestrator.code-location -> srdp.setup 'the Dagster code location waits for the setup'
+    srdp.core.orchestrator.daemon -> srdp.core.orchestrator.code-location 'the Dagster daemon and webserver wait for the code location'
+    srdp.observability.data-lineage.api -> srdp.setup 'Marquez waits for the setup'
+    srdp.observability.data-lineage.ui -> srdp.observability.data-lineage.api 'Marquez web waits for Marquez'
+    srdp.services.api -> srdp.setup 'the API waits for the setup'
+    srdp.services.apps -> srdp.setup 'the apps wait for the setup: marimo, Streamlit and the DuckDB UI'
+  }
+
+  dynamic view ingestion-landing {
+    title '4. Sequences / Ingestion through the landing zone'
+    description 'The path for outside and untrusted data. Dashed parts are planned: the sensor, the promotion asset and the API push.'
+
+    sources -> srdp.services.api 'pushes data, or drops files in the landing zone directly (planned)'
+    srdp.services.api -> srdp.core.lakehouse.landing-zone 'lands the pushed data (planned)'
+    srdp.core.orchestrator.code-location.landing-sensor -> srdp.core.lakehouse.landing-zone 'detects new data (planned)'
+    srdp.core.orchestrator.code-location.landing-sensor -> srdp.core.orchestrator.code-location.promotion 'starts the promotion (planned)'
+    srdp.core.orchestrator.code-location.promotion -> srdp.core.lakehouse.landing-zone 'checks schema and content (planned)'
+    srdp.core.orchestrator.code-location.promotion -> srdp.package.io-manager 'promotes valid data (planned)'
+    srdp.package.io-manager -> srdp.core.lakehouse.ducklake.raw 'appends the data'
+    srdp.core.orchestrator.code-location.polars-asset -> srdp.package.io-manager 'reads raw, returns a dataframe'
+    srdp.package.io-manager -> srdp.core.lakehouse.ducklake.curated 'writes the curated table'
+    srdp.core.orchestrator.code-location.dbt-assets -> srdp.package.dbt-plugin 'dbt builds more curated models'
+    srdp.package.dbt-plugin -> srdp.core.lakehouse.ducklake.curated 'writes directly'
+  }
+
+  dynamic view ingestion-direct {
+    title '4. Sequences / Ingestion straight from a source'
+    description 'The path for known sources. The asset must validate the data before it writes raw. The dlt helper is planned.'
+
+    srdp.core.orchestrator.code-location.source-asset -> sources 'pulls data and validates it'
+    srdp.core.orchestrator.code-location.source-asset -> srdp.package.io-manager 'returns a dataframe'
+    srdp.package.io-manager -> srdp.core.lakehouse.ducklake.raw 'appends the data'
+    srdp.package.dlt-helper -> sources 'loads data with dlt (planned)'
+    srdp.package.dlt-helper -> srdp.core.lakehouse.ducklake.raw 'writes with the strict rules (planned)'
+    srdp.core.orchestrator.code-location.polars-asset -> srdp.package.io-manager 'reads raw, returns a dataframe'
+    srdp.package.io-manager -> srdp.core.lakehouse.ducklake.curated 'writes the curated table'
+  }
+}

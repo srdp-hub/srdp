@@ -1,0 +1,20 @@
+views {
+
+  deployment view single {
+    title '3. Deployment / Single machine'
+    description 'Docker Compose or a one-node Kubernetes cluster. The services are almost the same.'
+    include single-machine, single-machine.runtime, single-machine.**
+    autoLayout LeftRight
+  }
+
+  deployment view cloud {
+    title '3. Deployment / Kubernetes cluster in a cloud'
+    description 'The cluster, its namespaces, and the tools that create and fill it. Dashed means planned.'
+    include cloud-zone.**, admin-machine.**, git-host.**, project-repo.**
+    style cloud-zone.cloud-k8s.srdp-ns.query-and-metrics.*, admin-machine.cli, project-repo.ptoml, git-host.base-images {
+      border dashed
+      opacity 60%
+    }
+    autoLayout LeftRight
+  }
+}

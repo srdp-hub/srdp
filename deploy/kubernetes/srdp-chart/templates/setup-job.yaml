@@ -20,18 +20,10 @@ spec:
       restartPolicy: OnFailure
       automountServiceAccountToken: false
       {{- include "srdp.imagePullSecrets" . | nindent 6 }}
-      securityContext:
-        seccompProfile:
-          type: RuntimeDefault
+      {{- include "srdp.podSecurityContext" . | nindent 6 }}
       containers:
         - name: srdp-setup
-          securityContext:
-            runAsNonRoot: true
-            runAsUser: 65534
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: [ALL]
+          {{- include "srdp.containerSecurityContext" . | nindent 10 }}
           image: {{ include "srdp.image" (list . .Values.setup.image) }}
           imagePullPolicy: {{ .Values.setup.image.pullPolicy }}
           env:
@@ -44,6 +36,11 @@ spec:
                   key: postgres-password
             # Same Secret keys the consumers read, otherwise the Job resets a
             # role to a password its application does not know.
+            - name: SETUP_PASSWORDS__ZITADEL
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-zitadel
+                  key: db-password
             - name: SETUP_PASSWORDS__DAGSTER
               valueFrom:
                 secretKeyRef:

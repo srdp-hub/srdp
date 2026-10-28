@@ -1,0 +1,78 @@
+model {
+    dagster = system 'Dagster' {
+        description 'Orchestrates the data pipelines.'
+        asset = component 'Asset' {
+            technology 'Dagster'
+            description 'A unit of data, such as a table, dataset or machine learning model. Assets depend on other assets and form the lineage.'
+        }
+        asset-check = component 'Asset Check' {
+            technology 'Dagster'
+            description 'A data quality check on an asset. It tests freshness or completeness when the asset runs and stores the result.'
+        }
+        asset-spec = component 'Asset Spec' {
+            technology 'Dagster'
+            description 'Describes the identity and metadata of an asset, such as its key and tags. It does not contain the logic to build the asset.'
+        }
+        code-location = component 'Code location' {
+            technology 'Dagster'
+            description 'A set of Dagster definitions deployed in one environment. It sets the Python environment. A project can have several code locations.'
+        }
+        component = component 'Component' {
+            technology 'Dagster'
+            description 'Builds assets and other definitions from configuration in YAML or Python. It works as a template for repeatable patterns.'
+        }
+        config = component 'Config' {
+            technology 'Dagster'
+            description 'The configuration schema for assets, jobs, schedules and sensors. A run configuration holds all settings for one run.'
+        }
+        definition = component 'Definition' {
+            technology 'Dagster'
+            description 'Combines metadata with the Python code that defines how an asset, schedule or resource behaves. One top-level object holds all definitions of a project.'
+        }
+        io-manager = component 'IO Manager' {
+            technology 'Dagster'
+            description 'Defines how data is stored and read between the steps of a pipeline. This sets the storage and the format.'
+        }
+        job = component 'Job' {
+            technology 'Dagster'
+            description 'A selection of assets, or a graph of ops, that runs together. Jobs are the main way to run work in Dagster.'
+        }
+        partition = component 'Partition' {
+            technology 'Dagster'
+            description 'A slice of a dataset, for example one day. Partitions let a run process only the relevant part.'
+        }
+        resource = component 'Resource' {
+            technology 'Dagster'
+            description 'Gives assets, schedules and sensors access to external systems, such as a database or an API, during a run.'
+        }
+        schedule = component 'Schedule' {
+            technology 'Dagster'
+            description 'Runs jobs or assets at a set interval. It can carry the run configuration for the run.'
+        }
+        sensor = component 'Sensor' {
+            technology 'Dagster'
+            description 'Starts jobs or assets when an event happens, such as a file upload. It can carry the run configuration.'
+        }
+
+        asset -> asset-check 'may use'
+        asset -> io-manager 'may use'
+        asset -> partition 'may use'
+        asset -> resource 'may use'
+        asset-spec -> asset 'describes'
+        component -> asset 'builds'
+        component -> definition 'builds'
+        definition -> asset 'contains one or more'
+        definition -> asset-check 'contains one or more'
+        definition -> code-location 'must be deployed in'
+        definition -> io-manager 'contains one or more'
+        definition -> job 'contains one or more'
+        definition -> resource 'contains one or more'
+        job -> asset 'may contain a selection of'
+        schedule -> asset 'may include'
+        schedule -> job 'may include'
+        schedule -> resource 'may use'
+        sensor -> asset 'may include'
+        sensor -> job 'may include'
+        sensor -> resource 'may use'
+    }
+}

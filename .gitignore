@@ -19,6 +19,9 @@ letsencrypt/
 # Zensical build output
 site/
 
+# LikeC4 viewer, built by `just c4-build` and in CI
+docs/architecture-viewer/
+
 # Terraform
 .terraform
 terraform.tfstate

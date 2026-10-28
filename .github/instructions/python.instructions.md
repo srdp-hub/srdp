@@ -6,7 +6,7 @@ applyTo: "**/*.py"
 
 ### Imports
 
-- Do NOT add `from __future__ import annotations` — the repo targets Python 3.12+ where native type hints work without it.
+- Do NOT add `from __future__ import annotations`. The repo targets Python 3.12+ where native type hints work without it.
 - Group order: stdlib → third-party → first-party (`srdp.*`) → local.
 - No relative imports anywhere. Always absolute.
 - Use `TYPE_CHECKING` guards for imports only needed at type-check time.
@@ -25,12 +25,12 @@ def table_ref(self, asset_key_path: list[str]) -> str:
         Fully-qualified reference like ``ducklake.raw.orders``.
     """
 
-# ❌ wrong — missing docstring
+# ❌ wrong: missing docstring
 def table_ref(self, asset_key_path: list[str]) -> str:
     ...
 ```
 
-### All signatures fully annotated — native syntax only
+### All signatures fully annotated, native syntax only
 
 ```python
 # ✅ correct
@@ -39,10 +39,10 @@ def create_connection(
     backend: StorageBackend | None = None,
 ) -> duckdb.DuckDBPyConnection:
 
-# ❌ wrong — missing annotations
+# ❌ wrong: missing annotations
 def create_connection(settings, backend=None):
 
-# ❌ wrong — legacy typing module
+# ❌ wrong: legacy typing module
 def create_connection(
     settings: DuckLakeSettings,
     backend: Optional[StorageBackend] = None,
@@ -52,12 +52,12 @@ def create_connection(
 ### Small, focused functions
 
 ```python
-# ✅ correct — one responsibility per function
+# ✅ correct: one responsibility per function
 def _ensure_schema(conn: duckdb.DuckDBPyConnection, schema: str) -> None:
     """Create the DuckLake schema if it does not already exist."""
     conn.execute(f"CREATE SCHEMA IF NOT EXISTS ducklake.{schema}")  # noqa: S608
 
-# ❌ wrong — doing too many things at once
+# ❌ wrong: doing too many things at once
 def setup_and_write(settings, df, schema, table):
     conn = duckdb.connect()
     conn.execute("INSTALL ducklake")
@@ -72,9 +72,9 @@ def setup_and_write(settings, df, schema, table):
 class DuckLakeSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DUCKLAKE_", env_file=".env")
     pg_host: str = Field(default="localhost")
-    pg_password: str  # required — no default
+    pg_password: str  # required, no default
 
-# ❌ wrong — reading os.environ directly
+# ❌ wrong: reading os.environ directly
 pg_host = os.environ.get("DUCKLAKE_PG_HOST", "localhost")
 ```
 
@@ -93,10 +93,10 @@ print(f"Processing {count} rows")
 ### SQL safety
 
 ```python
-# ✅ acceptable — identifiers come from validated asset keys, not user input
+# ✅ acceptable: identifiers come from validated asset keys, not user input
 conn.execute(f"SELECT * FROM {ref}")  # noqa: S608
 
-# ❌ never — user-controlled strings in SQL
+# ❌ never: user-controlled strings in SQL
 conn.execute(f"SELECT * FROM {user_input}")
 ```
 
@@ -104,7 +104,7 @@ conn.execute(f"SELECT * FROM {user_input}")
 
 - Use classes to group related functionality, not to hold mutable state.
 - Prefer returning values over mutating arguments.
-- Don't put logic in `__init__.py` — only imports and a module-level docstring.
+- Don't put logic in `__init__.py`. Only imports and a module-level docstring.
 
 ### Code organization
 
@@ -118,3 +118,13 @@ conn.execute(f"SELECT * FROM {user_input}")
 - Use fixtures for shared setup.
 - Only test our own code, not functionality from external packages.
 - Test files mirror the source structure under `tests/`.
+- Keep a test name under 50 characters. Name the behavior. Put the conditions in a one-line docstring.
+
+```python
+# ✅ correct
+def test_empty_optional_setting_uses_default() -> None:
+    """An empty optional S3 variable in the environment falls back to its default."""
+
+# ❌ wrong: a whole sentence in the name
+def test_s3_falls_back_to_the_default_for_an_empty_optional_setting_in_the_environment() -> None:
+```

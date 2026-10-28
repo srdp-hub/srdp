@@ -1,17 +1,37 @@
 ---
-title: 3. Architecture & Conventions
+title: Architecture & Conventions
 icon: lucide/blocks
 ---
 
 # Architecture & Conventions
 
+## Architecture model
+
+This page is the full reference.
+For a first introduction, read the [platform overview](02-platform-overview.md).
+
+The architecture model shows how SRDP is built, who uses it and where it runs.
+Use the view list in the viewer to move between the context, component, deployment and sequence views.
+Dashed items are planned.
+Dotted amber items are still open for discussion.
+Each element links to the ADRs that relate to it.
+
+<iframe src="/architecture-viewer/#/view/index/" title="SRDP architecture model" style="width: 100%; height: 80vh; min-height: 600px; border: 0;" loading="lazy"></iframe>
+
+The [architecture viewer](/architecture-viewer/#/view/index/) opens the same model in its own browser tab.
+The model lives in the `architecture/` folder of the repository.
+
 ## Service topology
 
-Both deployment targets (Docker Compose and Helm) run the same logical services. The full stack has 11 containers (10 running, 1 ephemeral):
+Both deployment targets (Docker Compose and Helm) run the same logical services.
+Compose runs 17 containers (15 long-running, 2 that run once) and 1 optional container.
+Quarto is a Helm chart service that is off by default.
+Compose does not run it.
 
 | Container | Role | Image | Notes |
 |:---|:---|:---|:---|
 | `srdp-postgres` | Shared platform database | `postgres:18-alpine` | Hosts databases for Zitadel, Dagster, Marquez and DuckLake |
+| `srdp-setup` | Creates databases, roles and the Garage bucket | Built from `deploy/docker/srdp-setup.Dockerfile` | Runs on every deploy, then exits |
 | `srdp-traefik` | Reverse proxy, TLS termination | `traefik:v3.6.2` | |
 | `srdp-zitadel-init` | Database schema bootstrap | `ghcr.io/zitadel/zitadel:v4.11.1` | Runs once then exits |
 | `srdp-zitadel` | Identity provider (OIDC) | `ghcr.io/zitadel/zitadel:v4.11.1` | API, console, OIDC endpoints |
@@ -20,8 +40,14 @@ Both deployment targets (Docker Compose and Helm) run the same logical services.
 | `srdp-dagster-code` | User pipeline code (gRPC) | Built from `projects/cbs-example/Dockerfile` | Separate so pipeline code can update independently |
 | `srdp-dagster-webserver` | Orchestration UI | Built from `deploy/docker/dagster-webserver.Dockerfile` | No source code, connects to code server over gRPC |
 | `srdp-dagster-daemon` | Schedule & sensor execution | Same image as webserver | Must be a separate process per Dagster's architecture |
-| `srdp-marimo` | Reactive notebook app | Built from `projects/cbs-example/notebooks/` | App content is tenant-owned, unlike quarto's generic runtime |
-| `srdp-quarto` | Static reporting site | Built from `services/quarto/` | |
+| `srdp-api` | Catalog and Dagster status API | Built from `projects/cbs-example/api/Dockerfile` | FastAPI |
+| `srdp-marimo` | Reactive notebook app | Built from `projects/cbs-example/notebooks/` | App content is tenant-owned |
+| `srdp-streamlit` | Dashboard app | Built from `projects/cbs-example/streamlit/` | App content is tenant-owned |
+| `srdp-duckdb-ui` | SQL console on DuckLake | Built from `services/duckdb-ui/` | |
+| `srdp-hub` | Landing page with links to the apps | Built from `services/hub/` | |
+| `srdp-marquez` | Lineage API | `marquezproject/marquez:0.51.1` | |
+| `srdp-marquez-web` | Lineage UI | `marquezproject/marquez-web:0.51.1` | |
+| `srdp-garage` | S3 server for testing DuckLake on S3 | `dxflrs/garage:v2.4.1` | Optional, Compose profile `s3` |
 
 **Why so many containers?** Zitadel requires a one-time init container and ships its login UI as a separate app since v4. Dagster requires three processes by design: the code server (isolates user code), the webserver (UI), and the daemon (runs schedules/sensors/backfills). These cannot be merged without breaking the tools' architecture.
 
@@ -29,7 +55,7 @@ Both deployment targets (Docker Compose and Helm) run the same logical services.
 
 Three components cooperate at the edge (Traefik, OAuth2-Proxy, and Zitadel), and the relationship between them is a recurring source of confusion. This section is the shared mental model; the mechanical config lives under [Component configuration](#component-configuration).
 
-### Three roles, not three proxies
+### Roles at the front door
 
 They are not competing proxies. Each plays a distinct role:
 
@@ -37,7 +63,7 @@ They are not competing proxies. Each plays a distinct role:
 |:---|:---|:---|:---|
 | Category | Reverse proxy / router | Authentication checker | Identity provider (OIDC issuer) |
 | Moves application traffic? | **Yes**, every request | **No**, only the `/oauth2/auth` yes/no check | No |
-| Routes by hostname | Yes (`dagster`/`marimo`/`quarto`) | No | No |
+| Routes by hostname | Yes (`dagster`/`marimo`/`streamlit`/`api` and others) | No | No |
 | TLS termination | Yes | No | Terminates its own |
 | Load balancing | Yes | No | No |
 | Runs the OIDC login flow | No | Yes | Yes (is the issuer) |
@@ -46,7 +72,7 @@ They are not competing proxies. Each plays a distinct role:
 Despite its name, **OAuth2-Proxy is not a general-purpose reverse proxy in this setup.** It *can* run as one (see "standalone" below), but we run it in **forward-auth mode**, where it carries no application traffic and only answers one question (*is this request authenticated?*), running the login redirect if not.
 > Keeper sentence: *Traefik routes and load-balances all traffic; OAuth2-Proxy only decides whether a request is authenticated. The reverse proxy cannot be replaced by the auth checker.*
 
-### Why forward-auth, not standalone
+### Why SRDP uses forward-auth
 
 OAuth2-Proxy supports two deployment models. We deliberately use the second.
 
@@ -68,7 +94,6 @@ flowchart LR
     O -. "202 + X-Auth-* headers" .-> T
     T -->|dagster.domain| D[dagster-webserver]
     T -->|marimo.domain| M[marimo]
-    T -->|quarto.domain| Q[quarto]
 ```
 
 Per request, as a sequence:
@@ -114,7 +139,11 @@ Any process on the internal network can call a backend directly with forged `X-A
 
 ### What Zitadel authorizes (and what it does not)
 
-Zitadel is the single OIDC issuer: **one user = one login** (one username/password), with SSO across all apps via the shared OAuth2-Proxy session cookie on `.local.dev`. Zitadel covers **authentication** and **coarse authorization** only. Fine-grained data and compute scope live one layer down:
+This section and the access model below describe the target design.
+Today the platform has edge authentication with Traefik, OAuth2-Proxy and Zitadel.
+The policy enforcement point, capability tokens, data contracts and project roles are not built yet ([ADR-0005](adr/0005-authorization-and-data-access.md), [ADR-0008](adr/0008-identity-propagation-and-data-contracts.md), [ADR-0009](adr/0009-data-plane-credential-materialization.md)).
+
+Zitadel is the single OIDC issuer: **one user = one login** (one username/password), with SSO across all apps via the shared OAuth2-Proxy session cookie on the base domain (`srdp.localhost` locally). Zitadel covers **authentication** and **coarse authorization** only. Fine-grained data and compute scope live one layer down:
 
 ```mermaid
 flowchart TD
@@ -182,13 +211,13 @@ A principal's grant on a project is valid only if its tenant owns or participate
 
 **Resource types**, granted through the roles above:
 
-- **Service** (Dagster UI, marimo, quarto, the API): a service role, enforced at the Traefik edge.
+- **Service** (Dagster UI, marimo, the API and the other services): a service role, enforced at the Traefik edge.
 - **Compute** (jobs, asset materializations): the writer role's trigger-job capability.
 - **Data** (catalog and table, down to columns and rows): project RBAC for coarse access, data contracts for fine scope.
 
 **Tiered by design.** The mandatory core is deployment, tenant, project, principals, and project-scoped RBAC ([ADR-0005](adr/0005-authorization-and-data-access.md)); this is a complete access model on its own. Data contracts, fine column/row/consent scope, contract-scoped consumer access, and finer compute management ([ADR-0008](adr/0008-identity-propagation-and-data-contracts.md), [ADR-0009](adr/0009-data-plane-credential-materialization.md)) are an opt-in layer enabled only when a deployment needs shared BI, regulated data, or per-consumer scope. The core never depends on the optional layer. Fine-grained or shared access does require the contract layer; without it, access is coarse (whole-project).
 
-### Reads vs. writes: what a data contract enforces
+### What a data contract enforces on reads and writes
 
 A data contract is one artifact doing different jobs depending on direction:
 
@@ -226,6 +255,7 @@ All containers use the prefix `srdp-`:
 
 ```
 srdp-postgres
+srdp-setup
 srdp-traefik
 srdp-zitadel
 srdp-zitadel-init
@@ -234,8 +264,14 @@ srdp-oauth2-proxy
 srdp-dagster-webserver
 srdp-dagster-daemon
 srdp-dagster-code
+srdp-api
 srdp-marimo
-srdp-quarto
+srdp-streamlit
+srdp-duckdb-ui
+srdp-hub
+srdp-marquez
+srdp-marquez-web
+srdp-garage
 ```
 
 Every container has an explicit `container_name` in `docker-compose.yml` to prevent auto-generated names.
@@ -253,6 +289,8 @@ Every container has an explicit `container_name` in `docker-compose.yml` to prev
 |:---|:---|
 | `srdp-pgdata` | PostgreSQL data directory |
 | `srdp-dagster-compute-logs` | Dagster compute log storage |
+| `srdp-ducklake-data` | DuckLake data files on a local volume |
+| `srdp-garage-data` | Garage data, with the `s3` profile |
 
 ### Domains
 
@@ -263,7 +301,11 @@ Local development uses `*.srdp.localhost` with mkcert certificates:
 | `auth.srdp.localhost` | Zitadel |
 | `dagster.srdp.localhost` | Dagster webserver |
 | `marimo.srdp.localhost` | Marimo |
-| `quarto.srdp.localhost` | Quarto |
+| `streamlit.srdp.localhost` | Streamlit |
+| `api.srdp.localhost` | API |
+| `duckdb.srdp.localhost` | DuckDB UI |
+| `marquez.srdp.localhost` | Marquez |
+| `srdp.localhost` | Hub page |
 
 ### Databases
 
@@ -276,7 +318,7 @@ One shared PostgreSQL instance. Each service gets its own database and user, cre
 | `marquez` | `marquez` | Marquez lineage storage |
 | `ducklake` | `postgres` | DuckLake catalog metadata (one schema per catalog) |
 
-Each DuckLake catalog gets its own metadata schema within `ducklake`. By default a tenant's projects share one catalog, and a project that is split out into a dedicated catalog gets its own schema (for example `ducklake_sales`, see [ADR-0006](adr/0006-deployment-and-project-isolation-model.md)). All four databases live in the single PostgreSQL instance, so one backup covers them.
+Today DuckLake uses its default metadata schema (`public`) in the `ducklake` database. The planned catalog definition ([ADR-0012](adr/0012-dlt-alongside-dagster.md)) gives each DuckLake catalog its own metadata schema. By default a tenant's projects share one catalog, and a project that is split out into a dedicated catalog gets its own schema (for example `ducklake_sales`, see [ADR-0006](adr/0006-deployment-and-project-isolation-model.md)). All four databases live in the single PostgreSQL instance, so one backup covers them.
 On Kubernetes, the Bitnami subchart's `auth.*` fields create `zitadel` instead, so its entry in `setup.databases` is disabled.
 
 ## Component configuration
@@ -302,7 +344,7 @@ Shared across all services. The `srdp-setup` service (`src/srdp/setup/`) creates
 ### OAuth2-Proxy
 
 - Configured as a Traefik forward-auth middleware (`zitadel-auth`).
-- Protects all app services (Marimo, Quarto, Dagster). Requests are redirected to Zitadel for OIDC login.
+- Protects all app services (Dagster, Marimo, Streamlit, API, DuckDB UI, Marquez and the hub). Requests are redirected to Zitadel for OIDC login.
 - The `dagster.srdp.localhost` domain is included in the oauth2-proxy router rule alongside the other app domains.
 
 ### Dagster
@@ -316,9 +358,12 @@ Three containers, two images:
 - `dagster.yaml` configures PostgreSQL storage and the run launcher (`DefaultRunLauncher` locally, `K8sRunLauncher` in production).
 - `workspace.yaml` tells the webserver/daemon where to find the code server (`srdp-dagster-code:3030`).
 
-### Marimo & Quarto
+### Apps
 
-Stateless app containers. No database dependency. Routed through Traefik with the same OAuth2-Proxy auth chain as Dagster.
+Marimo, Streamlit, the DuckDB UI and the hub page need no database of their own.
+Traefik routes them through the same OAuth2-Proxy auth chain as Dagster.
+Quarto is a generic runtime in `services/quarto/`.
+The Helm chart can run it, and it is off by default.
 
 ## Directory layout
 
@@ -345,7 +390,9 @@ projects/
     src/etl/
     notebooks/            # Marimo notebook (tenant-owned content)
 services/
-  quarto/
+  duckdb-ui/              # SQL console runtime
+  hub/                    # Landing page
+  quarto/                 # Generic reporting runtime (Helm only, off by default)
 src/
-  srdp/                   # Core platform library
+  srdp/                   # Core platform library (incl. setup/ for srdp-setup)
 ```

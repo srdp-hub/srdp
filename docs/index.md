@@ -31,4 +31,4 @@ PostgreSQL backs the platform's stateful services (Zitadel and Dagster, and the 
 
 ![SRDP architecture](images/architecture.png)
 
-See [Architecture & Conventions](03-architecture.md) for the service topology and the edge authentication model, and the [Architectural Decision Records](adr/index.md) for the design decisions behind the platform.
+See [Architecture & Conventions](04-architecture.md) for the service topology and the edge authentication model, and the [Architectural Decision Records](adr/index.md) for the design decisions behind the platform.

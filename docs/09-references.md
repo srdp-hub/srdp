@@ -1,5 +1,5 @@
 ---
-title: 8. OSS Tool References
+title: OSS Tool References
 icon: lucide/link
 ---
 

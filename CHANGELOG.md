@@ -6,6 +6,19 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 
 ### Added
 
+- Hardened images for everything SRDP builds, including the example project's code location, API, marimo and streamlit images. They build on Docker Hardened Images, run as uid 65532 and scan clean in the Images workflow.
+  Building from source needs a `docker login dhi.io`. Released images from ghcr.io need no login.
+- Docker Compose runs every SRDP service, Traefik, oauth2-proxy and Marquez with a read-only root filesystem, no capabilities and no privilege escalation.
+  The chart gives every pod the same limits through `global.securityContext`, and only the Postgres subchart does not meet Pod Security `restricted` yet.
+  Upgrading an existing Compose install needs one step.
+  Older releases ran as root, so a `srdp-ducklake-data` volume that holds data can contain directories that uid 65532 cannot write to.
+  `srdp-setup` checks this before it changes anything and prints the `chown` command that fixes it, so no data is lost.
+  The production overlay starts `traefik-acme-init`, which gives `./letsencrypt` to uid 65532 and keeps `acme.json` at mode 0600.
+  The local stack runs Traefik as your own user, because the mkcert key is private to you.
+- `deploy/docker/provision-oidc.sh` creates the `srdp` project and the `oauth2-proxy` application in Zitadel when they are missing, and saves their client ID and secret in `.env`.
+  It replaces an admin token that a reset Zitadel no longer accepts, reads the gated hostnames from `config/traefik/dynamic/srdp.yml`, and is executable.
+- `DHI_USERNAME` and `DHI_TOKEN` repository secrets, for the Images and Renovate workflows to pull the base images.
+- Actions and pre-commit hooks are pinned by commit SHA, chart images by digest, and the Dockerfiles use `uv sync --locked`. Tests in `tests/deploy` fail on an unpinned image, Action or hook.
 - Signed platform images: every release builds `srdp-setup`, `dagster-webserver`, `duckdb-ui` and `hub` for amd64 and arm64, scans them for critical vulnerabilities, signs them with cosign, attests their provenance and publishes them to `ghcr.io/srdp-hub` once all four pass, tagged with the exact version (which never moves) and `latest` for the newest stable release. Pull requests and pushes to `main` that touch the images build and scan them without publishing. See "Verifying published images" in the deployment docs.
 - Renovate proposes one weekly PR for the images, the chart dependencies and the Dagster packages. It needs a `RENOVATE_TOKEN` secret. Dependabot stays for GitHub Actions.
 - `just pre-commit`, which runs every pre-commit hook on all files.
@@ -65,7 +78,7 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 - Dagster queues runs and launches at most 3 at a time, of which at most one backfill (`workload_kind: backfill`), on both Compose and Kubernetes.
 - The base and fast-lane Kubernetes run profiles request 512Mi with a 1536Mi limit, since a full `srdp_etl_job` run peaks at about 1Gi.
 - `just prod-traefik-only` deploys only Traefik and the hub page, and `just prod-auth-only` adds only Zitadel, its database and OAuth2-Proxy.
-  Both leave every app and the `srdp-setup` Job off.
+  Both leave every app off, and only `prod-traefik-only` leaves the `srdp-setup` Job off.
 - `srdp-setup` and `duckdb-ui` build in the uv image and run on `python:3.12-slim-bookworm`, without uv at runtime, and the hub image applies Alpine security updates, so all platform images pass the critical vulnerability scan.
 - `just docker-tls` and `just local-tls` install mkcert's local CA themselves, so setup is install mkcert and run the recipe.
 - The setup docs link to each tool's own install instructions, drop the unneeded `/etc/hosts` steps, and use `just` recipes throughout.
@@ -83,6 +96,10 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 - The chart's setup Job runs before Zitadel's hooks, gives up after 2 retries or 4 minutes, and can be switched off with `setup.enabled`.
   It stays after it succeeds, until the next install or upgrade, so `kubectl logs job/srdp-setup` always shows the last run.
   Each connection attempt times out after 5 seconds, so an unreachable host can't use up those 4 minutes.
+- Zitadel uses its own database role on both targets and never gets the Postgres superuser password. `srdp-setup` creates the role, and Compose runs `init zitadel`.
+  The `srdp-zitadel` Secret holds `masterkey`, `db-password` and `admin-password`. This breaks existing `values-prod.yaml` files and Secrets, which must drop `config-yaml`, the `password` key of `srdp-postgres`, and the `zitadel-db.auth.*`, `Admin`, `dbSslAdminCrtSecret` and `nc -z` wait blocks, and add the new keys.
+  In kind, Zitadel waits for its login and restarts when `values-local.yaml` changes, and the Postgres pod restarts once on upgrade.
+- `[setup] manage_databases = false` in `srdp.toml`, and `setup.manageDatabases` in the chart, make `srdp-setup` only check the connection and that the databases exist.
 - `just build-and-push` stops on the first failed build or push.
 - Every third-party container image is pinned to an exact version, by digest where possible, and Compose and the chart run the same version of each. A test checks it.
   Existing `values-prod.yaml` files must pin the same images in their wait containers, since their lists replace the chart's.

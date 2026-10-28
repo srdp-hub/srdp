@@ -50,7 +50,7 @@
     {
       "description": "The Python minor is fixed by requires-python in pyproject.toml, only patch and digest bumps are allowed.",
       "matchPackageNames": [
-        "python"
+        "dhi.io/python"
       ],
       "matchUpdateTypes": [
         "major",
@@ -68,9 +68,9 @@
     {
       "description": "The hub image stays on the nginx stable line, which has even minor versions. Odd minors are the mainline.",
       "matchPackageNames": [
-        "nginx"
+        "dhi.io/nginx"
       ],
-      "allowedVersions": "/^\\d+\\.\\d*[02468]-/"
+      "allowedVersions": "/^\\d+\\.\\d*[02468](\\.|$)/"
     },
     {
       "description": "Dagster comes from uv.lock and the chart follows it, so both bump in one PR. Only the lockfile moves, the pyproject floors stay.",

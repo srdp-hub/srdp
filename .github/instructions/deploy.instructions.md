@@ -50,7 +50,7 @@ Images that are built from the repo root (the Python ones copy `pyproject.toml`,
 One Postgres instance serves the `zitadel`, `dagster`, `marquez` and `ducklake` databases, as a container in Compose and the Bitnami subchart (`zitadel-db`) in Kubernetes.
 The `srdp-setup` service (Compose) or Job (Kubernetes) creates every database and role from `srdp.toml` `[setup]` or `values.yaml` `setup.databases`, and resets each role's password to the configured value on every deploy.
 Never delete the Postgres volume or PVC to fix a password mismatch, because that destroys all data.
-Rerun the deploy instead, as `docs/06-troubleshooting.md` describes.
+Rerun the deploy instead, as `docs/07-troubleshooting.md` describes.
 
 No password lives in the chart's values files.
 Every consumer reads a Secret with a fixed name: `srdp-postgres`, `srdp-zitadel`, `srdp-oauth2-proxy`, `srdp-dagster-postgresql` and `srdp-marquez` (keys listed in `values.yaml`).
@@ -67,4 +67,4 @@ The Zitadel master key in `srdp-zitadel` must be exactly 32 characters.
 - `tofu destroy` fails if LB not released first. Run `just prod-uninstall` before destroy.
 - Traefik stuck in Init: `ReadWriteOnce` PVC held by previous pod. Delete old pod/PVC.
 - OAuth login loops: domain mismatch between `global.domain`, Zitadel OIDC redirect, and oauth2-proxy `--oidc-issuer-url`.
-- Dagster CrashLoopBackOff with "password authentication failed": rerun `just local-deploy` (or `helm upgrade`) so `srdp-setup` resets the role password, see `docs/06-troubleshooting.md`.
+- Dagster CrashLoopBackOff with "password authentication failed": rerun `just local-deploy` (or `helm upgrade`) so `srdp-setup` resets the role password, see `docs/07-troubleshooting.md`.

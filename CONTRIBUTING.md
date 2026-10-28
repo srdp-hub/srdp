@@ -29,7 +29,7 @@ Conventions are documented in [`AGENTS.md`](AGENTS.md) at the repository root. R
 
 ## AI-assisted contributions
 
-We allow AI assistance in code generation and documentation, but all responsibility lies with the contributor. For more details, see [AI-assisted contribution guidelines](https://docs.srdphub.com/07-contributing/#ai-assisted-contributions).
+We allow AI assistance in code generation and documentation, but all responsibility lies with the contributor. For more details, see [AI-assisted contribution guidelines](https://docs.srdphub.com/08-contributing/#ai-assisted-contributions).
 
 ## Submitting changes
 

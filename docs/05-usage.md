@@ -1,12 +1,12 @@
 ---
-title: 4. Usage & Verification
+title: Usage & Verification
 icon: lucide/circle-play
 ---
 
 # Usage & Verification
 
 All apps are protected behind OAuth2-Proxy, so opening one redirects to Zitadel for login first.
-You can use the admin credentials from [02-configuration.md](./02-configuration.md).
+You can use the admin credentials from [03-configuration.md](./03-configuration.md).
 The hub at `https://srdp.localhost` links to every service.
 
 ## Docker Compose
@@ -29,7 +29,8 @@ The Traefik dashboard at `http://localhost:8080` shows all routers and services,
 
 ### Access services
 
-The same addresses as Docker Compose, with `:18443` added, for example `https://dagster.srdp.localhost:18443`.
+The same addresses as Docker Compose, for example `https://dagster.srdp.localhost`.
+Stop the Compose stack first, because both use host ports 80 and 443.
 On another cluster, use the domain from `global.domain` in your values.
 
 ### Check the release

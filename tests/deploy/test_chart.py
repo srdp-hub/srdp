@@ -1,5 +1,6 @@
 """Render the Helm chart with `helm template` and check its contract with the Compose stack."""
 
+import json
 import re
 import shlex
 import shutil
@@ -12,7 +13,7 @@ from typing import Any
 import pytest
 import yaml
 
-from srdp.setup.bootstrap import DATABASE_WAIT_SECONDS
+from srdp.setup.bootstrap import DATABASE_WAIT_SECONDS, DatabaseTarget
 from srdp.setup.garage import GARAGE_WAIT_SECONDS
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -81,10 +82,20 @@ def test_streamlit_runs_behind_the_login(local: list[Manifest]) -> None:
     assert "streamlit.srdp.localhost" in auth_hosts
 
 
-def test_setup_job_covers_all_four_databases(local: list[Manifest]) -> None:
-    toml = find(local, "ConfigMap", "srdp-setup-config")["data"]["srdp.toml"]
-    for database in ("zitadel", "dagster", "marquez", "ducklake"):
-        assert f'name = "{database}"' in toml
+def test_setup_job_gets_the_same_setup_as_srdp_toml(local: list[Manifest]) -> None:
+    """The chart keeps its own copy of [setup], compared as the models srdp-setup loads, so defaults count too."""
+    rendered = tomllib.loads(find(local, "ConfigMap", "srdp-setup-config")["data"]["srdp.toml"])["setup"]
+    repo = tomllib.loads((REPO_ROOT / "srdp.toml").read_text())["setup"]
+    assert rendered["manage_databases"] == repo["manage_databases"]
+    targets = [DatabaseTarget(**d) for d in rendered["databases"]]
+    assert targets == [DatabaseTarget(**d) for d in repo["databases"]]
+    assert {d.name for d in targets if d.enabled} == {"zitadel", "dagster", "marquez", "ducklake"}
+
+
+def test_setup_can_be_told_not_to_manage_databases() -> None:
+    manifests = render("values.yaml", "values-local.yaml", set_values=("setup.manageDatabases=false",))
+    toml = tomllib.loads(find(manifests, "ConfigMap", "srdp-setup-config")["data"]["srdp.toml"])
+    assert toml["setup"]["manage_databases"] is False
 
 
 def test_dagster_code_location_uses_the_compose_module_path(local: list[Manifest]) -> None:
@@ -292,6 +303,7 @@ def test_chart_domain_defaults_match_srdp_toml() -> None:
 LOCAL_SECRET_READERS = ["marquez", "api", "duckdb-ui", "marimo", "streamlit"]
 SUBCHART_SECRET_READERS = [
     "srdp-oauth2-proxy",
+    "srdp-zitadel",
     "srdp-dagster-webserver",
     "srdp-dagster-daemon",
     "srdp-dagster-user-deployments-srdp-etl",
@@ -335,9 +347,21 @@ def test_setup_job_outlives_its_success(local: list[Manifest]) -> None:
 
 
 @pytest.mark.parametrize(
+    ("variable", "setup_jobs"),
+    [("prod_traefik_only_args", []), ("prod_auth_only_args", ["srdp-setup"])],
+)
+def test_only_the_traefik_stage_leaves_the_setup_job_off(variable: str, setup_jobs: list[str]) -> None:
+    """Zitadel logs in as a role the Job creates, so the auth stage needs it. The traefik stage has no Postgres."""
+    manifests = render("values-prod.example.yaml", set_values=tuple(just_evaluate(variable)))
+    assert [
+        m["metadata"]["name"] for m in manifests if m["kind"] == "Job" and m["metadata"]["name"] == "srdp-setup"
+    ] == setup_jobs
+
+
+@pytest.mark.parametrize(
     ("variable", "expected"),
     [
-        ("prod_traefik_only_args", {"srdp-traefik", "hub"}),
+        ("prod_traefik_only_args", {"srdp-traefik"}),
         ("prod_auth_only_args", {"srdp-traefik", "hub", "srdp-zitadel", "srdp-zitadel-login", "srdp-oauth2-proxy"}),
     ],
 )
@@ -712,6 +736,17 @@ def test_garage_runs_hardened(local_s3: list[Manifest]) -> None:
     }
 
 
+def test_quarto_runs_hardened() -> None:
+    manifests = render("values.yaml", "values-local.yaml", set_values=("quarto.enabled=true",))
+    spec = find(manifests, "Deployment", "quarto")["spec"]["template"]["spec"]
+    assert spec["securityContext"]["runAsNonRoot"] is True
+    [container] = spec["containers"]
+    assert container["securityContext"]["readOnlyRootFilesystem"] is True
+    assert container["securityContext"]["capabilities"] == {"drop": ["ALL"]}
+    assert container["ports"] == [{"containerPort": 8080}]
+    assert find(manifests, "Service", "quarto")["spec"]["ports"][0]["targetPort"] == 8080
+
+
 def test_vhost_url_style_from_the_chart_reaches_the_bucket_wait(tmp_path: Path) -> None:
     manifests = render(
         "values.yaml", "values-local.yaml", "values-local-s3.yaml", set_values=("ducklakeStorage.s3.urlStyle=vhost",)
@@ -890,3 +925,190 @@ def test_compose_and_chart_run_the_same_postgres_major() -> None:
     with tarfile.open(next((CHART_DIR / "charts").glob("postgresql-*.tgz"))) as archive:
         subchart = yaml.safe_load(archive.extractfile("postgresql/Chart.yaml").read())
     assert subchart["appVersion"].split(".")[0] == compose_major
+
+
+ZITADEL_PODS = [("Deployment", "srdp-zitadel"), ("Job", "srdp-zitadel-init"), ("Job", "srdp-zitadel-setup")]
+ZITADEL_RENDERS = {
+    "local": (("values.yaml", "values-local.yaml"), ()),
+    "prod": (("values-prod.example.yaml",), ()),
+}
+
+
+def pod_env(manifests: list[Manifest], kind: str, name: str) -> dict[str, Manifest]:
+    """Return the env of every container and init container of one workload, by variable name."""
+    spec = find(manifests, kind, name)["spec"]["template"]["spec"]
+    return {e["name"]: e for c in containers(spec) for e in c.get("env", [])}
+
+
+def secret_ref(env: dict[str, Manifest], var: str) -> tuple[str, str]:
+    """Return (Secret name, key) that one variable reads."""
+    ref = env[var]["valueFrom"]["secretKeyRef"]
+    return ref["name"], ref["key"]
+
+
+@pytest.mark.parametrize("case", ZITADEL_RENDERS)
+def test_zitadel_setup_and_login_wait_share_one_password(case: str) -> None:
+    """srdp-setup sets the role's password from the same Secret key that Zitadel and its wait read."""
+    values_files, set_values = ZITADEL_RENDERS[case]
+    manifests = render(*values_files, set_values=set_values)
+    setup = pod_env(manifests, "Job", "srdp-setup")
+    expected = secret_ref(setup, "SETUP_PASSWORDS__ZITADEL")
+    assert expected == ("srdp-zitadel", "db-password")
+    for kind, name in ZITADEL_PODS:
+        env = pod_env(manifests, kind, name)
+        assert secret_ref(env, "PGPASSWORD") == expected, name
+        assert secret_ref(env, "ZITADEL_DATABASE_POSTGRES_USER_PASSWORD") == expected, name
+        assert env["PGUSER"]["value"] == env["PGDATABASE"]["value"] == "zitadel", name
+
+
+@pytest.mark.parametrize("case", ZITADEL_RENDERS)
+def test_zitadel_never_gets_the_postgres_superuser(case: str) -> None:
+    values_files, set_values = ZITADEL_RENDERS[case]
+    manifests = render(*values_files, set_values=set_values)
+    for kind, name in ZITADEL_PODS:
+        spec = find(manifests, kind, name)["spec"]["template"]["spec"]
+        dump = yaml.safe_dump(spec)
+        assert "postgres-password" not in dump, name
+        assert "db-ssl-admin-crt" not in dump, name
+        assert "ADMIN_PASSWORD" not in dump, name
+        assert "postgres-cert" not in dump, name  # holds the server's private key
+        assert "postgres-ca" in dump, name
+    config = find(manifests, "ConfigMap", "srdp-zitadel-config-yaml")["data"]["zitadel-config-yaml"]
+    assert "Admin" not in yaml.safe_load(config)["Database"]["Postgres"]
+
+
+def test_zitadel_initialises_as_its_own_role() -> None:
+    """The full `init` needs the superuser. `init zitadel` only needs the role and database srdp-setup made."""
+    manifests = render("values.yaml", "values-local.yaml")
+    job = find(manifests, "Job", "srdp-zitadel-init")["spec"]["template"]["spec"]
+    command = next(c for c in job["containers"] if c["name"] == "zitadel-init")
+    assert command["args"][:2] == ["init", "zitadel"]
+
+
+@pytest.mark.parametrize(
+    "set_values",
+    [
+        ("setup.enabled=false",),
+        ("setup.databases[0].enabled=false",),
+        ("setup.databases[0].name=other",),
+    ],
+)
+def test_zitadel_needs_the_setup_job_to_create_its_role(set_values: tuple[str, ...]) -> None:
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        render("values.yaml", "values-local.yaml", set_values=set_values)
+    assert "zitadel" in error.value.stderr
+
+
+def test_compose_zitadel_init_matches_the_chart() -> None:
+    """Compose runs `init zitadel` as the role srdp-setup creates, never with the superuser."""
+    compose = yaml.safe_load((REPO_ROOT / "deploy" / "docker" / "docker-compose.yml").read_text())["services"]
+    assert compose["zitadel-init"]["command"] == "init zitadel"
+    assert compose["zitadel-init"]["depends_on"]["srdp-setup"]["condition"] == "service_completed_successfully"
+    password = compose["srdp-setup"]["environment"]["SETUP_PASSWORDS__ZITADEL"]
+    assert password == compose["zitadel-init"]["environment"]["ZITADEL_DATABASE_POSTGRES_USER_PASSWORD"]
+    for name in ("zitadel-init", "zitadel"):
+        env = compose[name].get("environment", {})
+        assert not [var for var in env if var.startswith("ZITADEL_DATABASE_POSTGRES_ADMIN")], name
+
+
+# A fake Kubernetes Secrets API for the certs job: one JSON file per Secret in $SECRET_STORE.
+STUB_KUBE_CURL = """#!/usr/bin/env python3
+import json, os, pathlib, sys
+args, method, data, fail, url = sys.argv[1:], "GET", "", False, ""
+it = iter(args)
+for a in it:
+    if a == "-X": method = next(it)
+    elif a == "--data": data = next(it)
+    elif a in ("--cacert", "--header"): next(it)
+    elif a.startswith("-"): fail = fail or "f" in a
+    else: url = a
+store = pathlib.Path(os.environ["SECRET_STORE"])
+name = url.rstrip("/").rsplit("/", 1)[-1]
+if method == "POST":
+    secret = json.loads(data) if data else {}
+    name = secret.get("metadata", {}).get("name", "")
+    target = store / f"{name}.json"
+    if not name or target.exists(): sys.exit(22 if fail else 0)
+    target.write_text(json.dumps(secret, indent=2))
+    sys.exit(0)
+target = store / f"{name}.json"
+if not target.exists(): sys.exit(22 if fail else 0)
+if method == "PUT": target.write_text(json.dumps(json.loads(data), indent=2))
+else: print(target.read_text())
+"""
+
+
+def run_apply_certs(tmp_path: Path, existing: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
+    """Run the certs job's apply-certs script against a fake API holding these Secrets, and return its Secrets."""
+    job = find(render("values.yaml"), "Job", "create-certs")
+    container = job["spec"]["template"]["spec"]["containers"][0]
+    store = tmp_path / "secrets"
+    store.mkdir()
+    for name, data in existing.items():
+        (store / f"{name}.json").write_text(json.dumps({"metadata": {"name": name}, "data": data}, indent=2))
+    stub = tmp_path / "curl"
+    stub.write_text(STUB_KUBE_CURL)
+    stub.chmod(0o755)
+    # Fixed argv, the script under test is the rendered one. bash instead of the image's ash.
+    result = subprocess.run(  # noqa: S603
+        ["bash", "-c", container["command"][-1]],  # noqa: S607
+        env={"PATH": f"{tmp_path}:/usr/bin:/bin", "SECRET_STORE": str(store)},
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return {path.stem: json.loads(path.read_text())["data"] for path in store.glob("*.json")}
+
+
+@pytest.mark.parametrize("stale", [None, "c3RhbGUtY2E="])
+def test_postgres_ca_follows_existing_server_cert(tmp_path: Path, stale: str | None) -> None:
+    """An upgrade keeps postgres-cert from the earlier release, so postgres-ca must take its CA, not a new one."""
+    existing = {
+        "postgres-cert": {"ca.crt": "b2xkLWNh", "tls.crt": "b2xkLWNydA==", "tls.key": "b2xkLWtleQ=="},
+        "zitadel-cert": {"ca.crt": "b2xkLWNh", "tls.crt": "eg==", "tls.key": "eg=="},
+    }
+    if stale:
+        existing["postgres-ca"] = {"ca.crt": stale}
+
+    secrets = run_apply_certs(tmp_path, existing)
+
+    assert secrets["postgres-ca"] == {"ca.crt": "b2xkLWNh"}
+    assert secrets["postgres-cert"] == existing["postgres-cert"]
+
+
+def test_certs_role_only_touches_cert_secrets() -> None:
+    """The hook pod must not read other Secrets, such as the Postgres superuser password."""
+    role = find(render("values.yaml"), "Role", "secret-creator")
+    for rule in role["rules"]:
+        if set(rule["verbs"]) - {"create"}:
+            assert rule["resourceNames"] == ["postgres-cert", "zitadel-cert", "postgres-ca"], rule
+
+
+@pytest.mark.parametrize("case", ["local", "prod"])
+def test_zitadel_wait_verifies_postgres(case: str) -> None:
+    """The login probe sends Zitadel's password, so it must verify the server first."""
+    values_files, set_values = RENDERS[case]
+    manifests = render(*values_files, set_values=set_values)
+    names = [("Deployment", "srdp-zitadel"), ("Job", "srdp-zitadel-init"), ("Job", "srdp-zitadel-setup")]
+    for kind, name in names:
+        spec = find(manifests, kind, name)["spec"]["template"]["spec"]
+        [wait] = [c for c in spec["initContainers"] if c["name"] == "wait-for-zitadel-db"]
+        env = {e["name"]: e.get("value") for e in wait["env"]}
+        assert env["PGSSLMODE"] == "verify-full", name
+        mount = {m["name"]: m["mountPath"] for m in wait["volumeMounts"]}["db-ssl-ca-crt"]
+        assert env["PGSSLROOTCERT"] == f"{mount}/ca.crt", name
+        assert "db-ssl-ca-crt" in {v["name"] for v in spec["volumes"]}, name
+
+
+GATED = ["hub", "dagster", "marimo", "quarto", "streamlit", "api", "duckdbUi", "marquez", "setup"]
+
+
+@pytest.mark.parametrize("gate", ["zitadel", "oauth2-proxy"])
+@pytest.mark.parametrize("app", GATED)
+def test_login_gate_is_mandatory(gate: str, app: str) -> None:
+    """Any single app behind the gate needs Zitadel and oauth2-proxy."""
+    others = tuple(f"{a}.enabled=false" for a in GATED if a != app)
+    error = render_error("values.yaml", set_values=(*others, f"{app}.enabled=true", f"{gate}.enabled=false"))
+    assert f"mandatory while {app} runs" in error

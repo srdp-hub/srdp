@@ -3,12 +3,45 @@ site_name = "SRDP – Single-Repo Data Platform"
 site_url = "https://docs.srdphub.com/"
 repo_url = "https://github.com/srdp-hub/srdp"
 
+# The order of the pages. A new reader starts with the overview.
+nav = [
+  { "Home" = "index.md" },
+  { "About SRDP" = "00-about.md" },
+  { "Prerequisites" = "01-prerequisites.md" },
+  { "Platform Overview" = "02-platform-overview.md" },
+  { "Local Configuration & Setup" = "03-configuration.md" },
+  { "Architecture & Conventions" = "04-architecture.md" },
+  { "Usage & Verification" = "05-usage.md" },
+  { "Cloud Deployment" = "06-deployment.md" },
+  { "Troubleshooting" = "07-troubleshooting.md" },
+  { "Contributing" = "08-contributing.md" },
+  { "OSS Tool References" = "09-references.md" },
+  { "Kubernetes Primer" = "10-kubernetes-primer.md" },
+  { "Security in our DevOps Process" = "security.md" },
+  { "Architectural Decision Records" = [
+    "adr/index.md",
+    { "Platform architecture and distribution" = "adr/0001-platform-architecture-and-distribution.md" },
+    { "API and access strategy" = "adr/0002-api-and-access-strategy.md" },
+    { "Data catalog, lineage, and observability" = "adr/0003-data-catalog-lineage-and-observability.md" },
+    { "Data organization and ingestion" = "adr/0004-data-organization-and-ingestion.md" },
+    { "Authorization and data access" = "adr/0005-authorization-and-data-access.md" },
+    { "Deployment and project isolation model" = "adr/0006-deployment-and-project-isolation-model.md" },
+    { "Compute, execution, and scaling" = "adr/0007-compute-and-scaling.md" },
+    { "Identity propagation, capability tokens, and data contracts" = "adr/0008-identity-propagation-and-data-contracts.md" },
+    { "Data-plane access: credential materialization" = "adr/0009-data-plane-credential-materialization.md" },
+    { "Project onboarding and extension" = "adr/0011-project-onboarding-and-extension.md" },
+    { "dlt alongside Dagster" = "adr/0012-dlt-alongside-dagster.md" },
+  ] },
+]
+
 # SRDP brand theme (matches srdphub.com identity v1.0).
 # The drop-in stylesheet overrides the --md-* variables directly, so it carries
 # the bulk of the styling; the palette/font keys below just align the defaults.
 extra_css = ["stylesheets/srdp-docs.css"]
 
 [project.theme]
+# The index page of a section becomes the title of that section.
+features = ["navigation.indexes"]
 # Paper logo for the dark ink header; favicon shared with the main site.
 logo = "assets/srdp-hub-tree-paper.png"
 favicon = "assets/favicon.png"

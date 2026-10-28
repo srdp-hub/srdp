@@ -1,16 +1,15 @@
-# AGENTS.md: SRDP Codebase Guide for AI Coding Assistants
+# AGENTS.md: SRDP guide for AI coding assistants
 
-This file describes the structure and rules of the **Single-Repo Data Platform (SRDP)** repository.
-
----
+This file gives the structure and rules of the Single-Repo Data Platform (SRDP) repository.
 
 ## What this repository is
 
-SRDP assembles a modern open-source data platform (Zitadel, Traefik, Dagster, Polars/DuckDB, marimo) into a single Git repository with two deployment targets: Docker Compose and Kubernetes (Helm + Scaleway Kapsule).
+SRDP puts an open-source data platform into one Git repository.
+The platform uses Zitadel, Traefik, Dagster, Polars, DuckDB and marimo.
+It has two deployment targets, Docker Compose and Kubernetes (Helm on Scaleway Kapsule).
 
-Every change should move SRDP toward a production-ready, hardened and configurable platform that deploys with a single command and standard settings in `srdp.toml`.
-
----
+Every change must move SRDP toward a hardened, configurable, production-ready platform.
+The goal is one command that deploys it with standard settings from `srdp.toml`.
 
 ## Repository layout
 
@@ -27,38 +26,74 @@ srdp/
 └── docs/                  # Documentation source (Zensical)
 ```
 
----
-
 ## Hard rules
 
-- Never commit secrets (`.env`, `secrets.sh`, `values-prod.yaml`, `kubeconfig.yaml`).
-- Never hardcode credentials or other identifying values (passwords, IP addresses, hostnames tied to a specific environment) directly in scripts, manifests, or app config. Source them from env vars, `.env`, or chart values, even when a target app's own defaults make a literal look unavoidable, verify that first instead of assuming it.
-- Always use `just` as the task runner and `uv` as the package manager.
-- No `pip`, `conda`, or `requirements.txt`.
-- No `from __future__ import annotations`. Use native type hints (`str | None`, `list[int]`).
-- No `print()`. Use `logging.getLogger(__name__)`.
-- No bare `except:`. Always catch a specific exception type.
-- No relative imports. Always use absolute imports.
-- All configuration via Pydantic Settings, never `os.environ` directly.
-- Reusable platform code belongs in `src/srdp/`, not in projects.
-- Tenant-specific app content belongs in `projects/<name>/`, not `services/`. This includes pipeline code and also a UI like a Streamlit dashboard or a Marimo notebook. `services/` is only for generic runtimes any project could reuse unchanged with no project-specific content baked in (quarto). Follow the `projects/<name>/Dockerfile` precedent: the app's Dockerfile and content live together in the project. `deploy/docker/docker-compose.yml` owns the orchestration wiring.
-- `requires-python` in `pyproject.toml` has an upper bound (`<3.13`) on purpose. Do not loosen it. An open-ended `>=3.12` lets `uv` pick the newest interpreter satisfying it, and some deps (e.g. `dbt-core`) lag behind new Python releases.
-- Dockerfiles: `uv sync` with explicit extras (`--extra x --extra y`), never `--all-extras`. It pulls in unrelated dev-only deps and can break the build.
-- Local domains are `*.srdp.localhost`, not `.local.dev`. The `.localhost` TLD auto-resolves to loopback, so no `/etc/hosts` edit is needed.
-- Branch names: `<type>/<issue-number>-<short-slug>` (e.g. `fix/123-short-desc`), `<type>` = Conventional Commits type. Open an issue first if none exists.
-- Review scripts/workflows/manifests for: injection (unquoted dynamic values in shell/query/template), least privilege (minimum access for containers/credentials/grants), state consistency (mirrored values updated together), failure ordering (validate before mutating).
-- State only what was tested. Name the target (Compose or Kubernetes), the component version, and whether it was a fresh install or an upgrade. Anything else goes under "not verified".
-- Docker Compose and Kubernetes are both always in scope for deployment changes, never just one. Building or fixing something for one target without the other is how they diverge.
+### Secrets and credentials
+
+- Never commit secrets, such as `.env`, `secrets.sh`, `values-prod.yaml` or `kubeconfig.yaml`.
+- Never hardcode credentials, IP addresses or environment-specific hostnames in scripts, manifests or app config.
+- Read these values from env vars, `.env` or chart values.
+- If an app default seems to need a literal value, check that first. Do not assume it.
+
+### Tools
+
+- Use `just` as the task runner and `uv` as the package manager.
+- Do not use `pip`, `conda` or `requirements.txt`.
+- Keep the upper bound `<3.13` on `requires-python` in `pyproject.toml`. Some dependencies, such as `dbt-core`, lag behind new Python releases.
+- In Dockerfiles, run `uv sync` with explicit extras (`--extra x --extra y`). Never use `--all-extras`, because it adds dev-only dependencies.
+
+### Python
+
+- Do not use `from __future__ import annotations`. Use native type hints, such as `str | None`.
+- Do not use `print()`. Use `logging.getLogger(__name__)`.
+- Do not use a bare `except:`. Catch a specific exception type.
+- Use absolute imports only.
+- Read all configuration through Pydantic Settings. Do not read `os.environ`.
+
+### Code location
+
+- Put reusable platform code in `src/srdp/`.
+- Put tenant-specific content in `projects/<name>/`, including pipelines, Streamlit dashboards and marimo notebooks.
+- Use `services/` only for generic runtimes that any project can reuse unchanged, such as quarto.
+- Keep an app's Dockerfile with its content in the project, as `projects/<name>/Dockerfile` does.
+- Wire services together in `deploy/docker/docker-compose.yml`.
+
+### Deployment
+
+- Use `*.srdp.localhost` for local domains. The `.localhost` TLD resolves to loopback without `/etc/hosts` edits.
+- Change Docker Compose and Kubernetes together. A change to one target only makes them diverge.
+
+### Review
+
+Check scripts, workflows and manifests for these four problems.
+
+- Injection: dynamic values in shell, queries or templates must be quoted.
+- Least privilege: containers, credentials and grants get the minimum access.
+- State consistency: mirrored values change together.
+- Failure order: validate before you change anything.
+
+### Git and reporting
+
+- Name branches `<type>/<issue-number>-<short-slug>`, such as `fix/123-short-desc`. `<type>` is a Conventional Commits type.
+- Open an issue first if none exists.
+- Report only what you tested. Name the target (Compose or Kubernetes), the component version, and fresh install or upgrade.
+- Put everything else under "not verified".
 
 ## Markdown
 
-Full rules live in [`markdown.instructions.md`](.github/instructions/markdown.instructions.md) and are hook-enforced (`.claude/settings.json`, `PostToolUse` on `Write|Edit`): no em dashes ever, full sentences, no comma-spliced fragments, no "not X but Y" contrastive tics, no colon-into-fragment constructions. Check `zensical.toml` before suggesting markdown formatting or structure under `docs/`.
-
----
+[`markdown.instructions.md`](.github/instructions/markdown.instructions.md) has the full rules, and hooks in `.claude/settings.json` enforce them.
+Use the ASD-STE100 style. Follow it strictly in procedures and instruction files.
+Never use em dashes.
+Write full sentences. Do not join fragments with commas.
+Do not use "not X but Y" contrasts or a colon followed by a fragment.
+Check `zensical.toml` before you suggest formatting or structure under `docs/`.
 
 ## Detailed instructions
 
-Domain-specific conventions are in `.github/instructions/`. GitHub Copilot loads them by file context through their `applyTo` globs, and Claude Code imports them all through `CLAUDE.md`. Other assistants should read the ones that apply:
+`.github/instructions/` has the rules for each domain.
+GitHub Copilot loads each file through its `applyTo` globs.
+Claude Code imports all of them through `CLAUDE.md`.
+Other assistants must read the files that apply.
 
 | File | Applies to |
 |:---|:---|

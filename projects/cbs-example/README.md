@@ -6,7 +6,7 @@ It's the thing you'd copy and rename to start a new project, and it's what this 
 
 It shows two ways to define a pipeline against the same DuckLake catalog, Polars and dbt, a third pipeline style triggered by a push rather than a schedule, and several ways to read the result: a Streamlit dashboard, a Marimo notebook, DuckDB's own UI, and a small FastAPI surface, all under one Dagster code location.
 
-> **Note on this README:** the sections below "What this session added" are a draft. They cover platform-wide pieces (lineage, the API, DuckDB UI) that arguably belong in `docs/03-architecture.md` rather than a tenant project's README, written here first for review before being promoted there. See [ADR-0006](../../docs/adr/0006-deployment-and-project-isolation-model.md) on why that split matters.
+> **Note on this README:** the sections below "What this session added" are a draft. They cover platform-wide pieces (lineage, the API, DuckDB UI) that arguably belong in `docs/04-architecture.md` rather than a tenant project's README, written here first for review before being promoted there. See [ADR-0006](../../docs/adr/0006-deployment-and-project-isolation-model.md) on why that split matters.
 
 ## What's in here
 
@@ -62,8 +62,8 @@ just docker-up
 
 Zitadel doesn't know about `oauth2-proxy` until you tell it. On a fresh stack:
 
-1. Open `https://auth.srdp.localhost`, sign in as the first-instance admin (see `docs/02-configuration.md` for the default login name/password).
-2. Create a project and a **Web** app with the **Code** auth flow, redirect URIs for each service (`https://dagster.srdp.localhost/oauth2/callback`, `.../marimo...`, `.../streamlit...`, `.../srdp.localhost/oauth2/callback` for the hub; see `docs/02-configuration.md` for the full list).
+1. Open `https://auth.srdp.localhost`, sign in as the first-instance admin (see `docs/03-configuration.md` for the default login name/password).
+2. Create a project and a **Web** app with the **Code** auth flow, redirect URIs for each service (`https://dagster.srdp.localhost/oauth2/callback`, `.../marimo...`, `.../streamlit...`, `.../srdp.localhost/oauth2/callback` for the hub; see `docs/03-configuration.md` for the full list).
 3. Copy the generated client ID/secret into `deploy/docker/.env` (`OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`), then `docker compose up -d --force-recreate oauth2-proxy`.
 
 This is the known, documented bootstrap gap (tracked as issue #35).
@@ -143,7 +143,7 @@ See `.github/instructions/dagster.instructions.md` for the Dagster conventions, 
 
 ## What this session added (draft, pending review)
 
-Everything below documents the full current stack: lineage, the API, DuckDB UI, and the push-based enrichment flow. Diagrams are plain Mermaid flowcharts drawn in [C4 model](https://c4model.com/) layers (System Context, then Container), not the literal `C4Context`/`C4Container` Mermaid diagram types, those exist but Zensical (this repo's docs site generator) doesn't officially support them ("doesn't work well on mobile," per its docs), while flowcharts are fully supported and already used in `docs/03-architecture.md`.
+Everything below documents the full current stack: lineage, the API, DuckDB UI, and the push-based enrichment flow. Diagrams are plain Mermaid flowcharts drawn in [C4 model](https://c4model.com/) layers (System Context, then Container), not the literal `C4Context`/`C4Container` Mermaid diagram types, those exist but Zensical (this repo's docs site generator) doesn't officially support them ("doesn't work well on mobile," per its docs), while flowcharts are fully supported and already used in `docs/04-architecture.md`.
 
 ### System context
 
@@ -280,9 +280,9 @@ Getting the official `ui` extension to work behind Traefik took three separate f
 
 1. **The `ui` extension only binds `[::1]`** (IPv6 loopback), no config option for `0.0.0.0`. Confirmed in [`duckdb-ui` issue #22](https://github.com/duckdb/duckdb-ui/issues/22): "the UI server is currently hardcoded to listen to localhost only." Worked around with a proxy in front of it inside the same container.
 2. **Traefik's own error-rewrite middleware was hijacking DuckDB's internal 401s.** `zitadel-errors` turns *any* `401` in a response chain into a login redirect, meant for oauth2-proxy's own auth failures, but it doesn't distinguish those from a `401` the actual backend returns for its own reasons. DuckDB UI's frontend calls its own endpoints (`/localToken`, `/ddb/run`, `/ddb/interrupt`, `/ddb/tokenize`, `/localEvents`, found by reading its own JS bundle) that can legitimately 401, and those got rewritten into broken CORS redirects. Fixed with a second, more specific Traefik router for exactly those paths, carrying only the real auth check, not the rewrite.
-3. **DuckDB's server independently rejects anything that doesn't look like genuine unproxied `localhost` traffic**, confirmed by testing the *exact* blog-post-recommended access pattern (bare `http://localhost:4213`, zero proxy) and still getting `401`. [`duckdb-ui` issue #209](https://github.com/duckdb/duckdb-ui/issues/209) is the same symptom, reported by someone else, closed "not planned" by the maintainers, no official fix. The actual fix came from a community project that hit this exact wall: [`skyscopetech/duckdb-ui-remote-docker`](https://github.com/skyscopetech/duckdb-ui-remote-docker) runs an HAProxy in front of DuckDB UI that rewrites `Host`/`Origin`/`Referer` to look like a genuine `localhost` client and strips every `X-Forwarded-*` header. Adapted that exact config into `services/duckdb-ui/haproxy.cfg` (their HAProxy also terminates its own TLS; not needed here, Traefik already does that upstream).
+3. **DuckDB's server independently rejects anything that doesn't look like genuine unproxied `localhost` traffic**, confirmed by testing the *exact* blog-post-recommended access pattern (bare `http://localhost:4213`, zero proxy) and still getting `401`. [`duckdb-ui` issue #209](https://github.com/duckdb/duckdb-ui/issues/209) is the same symptom, reported by someone else, closed "not planned" by the maintainers, no official fix. The actual fix came from a community project that hit this exact wall: [`skyscopetech/duckdb-ui-remote-docker`](https://github.com/skyscopetech/duckdb-ui-remote-docker) runs an HAProxy in front of DuckDB UI that rewrites `Host`/`Origin`/`Referer` to look like a genuine `localhost` client and strips every `X-Forwarded-*` header. SRDP does the same rewrite in a small Python proxy, `src/srdp/duckdb_ui/proxy.py`, which runs in the same container as DuckDB and needs no HAProxy binary.
 
-Two smaller things fell out of building this. HAProxy's wildcard bind could grab the port before DuckDB's own bind completed. That failed silently, inside a background thread with no visible error, so `entrypoint.sh` now polls until DuckDB is actually listening before starting HAProxy, instead of a fixed sleep. Separately, `/localEvents` needs long HAProxy timeouts specifically, since it's a persistent SSE stream rather than a single request/response call.
+Two smaller things fell out of building this. The old HAProxy bound the port before DuckDB did, and that failed silently, so the proxy now listens on its own port (8080) and starts only after DuckDB's server runs. Separately, `/localEvents` is a persistent EventSource stream, so the proxy pipes bytes in both directions without buffering and without an idle timeout.
 
 ### The Marimo notebook as an API client
 
