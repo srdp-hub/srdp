@@ -507,14 +507,13 @@ class DuckLakeIOManager(IOManager):
         self._conn.unregister("_data")
 
         described = self._conn.sql(f"DESCRIBE {ref}").fetchall()
-        row_count = self._conn.sql(f"SELECT COUNT(*) FROM {ref}").fetchone()  # noqa: S608
-        row_count = row_count[0] if row_count else 0
+        row_count = self._conn.sql(f"SELECT COUNT(*) FROM {ref}").fetchall()[0][0]  # noqa: S608
 
         column_names = [col_name for col_name, *_ in described]
         quoted = [name.replace('"', '""') for name in column_names]
         null_count_exprs = ", ".join(f'COUNT(*) FILTER (WHERE "{q}" IS NULL)' for q in quoted)
-        null_counts_row = self._conn.sql(f"SELECT {null_count_exprs} FROM {ref}").fetchone()  # noqa: S608
-        null_counts = dict(zip(column_names, null_counts_row, strict=True)) if null_counts_row else {}
+        null_counts_row = self._conn.sql(f"SELECT {null_count_exprs} FROM {ref}").fetchall()[0]  # noqa: S608
+        null_counts = dict(zip(column_names, null_counts_row, strict=True))
 
         context.add_output_metadata(
             {

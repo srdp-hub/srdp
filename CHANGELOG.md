@@ -64,6 +64,10 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 
 ### Changed
 
+- SRDP runs on Python 3.13, DuckDB 2 and Polars 2, and every image builds on `dhi.io/python:3.13`.
+  The lock also moves msgpack to 1.2.4, which fixes CVE-2026-114613.
+  In a test with a small catalog, a DuckLake catalog from DuckDB 1.5 attached and accepted writes under DuckDB 2 without a migration, and DuckDB 1.5 could still read it afterwards.
+  `requires-python` is now `>=3.13,<3.14`.
 - The chart holds no passwords or keys.
   Every consumer reads a fixed-name Secret (`srdp-postgres`, `srdp-zitadel`, `srdp-oauth2-proxy`, `srdp-dagster-postgresql`, `srdp-marquez`).
   In kind, `templates/local-secrets.yaml` creates them from `values-local.yaml`.

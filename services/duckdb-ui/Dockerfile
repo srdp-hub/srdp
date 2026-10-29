@@ -1,4 +1,4 @@
-FROM dhi.io/python:3.12-dev@sha256:9161f64c177d483fdc63478b50f9e2bd6c550a6d7330579bbe9feef58e674f6b AS builder
+FROM dhi.io/python:3.13-dev@sha256:5e3256de9b2752db25f3432b7be761cef508fe97e70fed6184bc528100ace7ea AS builder
 
 # One Python for every image: the -dev variant of the runtime base, with uv copied in.
 COPY --from=ghcr.io/astral-sh/uv:0.13.5@sha256:32a7bb39b496babbd997b0a39a4d66c126bdaf5661b302bf6f06abda8deca6ff /uv /uvx /bin/
@@ -12,7 +12,7 @@ COPY src/ src/
 RUN uv sync --locked --no-dev --extra ducklake --no-editable
 
 # The runtime stage doesn't need uv.
-FROM dhi.io/python:3.12@sha256:71d4576b1118498ce4de72e9bdf8be7d2f4d368f05c329504041f2b8c100ccf1
+FROM dhi.io/python:3.13@sha256:43b01c42d91a2e2ae676f974778518661c2fa97cb2b85c3fc737f75545524eb9
 
 WORKDIR /app
 
