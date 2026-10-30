@@ -34,7 +34,7 @@ Chosen option: "Hub and spokes", because a Project per environment gives a bound
 
 The hub is one Scaleway Project with the parts that every environment shares.
 
-- The Container Registry holds the project images and the OCI chart.
+- The Container Registry holds the project images and the OCI chart, which Flux installs as [ADR-0016](./0016-gitops-with-flux.md) describes.
 - Headscale runs on one small VM and coordinates the operator mesh, as [ADR-0015](./0015-operator-access-on-scaleway.md) describes.
 
 The hub and the spokes are not peered.
@@ -119,6 +119,8 @@ Red marks a single point of failure.
 - Bad, because the lakehouse traffic leaves the private network until Object Storage private access is available in `nl-ams`.
 - Bad, because a compromise of the hub registry reaches every environment that pulls from it.
 - Bad, because the cloud database differs from the Postgres container in Compose and kind, so a problem with TLS or roles can show up only in the cloud.
+- Bad, because OpenTofu writes the generated passwords and the kubeconfig into the state, so each state bucket is as sensitive as Secret Manager and must stay private and versioned.
+- Bad, because Kapsule runs several nodes, so the rule in [ADR-0002](./0002-api-and-access-strategy.md) applies, and internal service-to-service calls must authenticate with Zitadel service accounts. This is a follow-up after dev proves every concept.
 
 ### Production hardening
 
@@ -130,6 +132,19 @@ Production adds these items on top of the dev design.
 - Monitoring and a recreate runbook for the Public Gateway that keeps its IP.
 - The egress allowlist from #87.
 - Object Storage private access once it is available in `nl-ams`.
+
+### Customer data
+
+No environment gets customer data before seven conditions are met.
+Until then, dev and the demo run on CBS sample data only.
+
+1. The mesh runs in that environment.
+2. The managed database runs in that environment.
+3. Every hop validates the JWT, as [ADR-0008](./0008-identity-propagation-and-data-contracts.md) requires.
+4. The project-scoped RBAC from [ADR-0005](./0005-authorization-and-data-access.md) exists.
+5. No data-plane credential outlives a capability token, as [ADR-0009](./0009-data-plane-credential-materialization.md) requires. Today the static reader key in the DuckDB UI breaks this rule.
+6. The baseline audit passes.
+7. Egress filtering works (#87).
 
 ## Pros and Cons of the Options
 
@@ -154,4 +169,4 @@ Production adds these items on top of the dev design.
 
 ## Related
 
-#44 (combine the two Scaleway setups), #37 (demo on Scaleway), #43 (blueprint hardening), #87 (egress filtering), #65 and #123 (where Postgres runs), #132 (a role for DuckLake), [ADR-0006](./0006-deployment-and-project-isolation-model.md) (deployment as the isolation unit), [ADR-0014](./0014-ingress-on-scaleway.md) (ingress), [ADR-0015](./0015-operator-access-on-scaleway.md) (operator access).
+#44 (combine the two Scaleway setups), #37 (demo on Scaleway), #43 (blueprint hardening), #87 (egress filtering), #65 and #123 (where Postgres runs), #132 (a role for DuckLake), [ADR-0006](./0006-deployment-and-project-isolation-model.md) (deployment as the isolation unit), [ADR-0014](./0014-ingress-on-scaleway.md) (ingress), [ADR-0015](./0015-operator-access-on-scaleway.md) (operator access), [ADR-0016](./0016-gitops-with-flux.md) (GitOps with Flux).

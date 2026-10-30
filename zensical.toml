@@ -34,6 +34,7 @@ nav = [
     { "Network topology on Scaleway" = "adr/0013-scaleway-network-topology.md" },
     { "Ingress on Scaleway" = "adr/0014-ingress-on-scaleway.md" },
     { "Operator access on Scaleway" = "adr/0015-operator-access-on-scaleway.md" },
+    { "GitOps with Flux for cloud environments" = "adr/0016-gitops-with-flux.md" },
   ] },
 ]
 

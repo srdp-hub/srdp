@@ -66,6 +66,16 @@ Operators run `tailscale set --accept-routes --accept-dns` after they join.
   OpenTofu exposes it as a sensitive output, and it never goes into Git.
 - Kapsule's audit logs in Cockpit record who used the API.
 
+### CI and infrastructure changes
+
+CI has no Scaleway credentials.
+It only runs checks that need no cloud access, such as `tofu fmt`, `tofu validate` and the linters.
+An operator runs every `tofu plan` and `tofu apply` from their own machine, with the API key of that environment.
+A leaked CI secret or a malicious pull request then cannot change the infrastructure or read the state.
+The CI runner module in the blueprint stays unused until the team decides that CI may plan or apply.
+Changes inside the cluster reach it through Flux, which pulls from Git, as [ADR-0016](./0016-gitops-with-flux.md) describes.
+So CI needs no cluster credentials either.
+
 ### Figure
 
 [Operator access](/architecture-viewer/#/view/scaleway-operators/) shows the two operator paths.
@@ -81,10 +91,12 @@ Red marks Headscale, the router and the gateway as single points of failure.
 - Good, because operator access survives a broken cluster, since Headscale and the router are VMs outside it.
 - Good, because end users never need a mesh client.
 - Good, because one mesh serves `kubectl` and the operator tools in the browser.
+- Good, because CI holds no cloud or cluster credentials, so a compromised workflow cannot change an environment.
 - Bad, because the API endpoint stays public, and only the ACL and the token protect it.
 - Bad, because Headscale, the mesh router and the Public Gateway are single instances. The break-glass `/32` with `kubectl port-forward` covers their failure in dev.
 - Bad, because pre-auth keys are created and handed out by hand, and an operator who leaves needs their node removed in Headscale.
 - Bad, because the Headscale VM costs about €10 per month and the router VM adds a small amount on top.
+- Bad, because every infrastructure change waits for an operator with the key, and a `tofu plan` only reaches a PR when the operator pastes it.
 
 ### Production hardening
 
@@ -131,4 +143,4 @@ Red marks Headscale, the router and the gateway as single points of failure.
 
 ## Related
 
-#40 (access model, where this is decided), #43 (pre-auth keys in Secret Manager, split DNS), #44 (combine the two Scaleway setups), [ADR-0002](./0002-api-and-access-strategy.md) (zero trust), [ADR-0013](./0013-scaleway-network-topology.md) (topology), [ADR-0014](./0014-ingress-on-scaleway.md) (ingress).
+#40 (access model, where this is decided), #43 (pre-auth keys in Secret Manager, split DNS), #44 (combine the two Scaleway setups), [ADR-0002](./0002-api-and-access-strategy.md) (zero trust), [ADR-0013](./0013-scaleway-network-topology.md) (topology), [ADR-0014](./0014-ingress-on-scaleway.md) (ingress), [ADR-0016](./0016-gitops-with-flux.md) (GitOps with Flux).

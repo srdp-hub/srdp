@@ -68,6 +68,16 @@ The DuckDB UI is a SQL console with a long-lived storage key.
 It stays public for the #37 demo on sample data only.
 It moves behind the private load balancer, or gets scoped credentials as [ADR-0009](./0009-data-plane-credential-materialization.md) requires, before any customer data arrives.
 
+### Domain and certificate
+
+Each environment gets a subdomain of `srdp.dev`, which #37 proposes, such as `dev.srdp.dev`.
+The parent zone delegates the subdomain to Scaleway Domains and DNS, and OpenTofu manages the zone in the environment's Project.
+Traefik gets one wildcard certificate for `<domain>` and `*.<domain>` from Let's Encrypt over DNS-01.
+DNS-01 is needed because the operator hostnames resolve only on the mesh, and Let's Encrypt cannot reach a private load balancer over HTTP-01.
+The one certificate then covers the public and the operator hostnames.
+Traefik proves ownership of the zone with a DNS key that can only change this zone.
+The key reaches the cluster from Secret Manager through External Secrets.
+
 ### Login without loops
 
 The forward-auth middleware only sits on app routes.
@@ -99,6 +109,7 @@ The read-write and the read-only Dagster are two instances of the same webserver
 - Good, because the operator tools work in the browser with the same login as the apps.
 - Bad, because a route that forgets its entrypoint annotation lands on the public side. The default entrypoints keep that to the public side only, and the test catches a forged `Host` header.
 - Bad, because the private load balancer costs about €17 per month.
+- Bad, because the DNS key can get certificates for every name in the zone, so it must stay scoped to that zone and live only in Secret Manager.
 - Bad, because operators on the mesh still log in at the public `auth.<domain>`.
 - Bad, because the DuckDB UI is public with a long-lived storage key until it moves.
 - Neutral, because a single Traefik process serves both sides, so a Traefik vulnerability affects both. Option 2 removes that if production needs it.
