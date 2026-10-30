@@ -1,0 +1,159 @@
+// Draft. The networking plan for SRDP on Scaleway, from .agents/plan/issue-44/issues/networking.md.
+// Dev after all build steps. Nothing here is built yet.
+deployment {
+
+  end-user = machine 'End user' {
+    description 'A browser on the internet. Needs no mesh client.'
+  }
+
+  operator = machine 'Operator laptop' {
+    description 'Runs kubectl and the Tailscale client. Joins the mesh with a pre-auth key of its own that expires.'
+  }
+
+  internet = zone 'Internet' {
+    ghcr = tool 'ghcr.io' {
+      description 'Holds the published platform images.'
+    }
+    letsencrypt = tool "Let's Encrypt" {
+      description 'Issues the wildcard certificate over DNS-01.'
+    }
+  }
+
+  scw-hub = zone 'Scaleway hub Project' {
+    description 'Shared parts for all environments.'
+
+    headscale = machine 'Headscale VM (PLAY2-PICO)' {
+      description 'Public IP. Coordinates the mesh, relays over DERP and serves the operator hostnames. Default-deny ACL. Single instance.'
+    }
+
+    registry = managed-service 'Container Registry' {
+      description 'Holds the project images and the OCI chart. Public endpoint, pull key from Secret Manager.'
+    }
+  }
+
+  scw-dev = zone 'Scaleway dev Project' {
+    description 'One environment. Stage and prod copy it with other settings.'
+
+    lb-public = network-service 'Public load balancer (LB-S)' {
+      description 'Public IP. Exposes only the web and websecure entrypoints of Traefik.'
+    }
+
+    api = network-service 'Kapsule API' {
+      description 'Public endpoint, Kapsule has no private one. The ACL allows the gateway IP and one break-glass /32.'
+    }
+
+    dns = managed-service 'DNS zone' {
+      description 'A subdomain of srdp.dev. Explicit records for the public hostnames only, and no wildcard record.'
+    }
+
+    secrets = managed-service 'Secret Manager' {
+      description 'Holds the generated passwords, the keys and the mesh pre-auth keys.'
+    }
+
+    cockpit = managed-service 'Cockpit' {
+      description 'Keeps the audit logs of the API and the pod logs.'
+    }
+
+    buckets = object-store 'Object Storage' {
+      description 'Reached on the public S3 endpoint. Private access is in beta in fr-par only.'
+      storage = instanceOf srdp.core.lakehouse.ducklake.storage 'Lakehouse buckets'
+    }
+
+    pn = zone 'Private network' {
+      description 'The dev VPC. No node has a public IP.'
+
+      gateway = network-service 'Public Gateway (VPC-GW-S)' {
+        description 'NAT and one fixed outbound IP for the whole network. Single instance.'
+      }
+
+      router = machine 'Mesh router (PLAY2-MICRO)' {
+        description 'No public IP. Tagged tag:router-dev, advertises the network range and the API /32. Single instance.'
+      }
+
+      lb-private = network-service 'Private load balancer (LB-S)' {
+        description 'No public IP. Exposes only the admin entrypoint of Traefik.'
+      }
+
+      db = database 'Managed database (DB-DEV-S)' {
+        description 'No public endpoint. TLS and one role per app.'
+        postgres = instanceOf srdp.postgres 'PostgreSQL'
+      }
+
+      kapsule = cluster 'Kapsule cluster' {
+        description 'Private nodes. Shared control plane in dev.'
+
+        system = node-pool 'System pool' {
+          description 'One node of about 8 GB.'
+
+          flux-ns = namespace 'Namespace flux-system' {
+            flux = tool 'Flux' {
+              description 'Installs the SRDP chart from the hub registry.'
+            }
+          }
+
+          eso-ns = namespace 'Namespace external-secrets' {
+            eso = tool 'External Secrets' {
+              description 'Creates the Secrets from Secret Manager.'
+            }
+          }
+
+          srdp-ns = namespace 'Namespace srdp' {
+            traefik = instanceOf srdp.security.reverse-proxy 'Traefik' {
+              description 'Entrypoints web and websecure are public and the default. Entrypoint admin is private. Terminates TLS.'
+            }
+            oauth2-proxy = instanceOf srdp.security.forward-auth 'OAuth2 Proxy' {
+              description 'Checks a role per route. Catches only 401, so a 403 never loops.'
+            }
+            zitadel = instanceOf srdp.security.idp 'Zitadel' {
+              description 'At auth.<domain> on websecure only, without forward-auth.'
+            }
+            dagster-ui-readonly = instanceOf srdp.core.orchestrator.ui 'Dagster webserver, read-only' {
+              description 'Public at dagster.<domain>, with the demo role.'
+            }
+            dagster-ui = instanceOf srdp.core.orchestrator.ui 'Dagster webserver, read-write' {
+              description 'Only on the admin entrypoint at dagster-admin.<domain>, with the admin role. No public DNS record.'
+            }
+            duckdb-ui = instanceOf srdp.services.apps.duckdb-ui 'DuckDB UI' {
+              description 'Public with the demo role for #37. Moves behind the private load balancer before customer data.'
+            }
+            apps = instanceOf srdp.services.apps 'marimo and Streamlit'
+            api = instanceOf srdp.services.api 'API'
+            hub = instanceOf srdp.services.hub 'Hub page'
+          }
+        }
+
+        compute = node-pool 'Compute pool' {
+          description 'Scales to zero.'
+          run = instanceOf srdp.core.lakehouse.compute 'Dagster run pods'
+        }
+      }
+    }
+  }
+
+  // End users
+  end-user -> scw-dev.dns 'resolves the public hostnames in'
+  end-user -> scw-dev.lb-public 'opens the apps and the login on 443'
+  scw-dev.lb-public -> scw-dev.pn.kapsule.system.srdp-ns.traefik 'passes 80 and 443 to web and websecure'
+  scw-dev.pn.kapsule.system.srdp-ns.oauth2-proxy -> scw-dev.pn.kapsule.system.srdp-ns.traefik 'checks the issuer on the ClusterIP, with hostAliases'
+
+  // Operators
+  operator -> scw-hub.headscale 'joins the mesh on 443, DERP and UDP 3478'
+  operator -> scw-dev.pn.router 'sends kubectl and operator traffic over WireGuard'
+  operator -> scw-dev.api 'break-glass kubectl from one /32'
+  scw-dev.pn.router -> scw-hub.headscale 'joins with a pre-auth key, through the gateway'
+  scw-dev.pn.router -> scw-dev.pn.lb-private 'forwards dagster-admin.<domain> to'
+  scw-dev.pn.router -> scw-dev.pn.gateway 'sends API traffic through, with SNAT'
+  scw-dev.pn.lb-private -> scw-dev.pn.kapsule.system.srdp-ns.traefik 'passes 443 to admin only'
+
+  // Outbound traffic, all through the gateway
+  scw-dev.pn.kapsule -> scw-dev.pn.gateway 'sends all outbound traffic through, with NAT'
+  scw-dev.pn.gateway -> scw-dev.api 'reaches the API from the fixed IP in the ACL'
+  scw-dev.pn.gateway -> scw-hub.registry 'pulls the project images from'
+  scw-dev.pn.gateway -> internet.ghcr 'pulls the platform images from'
+  scw-dev.pn.gateway -> internet.letsencrypt 'requests the certificate from'
+  scw-dev.pn.gateway -> scw-dev.buckets 'reaches the lakehouse on the public S3 endpoint'
+  scw-dev.pn.kapsule.system.flux-ns.flux -> scw-hub.registry 'pulls the OCI chart from'
+  scw-dev.pn.kapsule.system.eso-ns.eso -> scw-dev.secrets 'syncs the secrets from'
+  scw-dev.pn.kapsule.system.srdp-ns.traefik -> scw-dev.dns 'solves the DNS-01 challenge in'
+  scw-dev.api -> scw-dev.cockpit 'sends the audit logs to'
+}
