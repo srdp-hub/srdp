@@ -1,10 +1,24 @@
 version: 2
 updates:
   # Workflow actions are pinned by commit SHA, Dependabot keeps them current.
+  # A new release waits 7 days. Security updates skip the wait.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+
+  # Python packages in uv.lock. Renovate owns the Dagster packages, because
+  # they move together with the Dagster chart (renovate.json).
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    ignore:
+      - dependency-name: "dagster*"
 
   # Container images, charts and Dockerfile bases are updated by Renovate
   # (renovate.json), grouped in one PR.

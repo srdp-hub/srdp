@@ -14,19 +14,25 @@ concurrency:
 
 jobs:
   pre-commit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
+          version: "0.13.5"
           enable-cache: true
       # The terraform_fmt/terraform_tflint hooks below (deploy/scaleway/)
       # shell out to the `terraform` and `tflint` binaries directly, pre-commit
       # doesn't install these itself the way it does its Python/JS hook envs.
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
         with:
+          terraform_version: "1.17.0"
           terraform_wrapper: false
       - uses: terraform-linters/setup-tflint@6ffdbaa3be476b3431f7275c26966ef32ff60337 # v6
+        with:
+          tflint_version: v0.65.0
       # The local `ty` hook shells out to `uv run ty check`, which needs the
       # project's own env synced first, pre-commit's own hook envs (ruff,
       # gitleaks, terraform, yamllint) install themselves. The extras below
@@ -34,14 +40,43 @@ jobs:
       # (duckdb/psycopg2/pydantic-settings, openlineage-python, fastapi,
       # dbt-duckdb), without them ty can't resolve those imports and reports
       # them as errors instead of checking the code that uses them.
-      - run: uv sync --group dev --extra ducklake --extra openlineage --extra api --extra dbt
+      - run: uv sync --locked --group dev --extra ducklake --extra openlineage --extra api --extra dbt
+      # The gitleaks hook scans staged files, so it finds nothing on a CI checkout.
+      # The secrets job below scans the commits of the pull request instead.
       - run: uv run pre-commit run --all-files --show-diff-on-failure
-  test:
-    runs-on: ubuntu-latest
+        env:
+          SKIP: gitleaks
+  secrets:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Scan the commits of the pull request
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl --fail --silent --show-error --location --output "$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum --check
+          tar --extract --gzip --file "$archive" gitleaks
+          ./gitleaks git --redact --no-banner --log-opts "${BASE_SHA}..${HEAD_SHA}" .
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
+          version: "0.13.5"
           enable-cache: true
       # tests/deploy renders the chart with `helm template`, against the
       # subcharts `just chart-deps` fetches from Chart.lock.
@@ -49,17 +84,25 @@ jobs:
         with:
           version: v4.3.0
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
-      - run: uv sync --group dev --extra ducklake --extra openlineage --extra api --extra dbt
+        with:
+          just-version: "1.59.0"
+      - run: uv sync --locked --group dev --extra ducklake --extra openlineage --extra api --extra dbt
       - run: just chart-deps
       - run: uv run pytest tests
   architecture:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: "22"
+          node-version: "22.23.4"
       # The Justfile reads srdp.toml through `uv` for every recipe, so just needs uv here too.
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.13.5"
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: "1.59.0"
       - run: just c4-validate

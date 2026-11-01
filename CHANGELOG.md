@@ -68,6 +68,17 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
   The lock also moves msgpack to 1.2.4, which fixes CVE-2026-114613.
   In a test with a small catalog, a DuckLake catalog from DuckDB 1.5 attached and accepted writes under DuckDB 2 without a migration, and DuckDB 1.5 could still read it afterwards.
   `requires-python` is now `>=3.13,<3.14`.
+- The DuckDB extensions (`ducklake`, `httpfs`, `postgres`, `ui`) are installed when an image is built, and a container downloads nothing at start.
+  `DUCKLAKE_EXTENSION_DIRECTORY` points DuckDB at the baked extensions. Without it, local development still installs them.
+  The Compose home tmpfs no longer allows execution.
+- CI pins uv, Node, just, Terraform, tflint and zensical, and runs on `ubuntu-24.04`.
+  Renovate waits 7 days for a new release, and Dependabot updates the Python packages in `uv.lock` (Dagster stays with Renovate).
+- A failing image scan in a pull request now names the package, the installed version and the fixed version in the job summary.
+  The new `scans.yml` workflow reports misconfigurations in the Dockerfiles, chart and Terraform, and findings in the workflows.
+- A new `secrets` job in `ci.yml` scans the commits of each pull request with gitleaks and fails on a finding.
+  The gitleaks hook in `pre-commit` only scans staged files, so it found nothing in CI.
+- The new `mirror.yml` workflow copies the third-party images in `deploy/mirror.yaml` (Traefik and oauth2-proxy) from `dhi.io` to `ghcr.io/srdp-hub` with their attestations, after it scanned them.
+  Renovate bumps the list in the weekly PR. Compose and the chart still pull from `dhi.io` until the first copy exists.
 - The chart holds no passwords or keys.
   Every consumer reads a fixed-name Secret (`srdp-postgres`, `srdp-zitadel`, `srdp-oauth2-proxy`, `srdp-dagster-postgresql`, `srdp-marquez`).
   In kind, `templates/local-secrets.yaml` creates them from `values-local.yaml`.

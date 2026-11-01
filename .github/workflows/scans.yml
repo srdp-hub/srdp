@@ -1,0 +1,102 @@
+name: Scans
+
+# Static scans of the files in the repository. They report and never fail the
+# check, because the first run is expected to show findings that need triage.
+# On a pull request the findings go to the job summary. On main and in the
+# daily run they go to the Security tab.
+# The image scans are in images.yml and the lockfile is covered by Dependabot.
+on:
+  pull_request:
+    paths: &scan-inputs
+      - ".github/**"
+      - "deploy/**"
+      - "services/**"
+      - "projects/**"
+  push:
+    branches: [main]
+    paths: *scan-inputs
+  schedule:
+    - cron: "30 5 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scans-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  config:
+    name: Dockerfiles, chart and Terraform
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_SKIP_VERSION_CHECK: "true"
+          TRIVY_DISABLE_VEX_NOTICE: "true"
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          hide-progress: true
+          format: json
+          output: trivy-config.json
+
+      - name: Summarize the findings
+        run: |
+          {
+            echo "### Misconfigurations (high and critical)"
+            echo ""
+            echo "| File | Check | Severity | Finding |"
+            echo "|:---|:---|:---|:---|"
+            jq -r '.Results[]? | .Target as $file | .Misconfigurations[]?
+              | "| \($file) | \(.ID) | \(.Severity) | \(.Title) |"' trivy-config.json
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Scan for the Security tab
+        if: github.event_name != 'pull_request'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_SKIP_VERSION_CHECK: "true"
+          TRIVY_DISABLE_VEX_NOTICE: "true"
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          hide-progress: true
+          format: sarif
+          output: trivy-config.sarif
+
+      - name: Upload the findings
+        if: github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config
+
+  workflows:
+    name: Workflows
+    # A pull request from a fork has no token to upload the findings.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: zizmorcore/zizmor-action@53290badfa369cb0bf7ad16342cb62c2fa47ac7b # v0.8.0
+        with:
+          version: "1.31.1"

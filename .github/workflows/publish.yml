@@ -14,21 +14,27 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           fetch-depth: 0
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.13.5"
 
       # A release can be created and published manually against any tag,
       # bypassing release.yml's tag-push flow entirely, so its ancestry
       # check can't be assumed to have run. Repeat it here.
       - name: Verify tagged commit is on main
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
           git fetch origin main
-          if ! git merge-base --is-ancestor "${{ github.sha }}" origin/main; then
-            echo "::error::Release ${{ github.event.release.tag_name }} points at a commit not reachable from main, refusing to publish."
+          if ! git merge-base --is-ancestor "$COMMIT_SHA" origin/main; then
+            echo "::error::Release $TAG_NAME points at a commit not reachable from main, refusing to publish."
             exit 1
           fi
 
@@ -51,7 +57,7 @@ jobs:
 
   publish:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: pypi
     permissions:
       # Required for PyPI trusted publishing (OIDC), no stored API token.

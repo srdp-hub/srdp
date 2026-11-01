@@ -1,0 +1,129 @@
+name: Mirror
+
+# Copies the third-party images in deploy/mirror.yaml from dhi.io to
+# ghcr.io/srdp-hub, together with their signed attestations (SBOM, provenance,
+# VEX). The copy keeps the digest of the source.
+# A pull request pulls and scans the new images without copying them. After the
+# merge to main, or on a manual run, the images are copied and checked.
+#
+# The pull needs the DHI_USERNAME and DHI_TOKEN repository secrets. The copy
+# uses the workflow token, which can write to a package this repository owns.
+# A new ghcr package is private, so the last step fails until it is public.
+on:
+  pull_request:
+    paths: &mirror-inputs
+      - "deploy/mirror.yaml"
+      - ".github/workflows/mirror.yml"
+  push:
+    branches: [main]
+    paths: *mirror-inputs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  list:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.list.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: list
+        run: echo "matrix=$(yq -o=json -I=0 '.mirror' deploy/mirror.yaml)" >> "$GITHUB_OUTPUT"
+
+  check:
+    needs: list
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.list.outputs.matrix) }}
+    steps:
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: dhi.io
+          username: ${{ secrets.DHI_USERNAME }}
+          password: ${{ secrets.DHI_TOKEN }}
+
+      - name: Pull
+        env:
+          SOURCE: ${{ matrix.source }}
+        run: docker pull "$SOURCE"
+
+      - name: Scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_SKIP_VERSION_CHECK: "true"
+          TRIVY_DISABLE_VEX_NOTICE: "true"
+        with:
+          image-ref: ${{ matrix.source }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          trivyignores: .trivyignore
+          hide-progress: true
+
+  copy:
+    if: github.event_name != 'pull_request'
+    needs: [list, check]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.list.outputs.matrix) }}
+    steps:
+      - uses: regclient/actions/regctl-installer@dd58ad94f76adb73d8ac1bf75ed25f01545d5b32 # v0.2.0
+        with:
+          release: v0.11.7
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: dhi.io
+          username: ${{ secrets.DHI_USERNAME }}
+          password: ${{ secrets.DHI_TOKEN }}
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The source reads name:tag@digest. Copy by digest, and name the copy by tag.
+      - name: Copy with the attestations
+        env:
+          NAME: ${{ matrix.name }}
+          SOURCE: ${{ matrix.source }}
+        run: |
+          repository="${SOURCE%%:*}"
+          digest="${SOURCE##*@}"
+          tag="${SOURCE#*:}"
+          tag="${tag%%@*}"
+          regctl image copy --referrers "$repository@$digest" "ghcr.io/srdp-hub/$NAME:$tag"
+          copied="$(regctl image digest "ghcr.io/srdp-hub/$NAME:$tag")"
+          if [ "$copied" != "$digest" ]; then
+            echo "::error::ghcr.io/srdp-hub/$NAME:$tag has digest $copied, not $digest."
+            exit 1
+          fi
+
+      # The chart pulls without credentials, and a new ghcr package is private.
+      - name: Pull anonymously
+        env:
+          NAME: ${{ matrix.name }}
+          SOURCE: ${{ matrix.source }}
+        run: |
+          tag="${SOURCE#*:}"
+          tag="${tag%%@*}"
+          if ! regctl --config /dev/null image digest "ghcr.io/srdp-hub/$NAME:$tag" > /dev/null 2>&1; then
+            echo "::error::ghcr.io/srdp-hub/$NAME:$tag cannot be pulled without a login. Set the package to public in https://github.com/orgs/srdp-hub/packages/container/$NAME/settings, then re-run this job."
+            exit 1
+          fi

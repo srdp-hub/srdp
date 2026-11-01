@@ -49,7 +49,7 @@ concurrency:
 jobs:
   check:
     if: github.event_name != 'release'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       security-events: write
@@ -88,6 +88,8 @@ jobs:
             dockerfile: projects/cbs-example/streamlit/Dockerfile
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -106,15 +108,46 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
+      # The gate fails the check on a fixable critical CVE. The findings go to a file, and
+      # the next step turns them into annotations and a table in the job summary.
       - name: Scan
         if: github.event_name == 'pull_request'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_SKIP_VERSION_CHECK: "true"
+          TRIVY_DISABLE_VEX_NOTICE: "true"
         with:
           image-ref: ${{ matrix.name }}:check
           severity: CRITICAL
           ignore-unfixed: true
           exit-code: "1"
           trivyignores: .trivyignore
+          hide-progress: true
+          format: json
+          output: trivy-${{ matrix.name }}.json
+
+      - name: Explain the findings
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          IMAGE: ${{ matrix.name }}
+        run: |
+          report="trivy-$IMAGE.json"
+          [ -f "$report" ] || exit 0
+          jq -r --arg image "$IMAGE" '
+            .Results[]? | .Vulnerabilities[]? | select(.FixedVersion != null)
+            | "::error title=\($image): \(.VulnerabilityID)::\(.PkgName) \(.InstalledVersion) is fixed in \(.FixedVersion)"
+          ' "$report"
+          {
+            echo "### Fixable critical findings in $IMAGE"
+            echo ""
+            echo "| Package | Installed | Fixed in | Advisory |"
+            echo "|:---|:---|:---|:---|"
+            jq -r '.Results[]? | .Vulnerabilities[]? | select(.FixedVersion != null)
+              | "| \(.PkgName) | \(.InstalledVersion) | \(.FixedVersion) | \(.VulnerabilityID) |"' "$report"
+            echo ""
+            echo "For a Python package, run \`uv lock --upgrade-package <name>\` and commit the lock."
+            echo "For an OS package or the Python base, rebuild on a newer base image digest."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # On main and in the daily run the scan reports, it does not fail.
       - name: Scan and report
@@ -149,13 +182,14 @@ jobs:
 
   version:
     if: github.event_name == 'release'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
       stable: ${{ steps.version.outputs.stable }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       # Same guards as publish.yml: a release can be published by hand
@@ -194,7 +228,7 @@ jobs:
   # Push by digest, scan, sign and attest. Untagged until the tag job runs.
   build:
     needs: version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
@@ -221,6 +255,8 @@ jobs:
       IMAGE: ghcr.io/srdp-hub/${{ matrix.name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -313,7 +349,7 @@ jobs:
   # registry, so it is idempotent instead: re-running it finishes a release.
   tag:
     needs: [version, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
@@ -389,7 +425,7 @@ jobs:
   # Pulls every version tag anonymously and fails if one is private.
   public:
     needs: [version, tag]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
