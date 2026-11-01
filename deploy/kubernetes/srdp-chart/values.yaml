@@ -33,6 +33,8 @@ global:
 #   srdp-oauth2-proxy        client-id, client-secret, cookie-secret
 #   srdp-dagster-postgresql  postgresql-password
 #   srdp-marquez             db-password
+#   srdp-ducklake-pg-writer  password (the catalog role Dagster writes with)
+#   srdp-ducklake-pg-reader  password (the read-only catalog role of the apps)
 #   srdp-ducklake-s3-writer  DUCKLAKE_S3_KEY_ID, DUCKLAKE_S3_SECRET
 #   srdp-ducklake-s3-reader  DUCKLAKE_S3_KEY_ID, DUCKLAKE_S3_SECRET
 #                            (both only with ducklakeStorage.backend: s3)
@@ -491,14 +493,14 @@ dagster:
               - name: PGHOST
                 value: db-postgresql
               - name: PGUSER
-                value: postgres
+                value: ducklake_writer
               - name: PGDATABASE
                 value: ducklake
               - name: PGPASSWORD
                 valueFrom:
                   secretKeyRef:
-                    name: srdp-postgres
-                    key: postgres-password
+                    name: srdp-ducklake-pg-writer
+                    key: password
           - name: wait-for-ducklake-bucket
             # Same container as srdp.waitForDucklakeBucket in templates/_helpers.tpl,
             # with the writer key. includeConfigInLaunchedRuns copies it into
@@ -597,12 +599,12 @@ dagster:
           - name: DUCKLAKE_PG_HOST
             value: db-postgresql
           - name: DUCKLAKE_PG_USER
-            value: postgres
+            value: ducklake_writer
           - name: DUCKLAKE_PG_PASSWORD
             valueFrom:
               secretKeyRef:
-                name: srdp-postgres
-                key: postgres-password
+                name: srdp-ducklake-pg-writer
+                key: password
           - name: DUCKLAKE_PG_DB
             value: ducklake
           - name: DUCKLAKE_DATA_PATH
@@ -712,8 +714,11 @@ setup:
       role: dagster
     - name: marquez
       role: marquez
-    # DuckLake connects as the superuser (DUCKLAKE_PG_USER=postgres).
+    # Dagster writes the catalog as the role. The apps read it as the reader_role, which
+    # can only SELECT. Setup also creates the catalog tables, so no reader has to.
     - name: ducklake
+      role: ducklake_writer
+      reader_role: ducklake_reader
 
 # SRDP API (core routes + cbs-example's income-ingest router)
 api:

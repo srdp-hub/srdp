@@ -54,6 +54,8 @@ Rerun the deploy instead, as `docs/07-troubleshooting.md` describes.
 
 No password lives in the chart's values files.
 Every consumer reads a Secret with a fixed name: `srdp-postgres`, `srdp-zitadel`, `srdp-oauth2-proxy`, `srdp-dagster-postgresql` and `srdp-marquez` (keys listed in `values.yaml`).
+The DuckLake catalog has two roles, with the Secrets `srdp-ducklake-pg-writer` (Dagster) and `srdp-ducklake-pg-reader` (the apps).
+Never give an app the writer Secret or the `srdp-postgres` Secret, because the reader role can only read the catalog.
 DuckLake on S3 (`ducklakeStorage.backend: s3`) adds `srdp-ducklake-s3-writer` for Dagster and `srdp-ducklake-s3-reader` for the apps.
 Never give an app the writer Secret, because a SQL console runs with the full authority of its S3 key.
 In kind, `templates/local-secrets.yaml` creates them from `localSecrets` in `values-local.yaml`.

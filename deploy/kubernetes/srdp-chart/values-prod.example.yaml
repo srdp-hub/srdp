@@ -14,7 +14,7 @@ global:
 
 # No credentials in this file. Create the Secrets listed in values.yaml
 # (srdp-postgres, srdp-zitadel, srdp-oauth2-proxy, srdp-dagster-postgresql,
-# srdp-marquez) before installing, e.g. with External Secrets. srdp-postgres
+# srdp-marquez, srdp-ducklake-pg-writer, srdp-ducklake-pg-reader) before installing, e.g. with External Secrets. srdp-postgres
 # also needs replication-password here, because of architecture: replication.
 # DuckLake runs on S3 below, so also create srdp-ducklake-s3-writer and
 # srdp-ducklake-s3-reader, each with DUCKLAKE_S3_KEY_ID and DUCKLAKE_S3_SECRET.
@@ -381,12 +381,12 @@ dagster:
           - name: DUCKLAKE_PG_HOST
             value: db-postgresql-primary
           - name: DUCKLAKE_PG_USER
-            value: postgres
+            value: ducklake_writer
           - name: DUCKLAKE_PG_PASSWORD
             valueFrom:
               secretKeyRef:
-                name: srdp-postgres
-                key: postgres-password
+                name: srdp-ducklake-pg-writer
+                key: password
           - name: DUCKLAKE_PG_DB
             value: ducklake
           - name: DUCKLAKE_DATA_PATH

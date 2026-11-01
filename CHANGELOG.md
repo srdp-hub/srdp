@@ -71,6 +71,11 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 - The DuckDB extensions (`ducklake`, `httpfs`, `postgres`, `ui`) are installed when an image is built, and a container downloads nothing at start.
   `DUCKLAKE_EXTENSION_DIRECTORY` points DuckDB at the baked extensions. Without it, local development still installs them.
   The Compose home tmpfs no longer allows execution.
+- The apps that run user SQL (DuckDB UI, marimo, Streamlit, API) open the DuckLake catalog as a read-only Postgres role, `ducklake_reader`, and Dagster as the owner role, `ducklake_writer`.
+  Before, all of them used the Postgres superuser.
+  `srdp-setup` creates both roles, hands an older catalog to the owner, limits `CONNECT` on each managed database to its own roles, and creates the catalog tables once.
+  To upgrade, add `DUCKLAKE_PG_WRITER_PASSWORD` and `DUCKLAKE_PG_READER_PASSWORD` to `deploy/docker/.env`, or create the Secrets `srdp-ducklake-pg-writer` and `srdp-ducklake-pg-reader` (key `password`) on Kubernetes.
+  With `manage_databases` off you create the roles and grants yourself, as `docs/06-deployment.md` describes.
 - CI pins uv, Node, just, Terraform, tflint and zensical, and runs on `ubuntu-24.04`.
   Renovate waits 7 days for a new release, and Dependabot updates the Python packages in `uv.lock` (Dagster stays with Renovate).
 - A failing image scan in a pull request now names the package, the installed version and the fixed version in the job summary.

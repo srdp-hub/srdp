@@ -377,6 +377,52 @@ def attach_catalog(
     _attach(conn, settings, get_storage_backend(settings))
 
 
+class _CatalogPath(StorageBackend):
+    """The data path of a catalog, without opening the storage. It serves ``initialize_catalog`` only."""
+
+    def __init__(self, base_path: str) -> None:
+        self._base_path = base_path
+
+    def get_base_path(self) -> str:
+        return self._base_path
+
+    def configure_duckdb(self, conn: duckdb.DuckDBPyConnection) -> None:
+        """Do nothing, because ``ATTACH`` does not read the data files."""
+
+
+def _catalog_data_path(settings: DuckLakeSettings) -> str:
+    """Return the data path that ``settings`` select, without creating a directory or needing an S3 key."""
+    if settings.storage_backend == "s3":
+        # The bucket and prefix are all that make the path. The key stays unused here.
+        unused = "unused"
+        return S3StorageBackend(S3StorageSettings(key_id=unused, secret=unused)).get_base_path()  # ty: ignore[missing-argument, invalid-argument-type]
+    return str(Path(settings.data_path).resolve())
+
+
+def initialize_catalog(settings: DuckLakeSettings) -> None:
+    """Create the catalog's metadata tables in PostgreSQL, if they do not exist yet.
+
+    A role with only ``SELECT`` on the catalog cannot create these tables, so the setup
+    service runs this once as the writer role before any reader starts. The catalog keeps
+    the data path it is created with, so ``settings`` must name the storage the writer uses.
+    The call does not read or write data files, so it needs no storage key.
+
+    Args:
+        settings: DuckLake settings whose ``pg_*`` fields name the writer role.
+
+    Raises:
+        duckdb.Error: If the attach fails, for example when the role cannot create tables.
+    """
+    conn = duckdb.connect()
+    try:
+        _configure_extension_directory(conn, settings)
+        load_extension(conn, "ducklake")
+        _attach_with_retry(conn, _attach_sql(settings, _CatalogPath(_catalog_data_path(settings))))
+    finally:
+        conn.close()
+    logger.info("DuckLake catalog '%s' is initialized.", settings.pg_db)
+
+
 def _attach(conn: duckdb.DuckDBPyConnection, settings: DuckLakeSettings, backend: StorageBackend) -> None:
     """Configure ``backend`` on ``conn``, attach the catalog with the init-race retry, and apply the tuning options."""
     _prepare_connection(conn, settings, backend)

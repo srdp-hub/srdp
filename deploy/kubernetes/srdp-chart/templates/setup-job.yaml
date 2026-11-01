@@ -26,6 +26,8 @@ spec:
           {{- include "srdp.containerSecurityContext" . | nindent 10 }}
           image: {{ include "srdp.image" (list . .Values.setup.image) }}
           imagePullPolicy: {{ .Values.setup.image.pullPolicy }}
+          envFrom:
+            {{- include "srdp.ducklakeEnvFrom" . | nindent 12 }}
           env:
             - name: SETUP_PG_HOST
               value: {{ .Values.global.postgresqlHost | quote }}
@@ -51,6 +53,20 @@ spec:
                 secretKeyRef:
                   name: srdp-marquez
                   key: db-password
+            - name: SETUP_PASSWORDS__DUCKLAKE_WRITER
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-ducklake-pg-writer
+                  key: password
+            - name: SETUP_PASSWORDS__DUCKLAKE_READER
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-ducklake-pg-reader
+                  key: password
+            # Setup creates the catalog tables as the writer role. The catalog keeps the
+            # data path it is created with, so this is the path the consumers use.
+            - name: DUCKLAKE_DATA_PATH
+              value: {{ .Values.ducklakeData.mountPath | quote }}
             {{- if .Values.garage.enabled }}
             # Secrets of the optional Garage step (src/srdp/setup/garage.py),
             # only with the bundled Garage. The step itself is switched on in

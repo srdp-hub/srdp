@@ -8,8 +8,10 @@ from srdp.io.ducklake import (
     S3StorageBackend,
     S3StorageSettings,
     _attach_with_retry,
+    _catalog_data_path,
     _configure_extension_directory,
     get_storage_backend,
+    initialize_catalog,
     load_extension,
 )
 
@@ -235,6 +237,7 @@ class _RecordingConnection:
     def __init__(self, *, autoinstall: bool) -> None:
         self.autoinstall = autoinstall
         self.statements: list[str] = []
+        self.closed = False
 
     def execute(self, query: str) -> "_RecordingConnection":
         self.statements.append(query)
@@ -242,6 +245,9 @@ class _RecordingConnection:
 
     def fetchall(self) -> list[tuple[bool]]:
         return [(self.autoinstall,)]
+
+    def close(self) -> None:
+        self.closed = True
 
 
 def test_an_extension_is_installed_before_it_loads_by_default():
@@ -280,3 +286,42 @@ def test_without_an_extension_directory_downloads_stay_on():
     _configure_extension_directory(conn, _settings())
 
     assert conn.execute("SELECT current_setting('autoinstall_known_extensions')").fetchall()[0][0] is True
+
+
+# Catalog initialization
+
+
+def test_a_local_catalog_path_creates_no_directory(tmp_path):
+    """The setup container has no data volume on Kubernetes, so naming the path must not create it."""
+    lake = tmp_path / "lake"
+
+    assert _catalog_data_path(_settings(data_path=str(lake))) == str(lake.resolve())
+    assert not lake.exists()
+
+
+def test_an_s3_catalog_path_needs_no_key(monkeypatch):
+    """The path is bucket and prefix, so the setup service needs no storage key to create the catalog."""
+    for name, value in (
+        ("bucket", "lake"),
+        ("prefix", "dev"),
+        ("endpoint", "s3.nl-ams.scw.cloud"),
+        ("url_style", "path"),
+        ("region", "nl-ams"),
+    ):
+        monkeypatch.setenv(f"DUCKLAKE_S3_{name.upper()}", value)
+
+    assert _catalog_data_path(_settings(storage_backend="s3")) == "s3://lake/dev/"
+
+
+def test_initializing_a_catalog_attaches_it_and_closes(monkeypatch):
+    """The first attach creates the catalog tables, and the connection closes after it."""
+    conn = _RecordingConnection(autoinstall=False)
+    monkeypatch.setattr(duckdb, "connect", lambda: conn)
+
+    initialize_catalog(_settings(pg_user="ducklake_writer", pg_db="ducklake", data_path="/data/ducklake"))
+
+    attach = [s for s in conn.statements if s.startswith("ATTACH")]
+    assert len(attach) == 1
+    assert "user=ducklake_writer" in attach[0]
+    assert "DATA_PATH '/data/ducklake'" in attach[0]
+    assert conn.closed

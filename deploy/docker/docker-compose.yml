@@ -82,6 +82,12 @@ services:
       SETUP_PASSWORDS__ZITADEL: "${ZITADEL_DATABASE_POSTGRES_USER_PASSWORD}"
       SETUP_PASSWORDS__DAGSTER: "${DAGSTER_PG_PASSWORD}"
       SETUP_PASSWORDS__MARQUEZ: "${MARQUEZ_DB_PASSWORD}"
+      SETUP_PASSWORDS__DUCKLAKE_WRITER: "${DUCKLAKE_PG_WRITER_PASSWORD}"
+      SETUP_PASSWORDS__DUCKLAKE_READER: "${DUCKLAKE_PG_READER_PASSWORD}"
+      # Setup creates the catalog tables as the writer role, so no reader has to. The catalog
+      # keeps the data path it is created with, so this must match the services.
+      <<: *ducklake-storage
+      DUCKLAKE_DATA_PATH: /data/ducklake
       # The optional Garage step ([setup.garage] in srdp.toml,
       # src/srdp/setup/garage.py) runs only with SETUP_GARAGE_ENABLED=true,
       # set in .env next to COMPOSE_PROFILES=s3. It creates the bucket and
@@ -355,8 +361,8 @@ services:
       DAGSTER_PG_DB: dagster
       DAGSTER_CURRENT_IMAGE: srdp-dagster-code
       DUCKLAKE_PG_HOST: postgres
-      DUCKLAKE_PG_USER: postgres
-      DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
+      DUCKLAKE_PG_USER: ducklake_writer
+      DUCKLAKE_PG_PASSWORD: "${DUCKLAKE_PG_WRITER_PASSWORD}"
       DUCKLAKE_PG_DB: ducklake
       DUCKLAKE_DATA_PATH: /data/ducklake
       <<: *ducklake-writer
@@ -396,8 +402,8 @@ services:
     container_name: srdp-marimo
     environment:
       DUCKLAKE_PG_HOST: postgres
-      DUCKLAKE_PG_USER: postgres
-      DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
+      DUCKLAKE_PG_USER: ducklake_reader
+      DUCKLAKE_PG_PASSWORD: "${DUCKLAKE_PG_READER_PASSWORD}"
       DUCKLAKE_PG_DB: ducklake
       DUCKLAKE_DATA_PATH: /data/ducklake
       <<: *ducklake-reader
@@ -418,8 +424,8 @@ services:
     container_name: srdp-streamlit
     environment:
       DUCKLAKE_PG_HOST: postgres
-      DUCKLAKE_PG_USER: postgres
-      DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
+      DUCKLAKE_PG_USER: ducklake_reader
+      DUCKLAKE_PG_PASSWORD: "${DUCKLAKE_PG_READER_PASSWORD}"
       DUCKLAKE_PG_DB: ducklake
       DUCKLAKE_DATA_PATH: /data/ducklake
       <<: *ducklake-reader
@@ -440,8 +446,8 @@ services:
     container_name: srdp-api
     environment:
       DUCKLAKE_PG_HOST: postgres
-      DUCKLAKE_PG_USER: postgres
-      DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
+      DUCKLAKE_PG_USER: ducklake_reader
+      DUCKLAKE_PG_PASSWORD: "${DUCKLAKE_PG_READER_PASSWORD}"
       DUCKLAKE_PG_DB: ducklake
       DUCKLAKE_DATA_PATH: /data/ducklake
       <<: *ducklake-reader
@@ -466,8 +472,8 @@ services:
     container_name: srdp-duckdb-ui
     environment:
       DUCKLAKE_PG_HOST: postgres
-      DUCKLAKE_PG_USER: postgres
-      DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
+      DUCKLAKE_PG_USER: ducklake_reader
+      DUCKLAKE_PG_PASSWORD: "${DUCKLAKE_PG_READER_PASSWORD}"
       DUCKLAKE_PG_DB: ducklake
       DUCKLAKE_DATA_PATH: /data/ducklake
       <<: *ducklake-reader

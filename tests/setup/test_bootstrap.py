@@ -38,23 +38,32 @@ name = "ducklake"
 class FakeCursor:
     """Records executed statements and answers existence checks from a fixed set."""
 
-    def __init__(self, existing_roles: set[str], existing_databases: set[str]) -> None:  # noqa: D107
+    def __init__(  # noqa: D107
+        self,
+        existing_roles: set[str],
+        existing_databases: set[str],
+        database_owners: dict[str, str] | None = None,
+    ) -> None:
         self.existing_roles = existing_roles
         self.existing_databases = existing_databases
+        self.database_owners = database_owners or {}
         self.statements: list[str] = []
-        self._result: tuple[int] | None = None
+        self._result: tuple[object] | None = None
 
     def execute(self, query: object, params: tuple[str, ...] | None = None) -> None:
-        """Record the statement and prime `fetchone` for existence checks."""
+        """Record the statement and prime `fetchone` for existence and owner checks."""
         text = query if isinstance(query, str) else repr(query)
         self.statements.append(text)
         if "pg_roles" in text:
             self._result = (1,) if params and params[0] in self.existing_roles else None
+        elif "datdba" in text:
+            owner = self.database_owners.get(params[0]) if params else None
+            self._result = (owner,) if owner else None
         elif "pg_database" in text:
             self._result = (1,) if params and params[0] in self.existing_databases else None
 
-    def fetchone(self) -> tuple[int] | None:
-        """Return the result of the last existence check."""
+    def fetchone(self) -> tuple[object] | None:
+        """Return the result of the last check."""
         return self._result
 
 
@@ -86,7 +95,7 @@ def test_repo_srdp_toml_loads_next_to_its_deploy_table(monkeypatch: pytest.Monke
     class TomlSettings(SetupSettings):
         model_config = SettingsConfigDict(toml_file=repo_toml, toml_table_header=("setup",))
 
-    for role in ("ZITADEL", "DAGSTER", "MARQUEZ"):
+    for role in ("ZITADEL", "DAGSTER", "MARQUEZ", "DUCKLAKE_WRITER", "DUCKLAKE_READER"):
         monkeypatch.setenv(f"SETUP_PASSWORDS__{role}", "pw")
 
     settings = TomlSettings()  # ty: ignore[missing-argument]
@@ -210,6 +219,104 @@ def test_roleless_target_is_owned_by_superuser() -> None:
 
     assert not any("ROLE" in s for s in cur.statements)
     assert any("CREATE DATABASE" in s and "'postgres'" in s for s in cur.statements)
+
+
+def _catalog_settings(*, reader_pw: str = "reader-pw") -> SetupSettings:
+    return SetupSettings(  # ty: ignore[missing-argument]
+        databases=[DatabaseTarget(name="ducklake", role="ducklake_writer", reader_role="ducklake_reader")],
+        passwords={"ducklake_writer": SecretStr("writer-pw"), "ducklake_reader": SecretStr(reader_pw)},
+    )
+
+
+def test_reader_role_is_created_beside_the_owner() -> None:
+    """A catalog target gets two login roles, and the owner role owns the database."""
+    settings = _catalog_settings()
+    cur = FakeCursor(existing_roles=set(), existing_databases=set())
+
+    ensure_target(cur, settings.databases[0], settings)
+
+    created = [s for s in cur.statements if "CREATE ROLE" in s]
+    assert len(created) == 2
+    assert any("CREATE DATABASE" in s and "ducklake_writer" in s for s in cur.statements)
+
+
+def test_database_owner_is_handed_to_the_role() -> None:
+    """A database that the superuser made, as before the role split, goes to the owner role."""
+    settings = _catalog_settings()
+    cur = FakeCursor(existing_roles=set(), existing_databases={"ducklake"}, database_owners={"ducklake": "postgres"})
+
+    ensure_target(cur, settings.databases[0], settings)
+
+    assert any("ALTER DATABASE" in s and "ducklake_writer" in s for s in cur.statements)
+
+
+def test_database_with_the_right_owner_is_left_alone() -> None:
+    """A second deploy does not change an owner that is already right."""
+    settings = _catalog_settings()
+    cur = FakeCursor(
+        existing_roles={"ducklake_writer", "ducklake_reader"},
+        existing_databases={"ducklake"},
+        database_owners={"ducklake": "ducklake_writer"},
+    )
+
+    ensure_target(cur, settings.databases[0], settings)
+
+    assert not any("ALTER DATABASE" in s for s in cur.statements)
+
+
+def test_only_the_target_roles_may_connect() -> None:
+    """Postgres lets every role connect by default, so setup takes that right from PUBLIC."""
+    settings = _catalog_settings()
+    cur = FakeCursor(existing_roles=set(), existing_databases=set())
+
+    ensure_target(cur, settings.databases[0], settings)
+
+    assert any("REVOKE CONNECT" in s and "PUBLIC" in s for s in cur.statements)
+    grants = [s for s in cur.statements if "GRANT CONNECT" in s]
+    assert any("ducklake_writer" in s for s in grants)
+    assert any("ducklake_reader" in s for s in grants)
+
+
+def test_reader_without_an_owner_fails() -> None:
+    """A reader needs an owner role, because the owner is who creates the tables."""
+    with pytest.raises(ValidationError, match="needs a `role`"):
+        DatabaseTarget(name="ducklake", reader_role="ducklake_reader")
+
+
+def test_reader_and_owner_must_differ() -> None:
+    """The same role as owner and reader would give the apps write access."""
+    with pytest.raises(ValidationError, match="own role"):
+        DatabaseTarget(name="ducklake", role="ducklake", reader_role="ducklake")
+
+
+def test_reader_needs_a_password_when_setup_manages_roles() -> None:
+    """A missing reader password stops setup before it changes anything."""
+    with pytest.raises(ValidationError, match="ducklake_reader"):
+        SetupSettings(  # ty: ignore[missing-argument]
+            databases=[DatabaseTarget(name="ducklake", role="ducklake_writer", reader_role="ducklake_reader")],
+            passwords={"ducklake_writer": SecretStr("writer-pw")},
+        )
+
+
+def test_two_databases_cannot_share_a_role() -> None:
+    """A shared role would give one database the rights of the other."""
+    with pytest.raises(ValidationError, match="more than one database"):
+        SetupSettings(  # ty: ignore[missing-argument]
+            databases=[
+                DatabaseTarget(name="a", role="shared"),
+                DatabaseTarget(name="b", role="other", reader_role="shared"),
+            ],
+            passwords={"shared": SecretStr("x"), "other": SecretStr("y")},
+        )
+
+
+def test_superuser_cannot_be_the_reader() -> None:
+    """The superuser name is refused for the reader role as it is for the owner."""
+    with pytest.raises(ValidationError, match="superuser"):
+        SetupSettings(  # ty: ignore[missing-argument]
+            databases=[DatabaseTarget(name="ducklake", role="owner", reader_role="postgres")],
+            passwords={"owner": SecretStr("x"), "postgres": SecretStr("y")},
+        )
 
 
 def test_connect_retries_with_a_per_attempt_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -358,7 +465,7 @@ def test_disabled_garage_step_ignores_garage_values(
 
 def test_repo_srdp_toml_keeps_the_garage_step_off(monkeypatch: pytest.MonkeyPatch) -> None:
     repo_toml = Path(__file__).resolve().parents[2] / "srdp.toml"
-    for role in ("ZITADEL", "DAGSTER", "MARQUEZ"):
+    for role in ("ZITADEL", "DAGSTER", "MARQUEZ", "DUCKLAKE_WRITER", "DUCKLAKE_READER"):
         monkeypatch.setenv(f"SETUP_PASSWORDS__{role}", "pw")
 
     garage = settings_class_for(repo_toml)().garage  # ty: ignore[missing-argument]

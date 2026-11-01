@@ -26,6 +26,10 @@ localSecrets:
     dbPassword: srdpTest123
   marquez:
     dbPassword: srdpTest123
+  # The DuckLake catalog roles: Dagster writes, the apps read.
+  ducklakePg:
+    writer: srdpTest123
+    reader: srdpTest123
   # DuckLake on S3 against the bundled Garage (values-local-s3.yaml). Garage
   # wants a key id of GK plus 24 hex characters and a 64-hex-character secret.
   ducklakeS3:
@@ -148,14 +152,14 @@ dagster:
               - name: PGHOST
                 value: db-postgresql
               - name: PGUSER
-                value: postgres
+                value: ducklake_writer
               - name: PGDATABASE
                 value: ducklake
               - name: PGPASSWORD
                 valueFrom:
                   secretKeyRef:
-                    name: srdp-postgres
-                    key: postgres-password
+                    name: srdp-ducklake-pg-writer
+                    key: password
           - name: wait-for-ducklake-bucket
             # Same container as srdp.waitForDucklakeBucket in templates/_helpers.tpl,
             # with the writer key. includeConfigInLaunchedRuns copies it into
@@ -262,12 +266,12 @@ dagster:
           - name: DUCKLAKE_PG_HOST
             value: db-postgresql
           - name: DUCKLAKE_PG_USER
-            value: postgres
+            value: ducklake_writer
           - name: DUCKLAKE_PG_PASSWORD
             valueFrom:
               secretKeyRef:
-                name: srdp-postgres
-                key: postgres-password
+                name: srdp-ducklake-pg-writer
+                key: password
           - name: DUCKLAKE_PG_DB
             value: ducklake
           - name: DUCKLAKE_DATA_PATH

@@ -149,6 +149,8 @@ LOCAL_SECRETS = {
     "srdp-oauth2-proxy",
     "srdp-dagster-postgresql",
     "srdp-marquez",
+    "srdp-ducklake-pg-writer",
+    "srdp-ducklake-pg-reader",
     "srdp-ducklake-s3-writer",
     "srdp-ducklake-s3-reader",
     "srdp-garage",
@@ -194,6 +196,67 @@ def test_setup_job_and_marquez_read_the_same_marquez_password(local: list[Manife
     setup = find(local, "Job", "srdp-setup")["spec"]["template"]["spec"]
     marquez = find(local, "Deployment", "marquez")["spec"]["template"]["spec"]
     assert ref(setup, "SETUP_PASSWORDS__MARQUEZ") == ref(marquez, "MARQUEZ_DB_PASSWORD")
+
+
+CATALOG_APPS = ("api", "duckdb-ui", "marimo", "streamlit")
+CODE_LOCATION = "srdp-dagster-user-deployments-srdp-etl"
+
+
+@pytest.mark.parametrize("app", CATALOG_APPS)
+def test_apps_open_the_catalog_with_the_reader_role(local: list[Manifest], app: str) -> None:
+    """A SQL console must not hold the writer role, so each app reads the catalog as the read-only role."""
+    env = pod_env(local, "Deployment", app)
+    assert env["DUCKLAKE_PG_USER"]["value"] == "ducklake_reader"
+    assert secret_ref(env, "DUCKLAKE_PG_PASSWORD") == ("srdp-ducklake-pg-reader", "password")
+
+
+def test_dagster_opens_the_catalog_with_the_writer_role(local: list[Manifest]) -> None:
+    """Only the Dagster code location writes the catalog, so it alone gets the writer Secret."""
+    env = pod_env(local, "Deployment", CODE_LOCATION)
+    assert env["DUCKLAKE_PG_USER"]["value"] == "ducklake_writer"
+    assert secret_ref(env, "DUCKLAKE_PG_PASSWORD") == ("srdp-ducklake-pg-writer", "password")
+
+
+def test_no_app_holds_the_writer_or_superuser_catalog_secret(local: list[Manifest]) -> None:
+    """The apps read neither the writer Secret nor the Postgres superuser Secret."""
+    for app in CATALOG_APPS:
+        spec = find(local, "Deployment", app)["spec"]["template"]["spec"]
+        names = {
+            e["valueFrom"]["secretKeyRef"]["name"]
+            for c in containers(spec)
+            for e in c.get("env", [])
+            if "secretKeyRef" in e.get("valueFrom", {})
+        }
+        assert not names & {"srdp-ducklake-pg-writer", "srdp-postgres"}, app
+
+
+def test_setup_job_sets_the_catalog_passwords_the_consumers_read(local: list[Manifest]) -> None:
+    """Setup resets each role to the password in the Secret that its consumer reads, as it does for Marquez."""
+    setup = pod_env(local, "Job", "srdp-setup")
+    code_location = pod_env(local, "Deployment", CODE_LOCATION)
+    marimo = pod_env(local, "Deployment", "marimo")
+    assert secret_ref(setup, "SETUP_PASSWORDS__DUCKLAKE_WRITER") == secret_ref(code_location, "DUCKLAKE_PG_PASSWORD")
+    assert secret_ref(setup, "SETUP_PASSWORDS__DUCKLAKE_READER") == secret_ref(marimo, "DUCKLAKE_PG_PASSWORD")
+
+
+def test_setup_job_creates_the_catalog_where_the_apps_look(local: list[Manifest]) -> None:
+    """The catalog keeps its data path, so setup gets the storage settings and the path of the consumers."""
+    job = find(local, "Job", "srdp-setup")["spec"]["template"]["spec"]
+    [container] = job["containers"]
+    assert {"configMapRef": {"name": "srdp-ducklake-storage"}} in container["envFrom"]
+    app_env = pod_env(local, "Deployment", "marimo")
+    setup_env = pod_env(local, "Job", "srdp-setup")
+    assert setup_env["DUCKLAKE_DATA_PATH"]["value"] == app_env["DUCKLAKE_DATA_PATH"]["value"]
+
+
+def test_apps_wait_for_the_catalog_tables(local: list[Manifest]) -> None:
+    """A read-only role cannot create the catalog, so an app waits until setup has, as the reader."""
+    spec = find(local, "Deployment", "marimo")["spec"]["template"]["spec"]
+    [wait] = [c for c in spec["initContainers"] if c["name"] == "wait-for-ducklake-db"]
+    assert "ducklake_metadata" in wait["command"][-1]
+    env = {e["name"]: e for e in wait["env"]}
+    assert env["PGUSER"]["value"] == "ducklake_reader"
+    assert secret_ref(env, "PGPASSWORD") == ("srdp-ducklake-pg-reader", "password")
 
 
 def srdp_images(manifests: list[Manifest], registry: str) -> list[str]:
