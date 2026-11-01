@@ -1,15 +1,14 @@
 # Least privilege for every service SRDP builds or runs without a data directory of
 # its own: no root filesystem writes, no capabilities and no privilege escalation.
-# DuckDB downloads its extensions into the home directory at every start and
-# loads them as shared libraries, so the home directory is a tmpfs that allows
-# execution.
+# The DuckDB extensions are baked into the images (/opt/duckdb/extensions), so
+# the home directory is a plain tmpfs for scratch files.
 x-hardened: &hardened
   read_only: true
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
   tmpfs:
     - /tmp
-    - /home/nonroot:uid=65532,gid=65532,exec
+    - /home/nonroot:uid=65532,gid=65532
 
 x-ducklake-depends: &ducklake-depends
   depends_on:
@@ -281,7 +280,7 @@ services:
     <<: *hardened
     tmpfs:
       - /tmp
-      - /home/nonroot:uid=65532,gid=65532,exec
+      - /home/nonroot:uid=65532,gid=65532
     image: ${SRDP_PLATFORM_REGISTRY:-ghcr.io/srdp-hub}/dagster-webserver:${SRDP_VERSION:-dev}
     build:
       context: ../../
@@ -313,7 +312,7 @@ services:
     <<: *hardened
     tmpfs:
       - /tmp
-      - /home/nonroot:uid=65532,gid=65532,exec
+      - /home/nonroot:uid=65532,gid=65532
     image: ${SRDP_PLATFORM_REGISTRY:-ghcr.io/srdp-hub}/dagster-webserver:${SRDP_VERSION:-dev}
     build:
       context: ../../
@@ -340,7 +339,7 @@ services:
     <<: *hardened
     tmpfs:
       - /tmp
-      - /home/nonroot:uid=65532,gid=65532,exec
+      - /home/nonroot:uid=65532,gid=65532
       - /opt/dagster/dagster_home:uid=65532,gid=65532
       - /app/config/dagster:uid=65532,gid=65532
       - /app/projects/cbs-example/dbt/target:uid=65532,gid=65532
@@ -462,6 +461,8 @@ services:
     build:
       context: ../../
       dockerfile: services/duckdb-ui/Dockerfile
+      args:
+        DUCKDB_EXTENSIONS: "${DUCKDB_EXTENSIONS:-}"
     container_name: srdp-duckdb-ui
     environment:
       DUCKLAKE_PG_HOST: postgres

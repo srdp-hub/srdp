@@ -68,6 +68,8 @@ class DuckLakeSettings(BaseSettings):
     storage_backend: Literal["local", "s3"] = "local"
     data_path: str = Field(default=".data/ducklake")
 
+    extension_directory: str | None = None
+
     target_file_size: int | None = None
     parquet_compression: str | None = None
     per_thread_output: bool | None = None
@@ -202,8 +204,7 @@ class S3StorageBackend(StorageBackend):
             conn: An open DuckDB connection to configure.
         """
         s3 = self._s3
-        conn.execute("INSTALL httpfs")
-        conn.execute("LOAD httpfs")
+        load_extension(conn, "httpfs")
         conn.execute(
             "CREATE OR REPLACE SECRET ducklake_s3 ("
             "TYPE s3, "
@@ -378,18 +379,43 @@ def attach_catalog(
 
 def _attach(conn: duckdb.DuckDBPyConnection, settings: DuckLakeSettings, backend: StorageBackend) -> None:
     """Configure ``backend`` on ``conn``, attach the catalog with the init-race retry, and apply the tuning options."""
-    _prepare_connection(conn, backend)
+    _prepare_connection(conn, settings, backend)
     _attach_with_retry(conn, _attach_sql(settings, backend))
     _apply_tuning_options(conn, settings)
     logger.info("Attached DuckLake catalog (db=%s, data_path=%s).", settings.pg_db, backend.get_base_path())
 
 
-def _prepare_connection(conn: duckdb.DuckDBPyConnection, backend: StorageBackend) -> duckdb.DuckDBPyConnection:
+def _prepare_connection(
+    conn: duckdb.DuckDBPyConnection, settings: DuckLakeSettings, backend: StorageBackend
+) -> duckdb.DuckDBPyConnection:
     """Load the DuckLake extension and let ``backend`` configure its storage access."""
-    conn.execute("INSTALL ducklake")
-    conn.execute("LOAD ducklake")
+    _configure_extension_directory(conn, settings)
+    load_extension(conn, "ducklake")
     backend.configure_duckdb(conn)
     return conn
+
+
+def _configure_extension_directory(conn: duckdb.DuckDBPyConnection, settings: DuckLakeSettings) -> None:
+    """Point ``conn`` at the extensions baked into the image and stop it from downloading others."""
+    if settings.extension_directory is None:
+        return
+    conn.execute(f"SET extension_directory = {_sql_string(settings.extension_directory)}")
+    conn.execute("SET autoinstall_known_extensions = false")
+
+
+def load_extension(conn: duckdb.DuckDBPyConnection, name: str) -> None:
+    """Load a DuckDB extension, installing it first unless ``conn`` may not download extensions.
+
+    With ``DUCKLAKE_EXTENSION_DIRECTORY`` set, the extensions come from the image and
+    nothing is downloaded at start. Without it (local development), ``INSTALL`` runs first.
+
+    Args:
+        conn: An open DuckDB connection.
+        name: The extension name, such as ``ducklake``. It comes from our own code, never from user input.
+    """
+    if conn.execute("SELECT current_setting('autoinstall_known_extensions')").fetchall()[0][0]:
+        conn.execute(f"INSTALL {name}")
+    conn.execute(f"LOAD {name}")
 
 
 def _attach_with_retry(conn: duckdb.DuckDBPyConnection, attach_query: str) -> None:

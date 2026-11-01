@@ -74,7 +74,7 @@ dhi-login:
 kind-load-images: kind-up
 	docker build -t {{platform_registry}}/srdp-setup:dev -f deploy/docker/srdp-setup.Dockerfile .
 	docker build -t {{platform_registry}}/dagster-webserver:dev -f deploy/docker/dagster-webserver.Dockerfile .
-	docker build -t {{platform_registry}}/duckdb-ui:dev -f services/duckdb-ui/Dockerfile .
+	docker build -t {{platform_registry}}/duckdb-ui:dev --build-arg DUCKDB_EXTENSIONS="${DUCKDB_EXTENSIONS:-}" -f services/duckdb-ui/Dockerfile .
 	docker build -t {{platform_registry}}/hub:dev services/hub
 	docker build -t {{registry}}/marimo:dev -f projects/cbs-example/notebooks/Dockerfile .
 	docker build -t {{registry}}/srdp-etl:dev -f projects/cbs-example/Dockerfile .

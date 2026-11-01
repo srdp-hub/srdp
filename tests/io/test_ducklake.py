@@ -8,7 +8,9 @@ from srdp.io.ducklake import (
     S3StorageBackend,
     S3StorageSettings,
     _attach_with_retry,
+    _configure_extension_directory,
     get_storage_backend,
+    load_extension,
 )
 
 S3 = {
@@ -222,3 +224,59 @@ def test_a_settings_error_does_not_print_the_secret():
         S3StorageSettings(_env_file=None, bucket="lake", secret="do-not-log-me")  # noqa: S106 — leak probe
 
     assert "do-not-log-me" not in str(exc.value)
+
+
+# Extensions
+
+
+class _RecordingConnection:
+    """Records the statements it receives and answers the autoinstall setting query."""
+
+    def __init__(self, *, autoinstall: bool) -> None:
+        self.autoinstall = autoinstall
+        self.statements: list[str] = []
+
+    def execute(self, query: str) -> "_RecordingConnection":
+        self.statements.append(query)
+        return self
+
+    def fetchall(self) -> list[tuple[bool]]:
+        return [(self.autoinstall,)]
+
+
+def test_an_extension_is_installed_before_it_loads_by_default():
+    """A connection that may download extensions (local development) runs INSTALL first."""
+    conn = _RecordingConnection(autoinstall=True)
+
+    load_extension(conn, "ducklake")
+
+    assert conn.statements[-2:] == ["INSTALL ducklake", "LOAD ducklake"]
+
+
+def test_an_extension_only_loads_when_downloads_are_off():
+    """With the extension directory set, nothing is downloaded at start."""
+    conn = _RecordingConnection(autoinstall=False)
+
+    load_extension(conn, "ducklake")
+
+    assert conn.statements[-1] == "LOAD ducklake"
+    assert "INSTALL ducklake" not in conn.statements
+
+
+def test_the_extension_directory_turns_downloads_off():
+    """DUCKLAKE_EXTENSION_DIRECTORY points DuckDB at the baked extensions and stops autoinstall."""
+    conn = duckdb.connect()
+
+    _configure_extension_directory(conn, _settings(extension_directory="/opt/duckdb/extensions"))
+
+    assert conn.execute("SELECT current_setting('extension_directory')").fetchall()[0][0] == "/opt/duckdb/extensions"
+    assert conn.execute("SELECT current_setting('autoinstall_known_extensions')").fetchall()[0][0] is False
+
+
+def test_without_an_extension_directory_downloads_stay_on():
+    """Local development keeps the default behaviour."""
+    conn = duckdb.connect()
+
+    _configure_extension_directory(conn, _settings())
+
+    assert conn.execute("SELECT current_setting('autoinstall_known_extensions')").fetchall()[0][0] is True
