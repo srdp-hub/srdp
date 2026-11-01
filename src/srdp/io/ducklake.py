@@ -393,7 +393,7 @@ class _CatalogPath(StorageBackend):
 def _catalog_data_path(settings: DuckLakeSettings) -> str:
     """Return the data path that ``settings`` select, without creating a directory or needing an S3 key."""
     if settings.storage_backend == "s3":
-        # The bucket and prefix are all that make the path. The key stays unused here.
+        # Only the bucket and prefix make the path, so the key is a placeholder.
         unused = "unused"
         return S3StorageBackend(S3StorageSettings(key_id=unused, secret=unused)).get_base_path()  # ty: ignore[missing-argument, invalid-argument-type]
     return str(Path(settings.data_path).resolve())
@@ -402,10 +402,8 @@ def _catalog_data_path(settings: DuckLakeSettings) -> str:
 def initialize_catalog(settings: DuckLakeSettings) -> None:
     """Create the catalog's metadata tables in PostgreSQL, if they do not exist yet.
 
-    A role with only ``SELECT`` on the catalog cannot create these tables, so the setup
-    service runs this once as the writer role before any reader starts. The catalog keeps
-    the data path it is created with, so ``settings`` must name the storage the writer uses.
-    The call does not read or write data files, so it needs no storage key.
+    A read-only role cannot create these tables, so setup runs this once as the writer role.
+    The catalog keeps the data path it is created with, so ``settings`` must name the writer's storage.
 
     Args:
         settings: DuckLake settings whose ``pg_*`` fields name the writer role.

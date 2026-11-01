@@ -31,8 +31,7 @@ role = "dagster"
 name = "marquez"
 role = "marquez"
 
-# Dagster writes the DuckLake catalog as the owner role. The apps that run user SQL
-# connect as the reader role, which can only read it. Setup also creates the catalog tables.
+# Dagster writes the DuckLake catalog as role. The apps read it as reader_role, which can only SELECT.
 [[setup.databases]]
 name = "ducklake"
 role = "ducklake_writer"

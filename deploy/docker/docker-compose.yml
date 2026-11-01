@@ -84,8 +84,7 @@ services:
       SETUP_PASSWORDS__MARQUEZ: "${MARQUEZ_DB_PASSWORD}"
       SETUP_PASSWORDS__DUCKLAKE_WRITER: "${DUCKLAKE_PG_WRITER_PASSWORD}"
       SETUP_PASSWORDS__DUCKLAKE_READER: "${DUCKLAKE_PG_READER_PASSWORD}"
-      # Setup creates the catalog tables as the writer role, so no reader has to. The catalog
-      # keeps the data path it is created with, so this must match the services.
+      # The catalog keeps the data path it is created with, so this must match the services.
       <<: *ducklake-storage
       DUCKLAKE_DATA_PATH: /data/ducklake
       # The optional Garage step ([setup.garage] in srdp.toml,

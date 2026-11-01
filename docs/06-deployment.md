@@ -83,7 +83,6 @@ just prod-use-kubeconfig   # from repo root
 - The DuckLake catalog has two Postgres roles.
   Dagster writes the catalog as `ducklake_writer`, which owns the `ducklake` database.
   The four apps connect as `ducklake_reader`, which can only read the catalog tables.
-  A SQL console like duckdb-ui can therefore not change or delete the catalog.
   No app gets the writer Secret or the Postgres superuser Secret.
 - `values-prod.example.yaml` keeps DuckLake on S3 with no `ducklake-data` volume, so a deploy from it needs both S3 Secrets.
 - With `ducklakeStorage.backend: s3`, Dagster and its run pods get the writer key and the four apps get the read-only key.

@@ -49,8 +49,7 @@ class DatabaseTarget(BaseModel):
     # Lowercase, SETUP_PASSWORDS__<ROLE> keys are lowercased.
     # None reuses the superuser as owner.
     role: Identifier | None = None
-    # A second role that can only read the database. Setup grants it SELECT on every table the
-    # owner creates. Only the DuckLake catalog uses it, for the apps that run user SQL.
+    # A role that can only read. Setup grants it SELECT on every table the owner creates.
     reader_role: Identifier | None = None
     # False leaves the target out of setup, checks included.
     enabled: bool = True

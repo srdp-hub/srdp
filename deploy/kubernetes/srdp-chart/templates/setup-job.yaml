@@ -63,8 +63,7 @@ spec:
                 secretKeyRef:
                   name: srdp-ducklake-pg-reader
                   key: password
-            # Setup creates the catalog tables as the writer role. The catalog keeps the
-            # data path it is created with, so this is the path the consumers use.
+            # The catalog keeps the data path it is created with, so this must match the consumers.
             - name: DUCKLAKE_DATA_PATH
               value: {{ .Values.ducklakeData.mountPath | quote }}
             {{- if .Values.garage.enabled }}

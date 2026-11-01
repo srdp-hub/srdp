@@ -1,7 +1,6 @@
 # Third-party images that SRDP copies from dhi.io to ghcr.io/srdp-hub, so a
 # deployment pulls everything from one place and needs no dhi.io login.
-# mirror.yml copies each entry with its attestations. Renovate bumps the tag
-# and the digest in its weekly PR, and the PR scans the new image first.
+# Renovate bumps the tag and the digest, and the PR scans the new image first.
 # The copy is ghcr.io/srdp-hub/<name>:<tag>, with the same digest as the source.
 mirror:
   - name: traefik

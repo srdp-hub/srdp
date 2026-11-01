@@ -714,8 +714,7 @@ setup:
       role: dagster
     - name: marquez
       role: marquez
-    # Dagster writes the catalog as the role. The apps read it as the reader_role, which
-    # can only SELECT. Setup also creates the catalog tables, so no reader has to.
+    # The apps read the catalog as reader_role, which can only SELECT.
     - name: ducklake
       role: ducklake_writer
       reader_role: ducklake_reader
