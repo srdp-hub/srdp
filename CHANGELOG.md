@@ -6,6 +6,8 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 
 ### Added
 
+- A `LICENSE` file with the Mozilla Public License 2.0, and a `CODEOWNERS` file that asks the core maintainers to review every change.
+  SRDP moves from Apache-2.0 to MPL-2.0. A changed MPL file that someone distributes must stay open, and code next to it can keep its own license.
 - Hardened images for everything SRDP builds, including the example project's code location, API, marimo and streamlit images. They build on Docker Hardened Images, run as uid 65532 and scan clean in the Images workflow.
   Building from source needs a `docker login dhi.io`. Released images from ghcr.io need no login.
 - Docker Compose runs every SRDP service, Traefik, oauth2-proxy and Marquez with a read-only root filesystem, no capabilities and no privilege escalation.
