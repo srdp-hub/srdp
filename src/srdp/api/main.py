@@ -204,7 +204,7 @@ def table_info(schema: str, table: str) -> dict:
 
     ref = f"ducklake.{_quote_identifier(schema)}.{_quote_identifier(table)}"
     described = conn.sql(f"DESCRIBE {ref}").fetchall()
-    row_count = conn.sql(f"SELECT COUNT(*) FROM {ref}").fetchone()  # noqa: S608
+    row_count = conn.sql(f"SELECT COUNT(*) FROM {ref}").fetchall()[0]  # noqa: S608
 
     return {
         "schema": schema,
