@@ -289,7 +289,7 @@ def test_reader_and_owner_must_differ() -> None:
         DatabaseTarget(name="ducklake", role="ducklake", reader_role="ducklake")
 
 
-def test_reader_needs_a_password_when_setup_manages_roles() -> None:
+def test_managed_reader_needs_a_password() -> None:
     """A missing reader password stops setup before it changes anything."""
     with pytest.raises(ValidationError, match="ducklake_reader"):
         SetupSettings(  # ty: ignore[missing-argument]

@@ -273,14 +273,14 @@ dagster:
               - name: PGHOST
                 value: db-postgresql-primary
               - name: PGUSER
-                value: postgres
+                value: ducklake_writer
               - name: PGDATABASE
                 value: ducklake
               - name: PGPASSWORD
                 valueFrom:
                   secretKeyRef:
-                    name: srdp-postgres
-                    key: postgres-password
+                    name: srdp-ducklake-pg-writer
+                    key: password
           - name: wait-for-ducklake-bucket
             # Same container as srdp.waitForDucklakeBucket in templates/_helpers.tpl,
             # with the writer key. includeConfigInLaunchedRuns copies it into

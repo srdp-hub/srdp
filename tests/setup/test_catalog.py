@@ -1,6 +1,6 @@
 """Tests for the catalog step of setup: grants for the reader role and the first attach."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 import pytest
 from pydantic import SecretStr
@@ -31,6 +31,12 @@ class FakeCursor:
     def fetchall(self) -> list[tuple[str]]:
         """Return the rows of the last query."""
         return self._rows
+
+    def __enter__(self) -> Self:  # noqa: D105
+        return self
+
+    def __exit__(self, *_exc: object) -> None:  # noqa: D105
+        pass
 
 
 @pytest.fixture(autouse=True)
@@ -118,3 +124,48 @@ def test_targets_without_a_reader_are_skipped(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(catalog, "_connect_with_retry", lambda *_a, **_k: pytest.fail("connected"))
 
     catalog.setup_catalogs(_settings(DatabaseTarget(name="marquez", role="ducklake_writer")))
+
+
+def test_empty_owner_password_skips_the_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With manage_databases off an unset password arrives empty, and setup skips the attach."""
+    monkeypatch.setattr(catalog, "initialize_catalog", lambda _s: pytest.fail("attached"))
+    settings = _settings(TARGET, manage=False)
+    settings.passwords["ducklake_writer"] = SecretStr("")
+
+    catalog.create_catalog(settings, TARGET)
+
+
+class FakeConnection:
+    """Hands out one FakeCursor and records whether the grants ran in one committed transaction."""
+
+    def __init__(self) -> None:  # noqa: D107
+        self.cursor_ = FakeCursor()
+        self.committed = False
+        self.closed = False
+
+    def __enter__(self) -> Self:  # noqa: D105
+        return self
+
+    def __exit__(self, exc_type: object, *_exc: object) -> None:  # noqa: D105
+        self.committed = exc_type is None
+
+    def cursor(self) -> FakeCursor:
+        """Return the shared cursor, which also works as a context manager."""
+        return self.cursor_
+
+    def close(self) -> None:
+        """Mark the connection closed."""
+        self.closed = True
+
+
+def test_grants_run_in_one_transaction(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The reader never loses SELECT between the REVOKE and the GRANT, as a running app would see."""
+    conn = FakeConnection()
+    monkeypatch.setattr(catalog, "_connect_with_retry", lambda *_a, **_k: conn)
+    monkeypatch.setattr(catalog, "create_catalog", lambda *_a: None)
+
+    catalog.setup_catalogs(_settings(TARGET))
+
+    assert conn.committed
+    assert conn.closed
+    assert not getattr(conn, "autocommit", False)

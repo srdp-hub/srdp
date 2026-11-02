@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import duckdb
 import pytest
 from pydantic import ValidationError
@@ -250,7 +252,7 @@ class _RecordingConnection:
         self.closed = True
 
 
-def test_an_extension_is_installed_before_it_loads_by_default():
+def test_extension_installs_before_load() -> None:
     """A connection that may download extensions (local development) runs INSTALL first."""
     conn = _RecordingConnection(autoinstall=True)
 
@@ -259,7 +261,7 @@ def test_an_extension_is_installed_before_it_loads_by_default():
     assert conn.statements[-2:] == ["INSTALL ducklake", "LOAD ducklake"]
 
 
-def test_an_extension_only_loads_when_downloads_are_off():
+def test_extension_only_loads_offline() -> None:
     """With the extension directory set, nothing is downloaded at start."""
     conn = _RecordingConnection(autoinstall=False)
 
@@ -269,7 +271,7 @@ def test_an_extension_only_loads_when_downloads_are_off():
     assert "INSTALL ducklake" not in conn.statements
 
 
-def test_the_extension_directory_turns_downloads_off():
+def test_the_extension_directory_turns_downloads_off() -> None:
     """DUCKLAKE_EXTENSION_DIRECTORY points DuckDB at the baked extensions and stops autoinstall."""
     conn = duckdb.connect()
 
@@ -279,7 +281,7 @@ def test_the_extension_directory_turns_downloads_off():
     assert conn.execute("SELECT current_setting('autoinstall_known_extensions')").fetchall()[0][0] is False
 
 
-def test_without_an_extension_directory_downloads_stay_on():
+def test_no_extension_dir_keeps_downloads() -> None:
     """Local development keeps the default behaviour."""
     conn = duckdb.connect()
 
@@ -291,7 +293,7 @@ def test_without_an_extension_directory_downloads_stay_on():
 # Catalog initialization
 
 
-def test_a_local_catalog_path_creates_no_directory(tmp_path):
+def test_a_local_catalog_path_creates_no_directory(tmp_path: Path) -> None:
     """The setup container has no data volume on Kubernetes, so naming the path must not create it."""
     lake = tmp_path / "lake"
 
@@ -299,7 +301,7 @@ def test_a_local_catalog_path_creates_no_directory(tmp_path):
     assert not lake.exists()
 
 
-def test_an_s3_catalog_path_needs_no_key(monkeypatch):
+def test_an_s3_catalog_path_needs_no_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """The path is bucket and prefix, so the setup service needs no storage key to create the catalog."""
     for name, value in (
         ("bucket", "lake"),
@@ -313,7 +315,7 @@ def test_an_s3_catalog_path_needs_no_key(monkeypatch):
     assert _catalog_data_path(_settings(storage_backend="s3")) == "s3://lake/dev/"
 
 
-def test_initializing_a_catalog_attaches_it_and_closes(monkeypatch):
+def test_initialize_catalog_attaches_once(monkeypatch: pytest.MonkeyPatch) -> None:
     """The first attach creates the catalog tables, and the connection closes after it."""
     conn = _RecordingConnection(autoinstall=False)
     monkeypatch.setattr(duckdb, "connect", lambda: conn)
@@ -322,6 +324,24 @@ def test_initializing_a_catalog_attaches_it_and_closes(monkeypatch):
 
     attach = [s for s in conn.statements if s.startswith("ATTACH")]
     assert len(attach) == 1
-    assert "user=ducklake_writer" in attach[0]
+    assert "user=''ducklake_writer''" in attach[0]
     assert "DATA_PATH '/data/ducklake'" in attach[0]
     assert conn.closed
+
+
+def test_password_is_quoted_for_libpq() -> None:
+    """A space, quote or backslash in the password stays inside its libpq value."""
+    settings = DuckLakeSettings(_env_file=None, pg_password="a b'c\\d")  # noqa: S106 — throwaway test value
+
+    assert "password='a b\\'c\\\\d'" in settings.pg_connection_string
+
+
+def test_attach_error_masks_the_password(sleeps: list[float]) -> None:
+    """DuckDB repeats the connection string in a failed attach, so the password is masked."""
+    conn = _ScriptedConnection(duckdb.IOException("Unable to connect at \"user='u' password='Top\\'Secret'\""))
+
+    with pytest.raises(duckdb.IOException) as raised:
+        _attach_with_retry(conn, "ATTACH 'ducklake:...' AS ducklake", secret="Top'Secret")  # noqa: S106 — throwaway test value
+
+    assert "Top" not in str(raised.value)
+    assert raised.value.__cause__ is None

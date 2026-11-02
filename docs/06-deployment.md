@@ -96,6 +96,7 @@ just prod-use-kubeconfig   # from repo root
   The Job then only checks that it can connect and that the databases exist, and it creates the catalog tables as `ducklake_writer`.
   In that case create the roles yourself.
   Make `ducklake_writer` the owner of the `ducklake` database, and grant `ducklake_reader` `USAGE` on the `public` schema and `SELECT` on its tables.
+  Run `REVOKE CREATE ON SCHEMA public FROM PUBLIC`, because before Postgres 15 every role can create tables there.
   Add `ALTER DEFAULT PRIVILEGES FOR ROLE ducklake_writer IN SCHEMA public GRANT SELECT ON TABLES TO ducklake_reader`, because DuckLake creates tables at run time.
 - **Changing an internal password**: these are service-to-service credentials, so change one only as a deliberate rotation.
   Change the value in its Secret, run `helm upgrade`, then restart the services that use it.

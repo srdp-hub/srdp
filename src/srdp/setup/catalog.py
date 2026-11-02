@@ -42,7 +42,7 @@ def reconcile_catalog_access(cur: psycopg2.extensions.cursor, target: DatabaseTa
     privileges cover tables the owner creates later, such as DuckLake's inlined-data tables.
 
     Args:
-        cur: An autocommit cursor connected to the catalog database as the Postgres superuser.
+        cur: A cursor connected to the catalog database as the Postgres superuser.
         target: The catalog database. It needs both ``role`` and ``reader_role``.
     """
     if target.role is None or target.reader_role is None:
@@ -74,14 +74,15 @@ def create_catalog(settings: SetupSettings, target: DatabaseTarget) -> None:
         settings: Setup settings, holding the owner password and the Postgres address.
         target: The catalog database.
     """
-    if target.role is None or target.role not in settings.passwords:
+    password = settings.passwords.get(target.role or "")
+    if target.role is None or password is None or not password.get_secret_value():
         logger.warning("No password for the owner of '%s', so setup does not create its catalog.", target.name)
         return
     ducklake = DuckLakeSettings(
         pg_host=settings.pg_host,
         pg_port=settings.pg_port,
         pg_user=target.role,
-        pg_password=settings.passwords[target.role].get_secret_value(),
+        pg_password=password.get_secret_value(),
         pg_db=target.name,
     )
     initialize_catalog(ducklake)
@@ -101,9 +102,9 @@ def setup_catalogs(settings: SetupSettings) -> None:
             continue
         if settings.manage_databases:
             conn = _connect_with_retry(settings, dbname=target.name)
-            conn.autocommit = True
             try:
-                with conn.cursor() as cur:
+                # One transaction, so a running app never sees the reader without its SELECT.
+                with conn, conn.cursor() as cur:
                     reconcile_catalog_access(cur, target)
             finally:
                 conn.close()

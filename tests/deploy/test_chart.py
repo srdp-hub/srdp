@@ -210,14 +210,14 @@ def test_apps_open_the_catalog_with_the_reader_role(local: list[Manifest], app: 
     assert secret_ref(env, "DUCKLAKE_PG_PASSWORD") == ("srdp-ducklake-pg-reader", "password")
 
 
-def test_dagster_opens_the_catalog_with_the_writer_role(local: list[Manifest]) -> None:
+def test_dagster_uses_the_writer_role(local: list[Manifest]) -> None:
     """Only the Dagster code location writes the catalog, so it alone gets the writer Secret."""
     env = pod_env(local, "Deployment", CODE_LOCATION)
     assert env["DUCKLAKE_PG_USER"]["value"] == "ducklake_writer"
     assert secret_ref(env, "DUCKLAKE_PG_PASSWORD") == ("srdp-ducklake-pg-writer", "password")
 
 
-def test_no_app_holds_the_writer_or_superuser_catalog_secret(local: list[Manifest]) -> None:
+def test_no_app_gets_writer_or_superuser(local: list[Manifest]) -> None:
     """The apps read neither the writer Secret nor the Postgres superuser Secret."""
     for app in CATALOG_APPS:
         spec = find(local, "Deployment", app)["spec"]["template"]["spec"]
@@ -230,7 +230,15 @@ def test_no_app_holds_the_writer_or_superuser_catalog_secret(local: list[Manifes
         assert not names & {"srdp-ducklake-pg-writer", "srdp-postgres"}, app
 
 
-def test_setup_job_sets_the_catalog_passwords_the_consumers_read(local: list[Manifest]) -> None:
+@pytest.mark.parametrize("values_file", ["values-local.yaml", "values-prod.example.yaml"])
+def test_only_setup_gets_the_superuser(values_file: str) -> None:
+    """In kind and in the prod example, no Deployment or Job but srdp-setup reads srdp-postgres."""
+    manifests = render("values.yaml", values_file)
+    users = {name for name, spec in pod_specs(manifests) if "srdp-postgres" in json.dumps(spec)}
+    assert users == {"srdp-setup"}
+
+
+def test_setup_job_sets_the_consumer_passwords(local: list[Manifest]) -> None:
     """Setup resets each role to the password in the Secret that its consumer reads, as it does for Marquez."""
     setup = pod_env(local, "Job", "srdp-setup")
     code_location = pod_env(local, "Deployment", CODE_LOCATION)
@@ -239,7 +247,7 @@ def test_setup_job_sets_the_catalog_passwords_the_consumers_read(local: list[Man
     assert secret_ref(setup, "SETUP_PASSWORDS__DUCKLAKE_READER") == secret_ref(marimo, "DUCKLAKE_PG_PASSWORD")
 
 
-def test_setup_job_creates_the_catalog_where_the_apps_look(local: list[Manifest]) -> None:
+def test_setup_job_uses_the_apps_data_path(local: list[Manifest]) -> None:
     """The catalog keeps its data path, so setup gets the storage settings and the path of the consumers."""
     job = find(local, "Job", "srdp-setup")["spec"]["template"]["spec"]
     [container] = job["containers"]
