@@ -1,0 +1,27 @@
+{{- /* The login gate is mandatory. Only prod-traefik-only runs without it, with nothing behind it. */ -}}
+{{- $v := .Values }}
+{{- $running := list }}
+{{- range $app := list "hub" "dagster" "marimo" "quarto" "streamlit" "api" "duckdbUi" "marquez" "setup" }}
+{{- if (get $v $app).enabled }}{{ $running = append $running $app }}{{ end }}
+{{- end }}
+{{- if and $running (not (and $v.zitadel.enabled (index $v "oauth2-proxy").enabled)) }}
+{{- fail (printf "zitadel and oauth2-proxy are mandatory while %s runs." (join ", " $running)) }}
+{{- end }}
+{{- /* Zitadel logs in as its own role, which srdp-setup creates, so Zitadel needs the Job. */ -}}
+{{- if .Values.zitadel.enabled }}
+{{- if not .Values.setup.enabled }}
+{{- fail "zitadel.enabled needs setup.enabled: the srdp-setup Job creates the zitadel role and database." }}
+{{- end }}
+{{- $zitadelDb := dict }}
+{{- range .Values.setup.databases }}
+{{- if eq .name "zitadel" }}
+{{- $zitadelDb = . }}
+{{- end }}
+{{- end }}
+{{- if not $zitadelDb }}
+{{- fail "zitadel.enabled needs a zitadel entry in setup.databases." }}
+{{- end }}
+{{- if eq (toString (get $zitadelDb "enabled")) "false" }}
+{{- fail "The zitadel entry in setup.databases must not be disabled, srdp-setup creates the zitadel role and database." }}
+{{- end }}
+{{- end }}

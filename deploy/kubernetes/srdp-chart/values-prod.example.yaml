@@ -112,10 +112,6 @@ zitadel:
             Username: "zitadel"
             SSL:
               Mode: verify-full
-          Admin:
-            Username: "postgres"
-            SSL:
-              Mode: verify-full
       FirstInstance:
         Org:
           Human:
@@ -124,53 +120,50 @@ zitadel:
               Address: zitadel-admin@auth.LOAD_BALANCER_IP.nip.io
               Verified: true
             PasswordChangeRequired: false
-    dbSslCaCrtSecret: postgres-cert
-    dbSslAdminCrtSecret: postgres-cert
+    # CA only, postgres-cert also holds the server key.
+    dbSslCaCrtSecret: postgres-ca
     dbSslUserCrtSecret: zitadel-cert
-
-  initJob:
+    # Replaces the chart's list, to wait on the production host.
     initContainers:
-      - name: wait-for-db
-        image: busybox:1.36.1@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
-        securityContext:
-          runAsNonRoot: true
-          runAsUser: 65532
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop: [ALL]
+      - name: wait-for-zitadel-db
+        image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
         command:
           - sh
           - -c
           - |
-            echo "Waiting for PostgreSQL at db-postgresql-primary:5432..."
-            until nc -z -v -w 2 db-postgresql-primary 5432; do
-              echo "Waiting for DB..."
-              sleep 2;
+            for i in $(seq 1 60); do
+              psql -tAc "SELECT 1" >/dev/null && exit 0
+              echo "waiting for $PGUSER to log in to $PGDATABASE ($i/60)..."
+              sleep 2
             done
-            echo "PostgreSQL is up!"
-
-  setupJob:
-    initContainers:
-      - name: wait-for-db
-        image: busybox:1.36.1@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+            exit 1
         securityContext:
           runAsNonRoot: true
-          runAsUser: 65532
+          runAsUser: 70
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
           capabilities:
             drop: [ALL]
-        command:
-          - sh
-          - -c
-          - |
-            echo "Waiting for PostgreSQL at db-postgresql-primary:5432..."
-            until nc -z -v -w 2 db-postgresql-primary 5432; do
-              echo "Waiting for DB..."
-              sleep 2;
-            done
-            echo "PostgreSQL is up!"
+        env:
+          - name: PGHOST
+            value: db-postgresql-primary
+          - name: PGUSER
+            value: zitadel
+          - name: PGDATABASE
+            value: zitadel
+          - name: PGPASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: srdp-zitadel
+                key: db-password
+          - name: PGSSLMODE
+            value: verify-full
+          - name: PGSSLROOTCERT
+            value: /db-ssl-ca-crt/ca.crt
+        volumeMounts:
+          - name: db-ssl-ca-crt
+            mountPath: /db-ssl-ca-crt
+            readOnly: true
 
   # Source: https://github.com/zitadel/zitadel/issues/11163
   login:

@@ -16,6 +16,8 @@ domain = "srdp.localhost"
 # Read by the srdp-setup service. The chart keeps its own copy in
 # setup.databases, keep them in step.
 [setup]
+# false when someone else creates the databases and roles. Setup then only checks them.
+manage_databases = true
 
 [[setup.databases]]
 name = "zitadel"

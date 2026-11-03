@@ -14,5 +14,5 @@ metadata:
   name: srdp-setup-config
 data:
   srdp.toml: |
-{{ toToml (dict "setup" (dict "databases" .Values.setup.databases "garage" $garage)) | indent 4 }}
+{{ toToml (dict "setup" (dict "manage_databases" .Values.setup.manageDatabases "databases" .Values.setup.databases "garage" $garage)) | indent 4 }}
 {{- end }}

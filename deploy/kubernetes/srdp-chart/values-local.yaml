@@ -14,9 +14,9 @@ localSecrets:
   enabled: true
   postgres:
     postgresPassword: srdpTest123
-    zitadelPassword: srdpTest123
   zitadel:
     masterkey: "51a69a373f45c60d2ae08c48bb89d03e" # Must be 32 chars
+    dbPassword: srdpTest123
     adminPassword: "srdpTest123!"
   oauth2Proxy:
     clientID: "362914460869919313"

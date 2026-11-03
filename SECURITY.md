@@ -21,7 +21,7 @@ The [security page](https://docs.srdphub.com/security/) describes how SRDP build
 
 Only the latest release is actively maintained. We do not backport security fixes to older versions.
 
-The supported Python runtime is **3.12**, and 3.13 is planned. Other Python versions will not receive fixes.
+The supported Python runtime is **3.13**. Other Python versions will not receive fixes.
 
 ## Scope
 

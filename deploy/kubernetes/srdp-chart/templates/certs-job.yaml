@@ -15,9 +15,14 @@ metadata:
     helm.sh/hook: pre-install,pre-upgrade
     helm.sh/hook-weight: "-20"
 rules:
+  # Create cannot be limited by name, everything else only on the cert Secrets.
   - apiGroups: [ "" ]
     resources: [ "secrets" ]
-    verbs: [ "create", "patch", "get", "update" ]
+    verbs: [ "create" ]
+  - apiGroups: [ "" ]
+    resources: [ "secrets" ]
+    resourceNames: [ "postgres-cert", "zitadel-cert", "postgres-ca" ]
+    verbs: [ "get", "update" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -143,19 +148,26 @@ spec:
             export APISERVER=https://kubernetes.default.svc SERVICEACCOUNT=/var/run/secrets/kubernetes.io/serviceaccount
             export NAMESPACE=$(cat ${SERVICEACCOUNT}/namespace) TOKEN=$(cat ${SERVICEACCOUNT}/token) CACERT=${SERVICEACCOUNT}/ca.crt
 
-            function uploadSecret {
-              USER=$1
-              curl \
-                --cacert ${CACERT} \
-                --header "Authorization: Bearer ${TOKEN}" \
-                --header "Content-Type: application/json" \
-                -X POST ${APISERVER}/api/v1/namespaces/${NAMESPACE}/secrets \
-                --data "$(tr -d '\n' < /secret/${USER}-cert.json)" \
-                > /dev/null || echo "error uploading ${USER} secret: $?"
+            SECRETS=${APISERVER}/api/v1/namespaces/${NAMESPACE}/secrets
+            function api {
+              curl --cacert ${CACERT} --header "Authorization: Bearer ${TOKEN}" --header "Content-Type: application/json" "$@"
             }
 
-            uploadSecret postgres
-            uploadSecret zitadel
+            # Create only: a Secret from an earlier run stays.
+            function uploadSecret {
+              api -X POST ${SECRETS} --data "$(tr -d '\n' < /secret/$1.json)" > /dev/null || echo "error uploading $1 secret: $?"
+            }
+
+            uploadSecret postgres-cert
+            uploadSecret zitadel-cert
+
+            # Copy the CA of the postgres-cert in the cluster, which can be from an earlier release.
+            CA=$(api -sf ${SECRETS}/postgres-cert | sed -n 's/.*"ca\.crt": *"\([^"]*\)".*/\1/p')
+            [ -n "${CA}" ] || { echo "postgres-cert has no ca.crt"; exit 1; }
+            BODY='{"apiVersion":"v1","kind":"Secret","type":"Opaque","metadata":{"name":"postgres-ca"},"data":{"ca.crt":"'${CA}'"}}'
+            api -sf -X PUT ${SECRETS}/postgres-ca --data "${BODY}" > /dev/null \
+              || api -sf -X POST ${SECRETS} --data "${BODY}" > /dev/null \
+              || { echo "error writing postgres-ca"; exit 1; }
         volumeMounts:
           - mountPath: /secret
             name: secret
