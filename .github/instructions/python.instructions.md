@@ -6,7 +6,7 @@ applyTo: "**/*.py"
 
 ### Imports
 
-- Do NOT add `from __future__ import annotations`. The repo targets Python 3.12+ where native type hints work without it.
+- Do NOT add `from __future__ import annotations`. The repo targets Python 3.13 where native type hints work without it.
 - Group order: stdlib → third-party → first-party (`srdp.*`) → local.
 - No relative imports anywhere. Always absolute.
 - Use `TYPE_CHECKING` guards for imports only needed at type-check time.
