@@ -7,10 +7,10 @@ authors = [
     { name = "Yannick Vinkesteijn" },
 ]
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.13,<3.14"
 dependencies = [
     "dagster>=1.12.17",
-    "polars>=1.32.3",
+    "polars>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -24,8 +24,8 @@ dagster-postgres = [
     "dagster-postgres>=0.28.17",
 ]
 ducklake = [
-    "duckdb>=1.4.0",
-    "psycopg2-binary>=2.9.0",
+    "duckdb>=2.0.0",
+    "psycopg2-binary>=2.9.13",
     "pydantic-settings>=2.9.0",
     "pyarrow>=23.0.0",
 ]
@@ -89,7 +89,7 @@ build-backend = "uv_build"
 
 [tool.ruff]
 line-length = 120
-target-version = "py312"
+target-version = "py313"
 fix = true
 src = ["src", "projects"]
 exclude = [
@@ -172,7 +172,7 @@ exclude = [
 ]
 
 [tool.ty.environment]
-python-version = "3.12"
+python-version = "3.13"
 
 [tool.ty.rules]
 unused-ignore-comment = "warn"

@@ -39,7 +39,7 @@ srdp/
 
 - Use `just` as the task runner and `uv` as the package manager.
 - Do not use `pip`, `conda` or `requirements.txt`.
-- Keep the upper bound `<3.13` on `requires-python` in `pyproject.toml`. Some dependencies, such as `dbt-core`, lag behind new Python releases.
+- Keep the upper bound `<3.14` on `requires-python` in `pyproject.toml`. Some dependencies, such as `dbt-core`, lag behind new Python releases.
 - In Dockerfiles, run `uv sync` with explicit extras (`--extra x --extra y`). Never use `--all-extras`, because it adds dev-only dependencies.
 
 ### Python
