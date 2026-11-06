@@ -117,7 +117,7 @@ local-admin-password:
 	@kubectl get secret srdp-zitadel --namespace {{namespace}} --output jsonpath='{.data.admin-password}' | base64 -d; echo
 
 # Deploy the full stack to local kind via Helm (extra args go to helm, e.g. -f srdp-chart/values-local-s3.yaml)
-local-deploy *args: kind-load-images chart-deps local-secrets
+local-deploy *args: kind-load-images chart-deps local-tls local-secrets
 	cd deploy/kubernetes && helm upgrade --install srdp srdp-chart --namespace {{namespace}} --create-namespace -f srdp-chart/values.yaml -f srdp-chart/values-local.yaml {{registry_args}} {{local_domain_args}} {{args}}
 	@echo "Reading Traefik's assigned ClusterIP to wire it into oauth2-proxy's hostAliases..."
 	@TRAEFIK_IP=$(kubectl get svc srdp-traefik -n {{namespace}} -o jsonpath='{.spec.clusterIP}'); \
@@ -140,7 +140,7 @@ docker-secrets:
 
 # Start the Docker Compose stack (local dev). Attached by default; pass -d to detach.
 # Builds from source and tags the platform images dev, whatever SRDP_VERSION says.
-docker-up *args: docker-secrets
+docker-up *args: docker-tls docker-secrets
 	cd deploy/docker && SRDP_UID=$(id -u) SRDP_GID=$(id -g) SRDP_DOMAIN='{{domain}}' SRDP_VERSION=dev docker compose up --build {{args}}
 
 # Start the Docker Compose stack with the published platform images of a release, e.g. `just docker-up-release 0.4.0 -d`.

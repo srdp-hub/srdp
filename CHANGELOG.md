@@ -14,6 +14,7 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 
 ### Changed
 
+- `just docker-up` and `just local-deploy` create the local TLS certificate. Before, a new kind cluster served Traefik's default certificate.
 - Credential names are the same on both targets. Rename these before you upgrade.
 
   | Before | Now |

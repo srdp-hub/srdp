@@ -44,6 +44,8 @@ Install `mkcert` following its own instructions, then run:
 just docker-tls   # trusts mkcert's local CA and generates certs in deploy/docker/certs/
 ```
 
+`just docker-up` also runs it, so the certificate always matches the domain.
+
 ### 3) Create the environment file
 
 ```bash
@@ -108,6 +110,8 @@ Install `mkcert` and `kind` following their own instructions, then run:
 ```bash
 just local-tls   # trusts mkcert's local CA, creates the kind cluster (if needed), certs, and the k8s TLS secret
 ```
+
+`just local-deploy` also runs it, so a new cluster always gets the certificate.
 
 `just local-tls` depends on `kind-up`, so it creates the `srdp` kind cluster on first run and points `kubectl` at it; on later runs it just reuses the existing cluster. `kind` runs as plain containers on whatever Docker daemon you already have (Colima, OrbStack, native Docker Engine on Linux, your own preference, this repo doesn't assume one), no separate VM for Kubernetes itself.
 
