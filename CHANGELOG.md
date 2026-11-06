@@ -27,7 +27,8 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
   | Secrets `srdp-ducklake-s3-writer` and `-reader`, keys `DUCKLAKE_S3_KEY_ID`, `DUCKLAKE_S3_SECRET` | keys `key-id`, `secret` |
 
   An old `.env` name that stays gets a new generated value under the new name, and Zitadel keeps its first admin password.
-  On an existing kind cluster, run `just kind-down` first, because the Garage keys and the Zitadel admin do not follow a new value.
+  A kind cluster from before this change needs a reset, which deletes its data. Run `just kind-down`, then `just local-deploy`.
+  A redeploy would generate new values for the renamed Secrets, and the Garage keys and the Zitadel admin do not follow a new value.
 - The Compose project is now named `srdp` in `docker-compose.yml`, and `COMPOSE_PROJECT_NAME` is gone from `.env`.
   Volumes and networks keep their names, so no data moves.
   Before you upgrade, stop the old stack with `docker compose -p local down` in `deploy/docker`, and remove `COMPOSE_PROJECT_NAME` from your `.env`.

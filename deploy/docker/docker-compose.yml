@@ -1,4 +1,3 @@
-# The project groups the containers for `docker compose`. Volumes and networks have fixed names below.
 name: srdp
 
 # Least privilege for every service SRDP builds or runs without a data directory of

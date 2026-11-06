@@ -9,8 +9,7 @@ updates:
     cooldown:
       default-days: 7
 
-  # Python packages in uv.lock. Renovate owns the Dagster packages, because
-  # they move together with the Dagster chart (renovate.json).
+  # Renovate owns the Dagster packages, together with the Dagster chart.
   - package-ecosystem: uv
     directory: /
     schedule:

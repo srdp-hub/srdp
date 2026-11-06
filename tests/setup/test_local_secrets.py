@@ -119,6 +119,17 @@ def test_new_env_file_is_private(tmp_path: Path) -> None:
     assert _env(env.read_text())["POSTGRES_PASSWORD"]
 
 
+def test_complete_env_file_is_made_private(tmp_path: Path) -> None:
+    """A complete .env that was copied by hand is readable by its owner only after a run."""
+    env = tmp_path / ".env"
+    write_env(env, EXAMPLE, SECRETS)
+    env.chmod(0o644)
+
+    write_env(env, EXAMPLE, SECRETS)
+
+    assert stat.S_IMODE(env.stat().st_mode) == 0o600
+
+
 def test_complete_env_file_is_left_alone(tmp_path: Path) -> None:
     """A second run changes nothing."""
     env = tmp_path / ".env"
@@ -172,6 +183,54 @@ def test_kind_run_generates_only_missing_keys(monkeypatch: pytest.MonkeyPatch) -
     local_secrets.ensure_kind_secrets("srdp", SECRETS)
 
     assert {(name, key) for name, data in first.items() for key in data} == {(s.secret, s.key) for s in SECRETS}
+
+
+def test_secrets_are_applied_server_side(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A client-side apply would copy every value into the last-applied annotation."""
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(local_secrets, "_kubectl", lambda *a, **_k: calls.append(a) or _Done())
+
+    local_secrets._apply({"kind": "Secret"})
+
+    assert "--server-side" in calls[0]
+
+
+class _Done:
+    returncode = 0
+    stderr = ""
+
+
+def test_export_prefix_keeps_the_value() -> None:
+    """Compose reads "export NAME=value", so that value stays and is not added twice."""
+    new, filled = fill_env("export POSTGRES_PASSWORD=mine\nexport MARQUEZ_DB_PASSWORD=\n", SECRETS)
+    assert "POSTGRES_PASSWORD" not in filled
+    assert "\nPOSTGRES_PASSWORD=" not in new
+    assert re.search(r"^export MARQUEZ_DB_PASSWORD=\S+$", new, re.MULTILINE)
+
+
+def test_export_with_more_spaces_keeps_the_value() -> None:
+    """Compose accepts any whitespace after "export", so that value stays."""
+    new, filled = fill_env("export  POSTGRES_PASSWORD=mine\n", SECRETS)
+    assert "POSTGRES_PASSWORD" not in filled
+    assert new.count("POSTGRES_PASSWORD") == 1
+
+
+def test_only_the_last_duplicate_counts() -> None:
+    """Compose uses the last line of a name, so an empty earlier line stays and a set last line wins."""
+    new, filled = fill_env(
+        "POSTGRES_PASSWORD=\nPOSTGRES_PASSWORD=mine\nMARQUEZ_DB_PASSWORD=x\nMARQUEZ_DB_PASSWORD=\n", SECRETS
+    )
+    assert "POSTGRES_PASSWORD" not in filled
+    assert new.startswith("POSTGRES_PASSWORD=\nPOSTGRES_PASSWORD=mine\nMARQUEZ_DB_PASSWORD=x\nMARQUEZ_DB_PASSWORD=")
+    assert filled.count("MARQUEZ_DB_PASSWORD") == 1
+    assert _env(new)["MARQUEZ_DB_PASSWORD"]
+
+
+@pytest.mark.parametrize("empty", ['""', "''"])
+def test_quoted_empty_value_is_filled(empty: str) -> None:
+    """Compose reads a quoted empty value as empty, so it gets a generated value."""
+    env = _env(fill_env(f"POSTGRES_PASSWORD={empty}\n", SECRETS)[0])
+    assert env["POSTGRES_PASSWORD"] not in {"", '""', "''"}
 
 
 def test_hash_inside_a_value_counts_as_set() -> None:

@@ -108,10 +108,12 @@ local-secrets: kind-up
 
 # Store the OIDC client from the Zitadel console in the kind stack and restart oauth2-proxy
 local-oidc-client:
+	kubectl config use-context kind-srdp
 	uv run --no-project python src/srdp/setup/local_secrets.py oidc {{namespace}}
 
 # Print the generated password of the Zitadel admin in the kind stack
 local-admin-password:
+	@kubectl config use-context kind-srdp >/dev/null
 	@kubectl get secret srdp-zitadel --namespace {{namespace}} --output jsonpath='{.data.admin-password}' | base64 -d; echo
 
 # Deploy the full stack to local kind via Helm (extra args go to helm, e.g. -f srdp-chart/values-local-s3.yaml)
@@ -124,6 +126,7 @@ local-deploy *args: kind-load-images chart-deps local-secrets
 
 # Uninstall the local Helm release and its PVCs
 local-delete:
+	kubectl config use-context kind-srdp
 	helm uninstall srdp -n {{namespace}} || true
 	# Dagster run Jobs are created by the run launcher, not by Helm, and their
 	# pods keep the ducklake-data PVC in Terminating until they are gone. The

@@ -24,10 +24,7 @@ global:
     runAsGroup: 65532
     fsGroup: 65532
 
-# Credentials: none live in this file. Every password and key comes from a
-# Secret with a fixed name, created outside the chart (by the operator elsewhere,
-# `just local-secrets` in kind). deploy/secrets.toml lists every Secret and key.
-# srdp-postgres also needs replication-password with architecture: replication.
+# Credentials come from the Secrets in deploy/secrets.toml, created outside the chart.
 # Traefik
 traefik:
   enabled: true
@@ -294,8 +291,6 @@ dagster:
   # routes to it and the read-write webserver stays cluster-internal for
   # operators (port-forward). Dagster OSS has no per-user authorization, so
   # an exposed read-write UI would bypass the writer role (see ADR-0005).
-  # The password comes from srdp-dagster (key postgresql-password),
-  # for the webserver, daemon, code location and run pods alike.
   # No usage reporting to Dagster, as in Compose's config/dagster/dagster.yaml.
   # Enabled telemetry also writes under DAGSTER_HOME, which is read-only here.
   telemetry:
@@ -636,13 +631,8 @@ ducklakeData:
   accessMode: ReadWriteOnce
   storageClassName: ""
 
-# Where DuckLake keeps its Parquet files, rendered into the
-# srdp-ducklake-storage ConfigMap that every DuckLake consumer reads
-# (templates/ducklake-storage-configmap.yaml). `local` uses the ducklake-data
-# volume above. `s3` uses the bucket below: Dagster and its run pods get the
-# key in the srdp-ducklake-s3-writer Secret, the apps the read-only key in
-# srdp-ducklake-s3-reader. Both Secrets hold the keys key-id and secret.
-# values-local-s3.yaml switches kind to the bundled Garage.
+# Where DuckLake keeps its Parquet files. `local` uses the volume above, `s3` the bucket below.
+# Dagster gets the S3 writer key, the apps the reader key.
 ducklakeStorage:
   backend: local
   s3:

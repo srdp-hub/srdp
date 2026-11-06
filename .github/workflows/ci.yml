@@ -23,9 +23,7 @@ jobs:
         with:
           version: "0.13.5"
           enable-cache: true
-      # The terraform_fmt/terraform_tflint hooks below (deploy/scaleway/)
-      # shell out to the `terraform` and `tflint` binaries directly, pre-commit
-      # doesn't install these itself the way it does its Python/JS hook envs.
+      # The terraform hooks call these binaries, and pre-commit does not install them.
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
         with:
           terraform_version: "1.17.0"
@@ -33,13 +31,7 @@ jobs:
       - uses: terraform-linters/setup-tflint@6ffdbaa3be476b3431f7275c26966ef32ff60337 # v6
         with:
           tflint_version: v0.65.0
-      # The local `ty` hook shells out to `uv run ty check`, which needs the
-      # project's own env synced first, pre-commit's own hook envs (ruff,
-      # gitleaks, terraform, yamllint) install themselves. The extras below
-      # are every optional dependency group src/srdp/ actually imports
-      # (duckdb/psycopg2/pydantic-settings, openlineage-python, fastapi,
-      # dbt-duckdb), without them ty can't resolve those imports and reports
-      # them as errors instead of checking the code that uses them.
+      # The ty hook runs in the project env, so it needs every extra src/srdp imports.
       - run: uv sync --locked --group dev --extra ducklake --extra openlineage --extra api --extra dbt
       # The gitleaks hook scans staged files, so it finds nothing on a CI checkout.
       # The secrets job below scans the commits of the pull request instead.

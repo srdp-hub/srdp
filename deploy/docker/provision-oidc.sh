@@ -64,6 +64,7 @@ admin_api() {
 edit_env() {
   ENV_EDIT_VALUE="$2" python3 - "$ENV_FILE" "$1" <<'EOF'
 import os
+import re
 import sys
 import tempfile
 
@@ -71,10 +72,11 @@ path, key = sys.argv[1:3]
 value = os.environ["ENV_EDIT_VALUE"]
 exists = os.path.exists(path)
 lines = open(path).read().splitlines() if exists else []
+match = re.compile(rf"\s*(export\s+)?{re.escape(key)}=").match
 if value == "-unset":
-    out = [line for line in lines if not line.startswith(f"{key}=")]
-elif any(line.startswith(f"{key}=") for line in lines):
-    out = [f"{key}={value}" if line.startswith(f"{key}=") else line for line in lines]
+    out = [line for line in lines if not match(line)]
+elif any(match(line) for line in lines):
+    out = [f"{key}={value}" if match(line) else line for line in lines]
 else:
     out = [*lines, f"{key}={value}"]
 fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(path)))
@@ -86,8 +88,13 @@ EOF
 }
 set_env() { edit_env "$1" "$2"; }
 unset_env() { edit_env "$1" "-unset"; }
+# Read KEY as Compose does: the last line wins, with an optional "export", " #" comment or quotes.
+get_env() {
+  sed -nE "s/^[[:space:]]*(export[[:space:]]+)?$1[[:space:]]*=//p" "$ENV_FILE" 2>/dev/null | tail -n1 \
+    | sed -E "s/[[:space:]]+#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^\"(.*)\"$/\1/; s/^'(.*)'$/\1/"
+}
 
-ADMIN_PAT=$(grep -m1 '^ZITADEL_ADMIN_PAT=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
+ADMIN_PAT=$(get_env ZITADEL_ADMIN_PAT)
 
 # A PAT from a Zitadel that was reset since (a wiped volume) is rejected, so mint a new one.
 # Any other answer, such as a stopped Zitadel, must not throw a valid PAT away.
@@ -192,7 +199,7 @@ CURRENT=$(admin_api GET "projects/$PROJECT_ID/apps/$APP_ID")
 
 # The app is the source of truth. When .env holds another client ID, issue a new secret and save both.
 APP_CLIENT_ID=$(echo "$CURRENT" | jq_get "d['app']['oidcConfig']['clientId']")
-ENV_CLIENT_ID=$(grep -m1 '^OAUTH2_PROXY_CLIENT_ID=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
+ENV_CLIENT_ID=$(get_env OAUTH2_PROXY_CLIENT_ID)
 if [ "$APP_CLIENT_ID" != "$ENV_CLIENT_ID" ]; then
   SECRET=$(admin_api POST "projects/$PROJECT_ID/apps/$APP_ID/oidc_config/_generate_client_secret" "{}" | jq_get "d['clientSecret']")
   set_env OAUTH2_PROXY_CLIENT_ID "$APP_CLIENT_ID"

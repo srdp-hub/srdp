@@ -10,7 +10,7 @@ from srdp.io.ducklake import load_extension, setup_ducklake
 logging.basicConfig(level=logging.INFO)
 
 conn = setup_ducklake()
-# The ui extension makes only the last directory of its data path, and nothing creates ~/.duckdb now that the extensions are baked in.
+# The ui extension creates only the last directory of this path.
 (Path.home() / ".duckdb" / "extension_data").mkdir(parents=True, exist_ok=True)
 load_extension(conn, "ui")
 conn.execute("CALL start_ui_server()")

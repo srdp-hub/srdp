@@ -110,10 +110,9 @@ def load_secrets(path: Path = SECRETS_FILE) -> tuple[LocalSecret, ...]:
 # Helm deletes a Secret that an older chart rendered, unless the live object says to keep it.
 _KEEP = {"helm.sh/resource-policy": "keep"}
 
+APPLY_ARGS = ("--server-side", "--field-manager=srdp-local-secrets", "--force-conflicts", "--filename", "-")
 
-# ---------------------------------------------------------------------------
-# Compose: deploy/docker/.env
-# ---------------------------------------------------------------------------
+_ENV_LINE = re.compile(r"(?P<prefix>\s*(?:export\s+)?)(?P<name>\w+)\s*=(?P<value>.*)")
 
 
 def fill_env(text: str, specs: tuple[LocalSecret, ...]) -> tuple[str, list[str]]:
@@ -128,21 +127,23 @@ def fill_env(text: str, specs: tuple[LocalSecret, ...]) -> tuple[str, list[str]]
     """
     wanted = {s.env: s for s in specs}
     lines = text.splitlines()
-    filled: list[str] = []
-    seen: set[str] = set()
+    # Compose uses the last line of a name, so only that line counts.
+    last: dict[str, tuple[int, re.Match[str]]] = {}
     for i, line in enumerate(lines):
-        name, sep, rest = line.partition("=")
-        name = name.strip()
-        if not sep or name not in wanted:
-            continue
-        seen.add(name)
-        # Compose reads " #" as the start of a comment, and a "#" inside a value as part of it.
-        if not re.split(r"\s#", rest, maxsplit=1)[0].strip():
-            lines[i] = f"{name}={wanted[name].make()}"
-            filled.append(name)
+        match = _ENV_LINE.match(line)
+        if match and match["name"] in wanted:
+            last[match["name"]] = (i, match)
+    filled: list[str] = []
     for name, spec in wanted.items():
-        if name not in seen:
+        if name not in last:
             lines.append(f"{name}={spec.make()}")
+            filled.append(name)
+            continue
+        i, match = last[name]
+        # Compose reads " #" as a comment, and a "#" inside a value as part of it.
+        value = re.split(r"\s#", match["value"], maxsplit=1)[0].strip()
+        if value in {"", '""', "''"}:
+            lines[i] = f"{match['prefix']}{name}={spec.make()}"
             filled.append(name)
     return "\n".join(lines) + "\n", filled
 
@@ -160,6 +161,7 @@ def write_env(env_path: Path, example_path: Path, specs: tuple[LocalSecret, ...]
     text = env_path.read_text() if env_path.exists() else example_path.read_text()
     new, filled = fill_env(text, specs)
     if env_path.exists() and not filled:
+        env_path.chmod(0o600)
         logger.info("%s already holds every credential.", env_path)
         return
     fd, tmp = tempfile.mkstemp(dir=env_path.parent, prefix=".env.")
@@ -168,11 +170,6 @@ def write_env(env_path: Path, example_path: Path, specs: tuple[LocalSecret, ...]
     Path(tmp).chmod(0o600)
     Path(tmp).replace(env_path)
     logger.info("Generated %s in %s.", ", ".join(filled), env_path)
-
-
-# ---------------------------------------------------------------------------
-# kind: Secrets in the cluster
-# ---------------------------------------------------------------------------
 
 
 def _kubectl(*args: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -220,7 +217,8 @@ def secret_manifest(name: str, namespace: str, existing: dict | None, updates: d
 
 
 def _apply(manifest: dict) -> None:
-    result = _kubectl("apply", "--filename", "-", stdin=json.dumps(manifest))
+    # A client-side apply copies the values into the last-applied annotation.
+    result = _kubectl("apply", *APPLY_ARGS, stdin=json.dumps(manifest))
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip())
 

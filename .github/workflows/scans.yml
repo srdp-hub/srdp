@@ -1,10 +1,6 @@
 name: Scans
 
-# Static scans of the files in the repository. They report and never fail the
-# check, because the first run is expected to show findings that need triage.
-# On a pull request the findings go to the job summary. On main and in the
-# daily run they go to the Security tab.
-# The image scans are in images.yml and the lockfile is covered by Dependabot.
+# Static scans of the repository. They report only, until the first findings are triaged.
 on:
   pull_request:
     paths: &scan-inputs

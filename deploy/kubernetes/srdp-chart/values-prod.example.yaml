@@ -12,12 +12,8 @@ global:
   # dagster.dagster-user-deployments.imagePullSecrets, the latter also
   # reaches run pods through includeConfigInLaunchedRuns.
 
-# No credentials in this file. Create the Secrets listed in deploy/secrets.toml
-# (srdp-postgres, srdp-zitadel, srdp-oauth2-proxy, srdp-dagster,
-# srdp-marquez, srdp-ducklake-pg-writer, srdp-ducklake-pg-reader) before installing, e.g. with External Secrets. srdp-postgres
-# also needs replication-password here, because of architecture: replication.
-# DuckLake runs on S3 below, so also create srdp-ducklake-s3-writer and
-# srdp-ducklake-s3-reader, each with the keys key-id and secret.
+# Create the Secrets in deploy/secrets.toml before you install.
+# srdp-postgres also needs replication-password, because of architecture: replication.
 
 # DuckLake's Parquet files in object storage. A ReadWriteOnce data volume would
 # pin every DuckLake pod to one node, so there is none: the Dagster code

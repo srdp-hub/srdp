@@ -156,6 +156,40 @@ def test_kind_generates_every_secret_it_reads(local: list[Manifest], local_s3: l
     assert refs <= GENERATED, refs - GENERATED
 
 
+def _kind_credential_vars(node: object) -> dict[str, set[tuple[str, str]]]:
+    """Map every container variable that reads a Secret key to the keys it reads, anywhere in the manifests."""
+    found: dict[str, set[tuple[str, str]]] = {}
+    if isinstance(node, list):
+        for item in node:
+            for var, refs in _kind_credential_vars(item).items():
+                found.setdefault(var, set()).update(refs)
+    elif isinstance(node, dict):
+        if "secretKeyRef" in (node.get("valueFrom") or {}):
+            ref = node["valueFrom"]["secretKeyRef"]
+            found[node["name"]] = {(ref["name"], ref["key"])}
+        for var, refs in _kind_credential_vars(list(node.values())).items():
+            found.setdefault(var, set()).update(refs)
+    return found
+
+
+def test_compose_and_kind_feed_vars_alike(local: list[Manifest], local_s3: list[Manifest]) -> None:
+    """Each Compose container variable with a credential reads the same Secret key on kind."""
+    by_env = {s.env: (s.secret, s.key) for s in load_secrets()}
+    compose = yaml.safe_load((REPO_ROOT / "deploy" / "docker" / "docker-compose.yml").read_text())["services"]
+    compose_vars: dict[str, set[tuple[str, str]]] = {}
+    for service in compose.values():
+        env = service.get("environment") or {}
+        pairs = env.items() if isinstance(env, dict) else (item.split("=", 1) for item in env)
+        for var, value in pairs:
+            for name in re.findall(r"\$\{(\w+)", str(value)):
+                if name in by_env:
+                    compose_vars.setdefault(var, set()).add(by_env[name])
+    kind_vars = _kind_credential_vars(local + local_s3)
+
+    assert compose_vars, "no Compose variable reads a credential"
+    assert {var: kind_vars.get(var) for var in compose_vars} == compose_vars
+
+
 def test_every_password_env_var_comes_from_a_secret(local: list[Manifest]) -> None:
     for name, spec in pod_specs(local):
         for container in containers(spec):

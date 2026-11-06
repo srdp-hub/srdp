@@ -108,8 +108,7 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
-      # The gate fails the check on a fixable critical CVE. The findings go to a file, and
-      # the next step turns them into annotations and a table in the job summary.
+      # Fails on a fixable critical CVE.
       - name: Scan
         if: github.event_name == 'pull_request'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0

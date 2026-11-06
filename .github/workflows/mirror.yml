@@ -1,14 +1,7 @@
 name: Mirror
 
-# Copies the third-party images in deploy/mirror.yaml from dhi.io to
-# ghcr.io/srdp-hub, together with their signed attestations (SBOM, provenance,
-# VEX). The copy keeps the digest of the source.
-# A pull request pulls and scans the new images without copying them. After the
-# merge to main, or on a manual run, the images are copied and checked.
-#
-# The pull needs the DHI_USERNAME and DHI_TOKEN repository secrets. The copy
-# uses the workflow token, which can write to a package this repository owns.
-# A new ghcr package is private, so the last step fails until it is public.
+# Copies the images in deploy/mirror.yaml from dhi.io to ghcr.io/srdp-hub, with their attestations.
+# A pull request only scans them. Needs the DHI_USERNAME and DHI_TOKEN secrets.
 on:
   pull_request:
     paths: &mirror-inputs
@@ -128,7 +121,9 @@ jobs:
         run: |
           tag="${SOURCE#*:}"
           tag="${tag%%@*}"
-          if ! regctl --config /dev/null image digest "ghcr.io/srdp-hub/$NAME:$tag" > /dev/null 2>&1; then
+          # Empty configs, so regctl does not reuse the logins above.
+          if ! DOCKER_CONFIG="$(mktemp -d)" REGCTL_CONFIG="$(mktemp -d)/config.json" \
+            regctl image digest "ghcr.io/srdp-hub/$NAME:$tag" > /dev/null 2>&1; then
             echo "::error::ghcr.io/srdp-hub/$NAME:$tag cannot be pulled without a login. Set the package to public in https://github.com/orgs/srdp-hub/packages/container/$NAME/settings, then re-run this job."
             exit 1
           fi
