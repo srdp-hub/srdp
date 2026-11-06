@@ -1,0 +1,43 @@
+// Draft. Red marks a single point of failure.
+views {
+
+  deployment view scaleway-overview {
+    title '3. Deployment / Scaleway networking (draft) / Overview'
+    description 'Dev on Scaleway after all build steps. The hub Project holds the shared parts. Red marks a single point of failure.'
+    include end-user, operator, internet, internet.*, scw-hub, scw-hub.*, scw-dev, scw-dev.*, scw-dev.pn.*, scw-dev.pn.kapsule.*
+    style scw-dev.pn.gateway, scw-dev.pn.router, scw-hub.headscale {
+      color red
+    }
+    autoLayout LeftRight
+  }
+
+  deployment view scaleway-ingress {
+    title '3. Deployment / Scaleway networking (draft) / Ingress and login'
+    description 'One Traefik with a public and a private load balancer. Operator routes only sit on the admin entrypoint.'
+    include end-user, operator, scw-dev.lb-public, scw-dev.pn.router, scw-dev.pn.lb-private, scw-dev.pn.kapsule.system.srdp-ns.*, scw-dev.pn.db.*
+    style scw-dev.pn.router {
+      color red
+    }
+    autoLayout LeftRight
+  }
+
+  deployment view scaleway-operators {
+    title '3. Deployment / Scaleway networking (draft) / Operator access'
+    description 'Operators reach the Kapsule API and the operator tools over the Headscale mesh, or over one break-glass /32.'
+    include operator, scw-hub.headscale, scw-dev.pn.router, scw-dev.pn.gateway, scw-dev.api, scw-dev.cockpit, scw-dev.pn.lb-private, scw-dev.pn.kapsule.system.srdp-ns.traefik, scw-dev.pn.kapsule.system.srdp-ns.dagster-ui
+    style scw-dev.pn.gateway, scw-dev.pn.router, scw-hub.headscale {
+      color red
+    }
+    autoLayout LeftRight
+  }
+
+  deployment view scaleway-outbound {
+    title '3. Deployment / Scaleway networking (draft) / Outbound traffic'
+    description 'All outbound traffic leaves through the Public Gateway with one fixed IP. The egress allowlist follows in #87.'
+    include scw-dev.pn.kapsule, scw-dev.pn.kapsule.system.flux-ns.flux, scw-dev.pn.kapsule.system.eso-ns.eso, scw-dev.pn.kapsule.system.srdp-ns.traefik, scw-dev.pn.gateway, scw-dev.api, scw-dev.secrets, scw-dev.dns, scw-dev.buckets, scw-hub.registry, internet, internet.*
+    style scw-dev.pn.gateway {
+      color red
+    }
+    autoLayout LeftRight
+  }
+}
