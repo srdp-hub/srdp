@@ -64,7 +64,6 @@ admin_api() {
 edit_env() {
   ENV_EDIT_VALUE="$2" python3 - "$ENV_FILE" "$1" <<'EOF'
 import os
-import re
 import sys
 import tempfile
 
@@ -72,11 +71,10 @@ path, key = sys.argv[1:3]
 value = os.environ["ENV_EDIT_VALUE"]
 exists = os.path.exists(path)
 lines = open(path).read().splitlines() if exists else []
-match = re.compile(rf"\s*(export\s+)?{re.escape(key)}=").match
 if value == "-unset":
-    out = [line for line in lines if not match(line)]
-elif any(match(line) for line in lines):
-    out = [f"{key}={value}" if match(line) else line for line in lines]
+    out = [line for line in lines if not line.startswith(f"{key}=")]
+elif any(line.startswith(f"{key}=") for line in lines):
+    out = [f"{key}={value}" if line.startswith(f"{key}=") else line for line in lines]
 else:
     out = [*lines, f"{key}={value}"]
 fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(path)))
@@ -88,12 +86,8 @@ EOF
 }
 set_env() { edit_env "$1" "$2"; }
 unset_env() { edit_env "$1" "-unset"; }
-# Read KEY as Compose does: the last line wins, with an optional "export", " #" comment or quotes.
-get_env() {
-  [ -f "$ENV_FILE" ] || return 0
-  sed -nE "s/^[[:space:]]*(export[[:space:]]+)?$1[[:space:]]*=//p" "$ENV_FILE" 2>/dev/null | tail -n1 \
-    | sed -E "s/[[:space:]]+#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^\"(.*)\"$/\1/; s/^'(.*)'$/\1/"
-}
+# The last line wins, as in Compose.
+get_env() { grep "^$1=" "$ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2- || true; }
 
 ADMIN_PAT=$(get_env ZITADEL_ADMIN_PAT)
 
