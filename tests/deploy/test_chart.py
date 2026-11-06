@@ -15,6 +15,7 @@ import yaml
 
 from srdp.setup.bootstrap import DATABASE_WAIT_SECONDS, DatabaseTarget
 from srdp.setup.garage import GARAGE_WAIT_SECONDS
+from srdp.setup.local_secrets import load_secrets
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CHART_DIR = REPO_ROOT / "deploy" / "kubernetes" / "srdp-chart"
@@ -129,55 +130,30 @@ def test_ducklake_readers_and_writers_share_one_data_volume(local: list[Manifest
     assert env["DUCKLAKE_DATA_PATH"] in mount_paths
 
 
-# Development credentials that used to live in values.yaml. They may only
-# appear in the kind-only Secrets that templates/local-secrets.yaml renders.
-DEV_CREDENTIALS = (
-    "srdpTest123",
-    "51a69a373f45c60d2ae08c48bb89d03e",
-    "VQMve4Thh857uplEKmN5nlcgSedaGyYQySSDYyoMgfk4d1PS8k6zUDSdhOdo3IVW",
-    "6wdizcEbBnztdVvVoFwbSzHBfWYdBJshIOP6VlsxrDe5c1zSUQMvgDa6PfnA24BT",
-    "VcZnfAWYCgMfNjRLvM1byUaAUs2jSvSE",
-    "1" * 64,
-    "2" * 64,
-    "3" * 64,
-    "srdpLocalGarageAdmin",
-)
-
-LOCAL_SECRETS = {
-    "srdp-postgres",
-    "srdp-zitadel",
-    "srdp-oauth2-proxy",
-    "srdp-dagster-postgresql",
-    "srdp-marquez",
-    "srdp-ducklake-pg-writer",
-    "srdp-ducklake-pg-reader",
-    "srdp-ducklake-s3-writer",
-    "srdp-ducklake-s3-reader",
-    "srdp-garage",
-}
+GENERATED = {(s.secret, s.key) for s in load_secrets()}
 
 
-def test_values_yaml_holds_no_credentials() -> None:
-    text = (CHART_DIR / "values.yaml").read_text()
-    for credential in DEV_CREDENTIALS:
-        assert credential not in text
+@pytest.mark.parametrize("values_files", [("values.yaml",), ("values.yaml", "values-local.yaml")])
+def test_chart_renders_no_platform_secret(values_files: tuple[str, ...]) -> None:
+    """The Secrets come from outside the chart, so a render holds none of them."""
+    manifests = render(*values_files)
+    names = {m["metadata"]["name"] for m in manifests if m["kind"] == "Secret"}
+    assert not names & {name for name, _ in GENERATED}
 
 
-def test_default_render_holds_no_credentials_and_no_local_secrets() -> None:
-    manifests = render("values.yaml")
-    text = yaml.safe_dump_all(manifests)
-    for credential in DEV_CREDENTIALS:
-        assert credential not in text
-    secret_names = {m["metadata"]["name"] for m in manifests if m["kind"] == "Secret"}
-    assert not secret_names & LOCAL_SECRETS
+def _secret_refs(node: object) -> set[tuple[str, str]]:
+    if isinstance(node, dict):
+        refs = {(node["secretKeyRef"]["name"], node["secretKeyRef"]["key"])} if "secretKeyRef" in node else set()
+        return refs.union(*(_secret_refs(v) for v in node.values()))
+    if isinstance(node, list):
+        return set().union(*(_secret_refs(v) for v in node))
+    return set()
 
 
-def test_local_render_holds_credentials_only_in_local_secrets(local: list[Manifest]) -> None:
-    rest = [m for m in local if not (m["kind"] == "Secret" and m["metadata"]["name"] in LOCAL_SECRETS)]
-    text = yaml.safe_dump_all(rest)
-    for credential in DEV_CREDENTIALS:
-        assert credential not in text
-    assert {m["metadata"]["name"] for m in local if m["kind"] == "Secret"} >= LOCAL_SECRETS
+def test_kind_generates_every_secret_it_reads(local: list[Manifest], local_s3: list[Manifest]) -> None:
+    """Every srdp-* Secret key a kind pod reads is one that `just local-secrets` generates."""
+    refs = {ref for ref in _secret_refs(local + local_s3) if ref[0].startswith("srdp-")}
+    assert refs <= GENERATED, refs - GENERATED
 
 
 def test_every_password_env_var_comes_from_a_secret(local: list[Manifest]) -> None:
@@ -371,46 +347,6 @@ def test_chart_domain_defaults_match_srdp_toml() -> None:
     )
 
 
-LOCAL_SECRET_READERS = ["marquez", "api", "duckdb-ui", "marimo", "streamlit"]
-SUBCHART_SECRET_READERS = [
-    "srdp-oauth2-proxy",
-    "srdp-zitadel",
-    "srdp-dagster-webserver",
-    "srdp-dagster-daemon",
-    "srdp-dagster-user-deployments-srdp-etl",
-]
-
-
-def pod_annotations(manifests: list[Manifest], name: str) -> dict[str, str]:
-    """Return the pod template annotations of the Deployment with this name."""
-    return find(manifests, "Deployment", name)["spec"]["template"]["metadata"].get("annotations") or {}
-
-
-@pytest.mark.parametrize("name", LOCAL_SECRET_READERS)
-def test_local_secret_change_rolls_chart_pods(local: list[Manifest], name: str) -> None:
-    """A secretKeyRef does not change the pod spec, so a checksum annotation rolls the pod instead."""
-    changed = render("values.yaml", "values-local.yaml", set_values=("localSecrets.marquez.dbPassword=changed",))
-    before = pod_annotations(local, name)["checksum/local-secrets"]
-    assert pod_annotations(changed, name)["checksum/local-secrets"] != before
-
-
-def test_default_render_has_no_local_secrets_checksum() -> None:
-    manifests = render("values.yaml")
-    for name in LOCAL_SECRET_READERS:
-        assert "checksum/local-secrets" not in pod_annotations(manifests, name), name
-
-
-@pytest.mark.parametrize("name", SUBCHART_SECRET_READERS)
-def test_local_deploy_rolls_subchart_pods_on_local_secret_change(name: str) -> None:
-    """Subcharts cannot hash the parent's Secrets, so local-deploy passes the checksum in."""
-    manifests = render(
-        "values.yaml",
-        "values-local.yaml",
-        set_values=tuple(just_evaluate("local_secrets_args", "--set", "local_secrets_sum", "abc")),
-    )
-    assert pod_annotations(manifests, name)["checksum/local-secrets"] == "abc"
-
-
 def test_setup_job_outlives_its_success(local: list[Manifest]) -> None:
     """Its logs are the evidence the troubleshooting docs point to, so only the next hook run replaces it."""
     job = find(local, "Job", "srdp-setup")
@@ -519,10 +455,10 @@ def test_s3_setup_job_gives_garage_exactly_the_keys_the_consumers_get(local_s3: 
     env = find(local_s3, "Job", "srdp-setup")["spec"]["template"]["spec"]["containers"][0]["env"]
     refs = {e["name"]: e["valueFrom"]["secretKeyRef"] for e in env if "valueFrom" in e}
     assert refs["SETUP_GARAGE__ADMIN_TOKEN"] == {"name": "srdp-garage", "key": "admin-token"}
-    assert refs["SETUP_GARAGE__WRITER_KEY_ID"] == {"name": WRITER_KEY, "key": "DUCKLAKE_S3_KEY_ID"}
-    assert refs["SETUP_GARAGE__WRITER_SECRET"] == {"name": WRITER_KEY, "key": "DUCKLAKE_S3_SECRET"}
-    assert refs["SETUP_GARAGE__READER_KEY_ID"] == {"name": READER_KEY, "key": "DUCKLAKE_S3_KEY_ID"}
-    assert refs["SETUP_GARAGE__READER_SECRET"] == {"name": READER_KEY, "key": "DUCKLAKE_S3_SECRET"}
+    assert refs["SETUP_GARAGE__WRITER_KEY_ID"] == {"name": WRITER_KEY, "key": "key-id"}
+    assert refs["SETUP_GARAGE__WRITER_SECRET"] == {"name": WRITER_KEY, "key": "secret"}
+    assert refs["SETUP_GARAGE__READER_KEY_ID"] == {"name": READER_KEY, "key": "key-id"}
+    assert refs["SETUP_GARAGE__READER_SECRET"] == {"name": READER_KEY, "key": "secret"}
     assert not [e["name"] for e in env if e["name"].startswith("GARAGE_")]
 
 
@@ -1039,7 +975,7 @@ def test_zitadel_never_gets_the_postgres_superuser(case: str) -> None:
     for kind, name in ZITADEL_PODS:
         spec = find(manifests, kind, name)["spec"]["template"]["spec"]
         dump = yaml.safe_dump(spec)
-        assert "postgres-password" not in dump, name
+        assert "srdp-postgres" not in dump, name
         assert "db-ssl-admin-crt" not in dump, name
         assert "ADMIN_PASSWORD" not in dump, name
         assert "postgres-cert" not in dump, name  # holds the server's private key

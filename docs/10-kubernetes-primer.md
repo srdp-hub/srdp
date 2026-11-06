@@ -121,7 +121,7 @@ What sits underneath is different.
 | Load balancer | No real external IP, ports 80 and 443 on your laptop | A real load balancer with a public IP |
 | PVC | Folder on your laptop | Block Storage volume |
 | TLS | mkcert certificates | Let's Encrypt |
-| Secrets | From `values-local.yaml` | From Scaleway Secret Manager through External Secrets |
+| Secrets | Generated once by `just local-secrets` | From Scaleway Secret Manager through External Secrets |
 | Installing | `helm upgrade --install` from your laptop | Flux pulls it from Git |
 
 If something works in kind, it usually works in Kapsule too.

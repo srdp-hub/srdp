@@ -25,11 +25,6 @@ local_domain_args := domain_args + " --set-json 'zitadel.login.customConfigmapCo
 # Every hostname the stack serves, for the mkcert certificates. The wildcard
 # also covers a client project's own hostnames under the domain.
 domain_hosts := '"' + domain + '" "*.' + domain + '" "auth.' + domain + '" "marimo.' + domain + '" "dagster.' + domain + '" "streamlit.' + domain + '" "marquez.' + domain + '" "api.' + domain + '" "duckdb.' + domain + '"'
-# The chart rolls its own pods when a local Secret changes (srdp.localSecretsChecksum).
-# Subcharts cannot hash the parent's Secrets, so local-deploy passes them a hash of
-# values-local.yaml, which holds every local Secret value.
-local_secrets_sum := `uv run --no-project python -c 'import hashlib, sys; sys.stdout.write(hashlib.sha256(open("deploy/kubernetes/srdp-chart/values-local.yaml", "rb").read()).hexdigest())'`
-local_secrets_args := "--set-string 'oauth2-proxy.podAnnotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'dagster.dagsterWebserver.annotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'dagster.dagsterDaemon.annotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'dagster.dagster-user-deployments.deployments[0].annotations.checksum/local-secrets=" + local_secrets_sum + "' --set-string 'zitadel.podAnnotations.checksum/local-secrets=" + local_secrets_sum + "'"
 # Staged prod rollout: apps that every partial stage leaves off.
 prod_apps_off := "--set dagster.enabled=false --set marimo.enabled=false --set quarto.enabled=false --set streamlit.enabled=false --set api.enabled=false --set duckdbUi.enabled=false --set marquez.enabled=false"
 prod_traefik_only_args := "--set zitadel.enabled=false --set zitadel-db.enabled=false --set oauth2-proxy.enabled=false --set setup.enabled=false --set hub.enabled=false " + prod_apps_off
@@ -106,13 +101,26 @@ chart-deps:
 		while read -r name url; do helm repo add --force-update "srdp-$name" "$url" >/dev/null; done && \
 		helm dependency build
 
+# Generate the credentials of the kind stack as Secrets, once. Existing values stay.
+local-secrets: kind-up
+	kubectl create namespace {{namespace}} --dry-run=client -o yaml | kubectl apply -f -
+	uv run --no-project python src/srdp/setup/local_secrets.py kind {{namespace}}
+
+# Store the OIDC client from the Zitadel console in the kind stack and restart oauth2-proxy
+local-oidc-client:
+	uv run --no-project python src/srdp/setup/local_secrets.py oidc {{namespace}}
+
+# Print the generated password of the Zitadel admin in the kind stack
+local-admin-password:
+	@kubectl get secret srdp-zitadel --namespace {{namespace}} --output jsonpath='{.data.admin-password}' | base64 -d; echo
+
 # Deploy the full stack to local kind via Helm (extra args go to helm, e.g. -f srdp-chart/values-local-s3.yaml)
-local-deploy *args: kind-load-images chart-deps
-	cd deploy/kubernetes && helm upgrade --install srdp srdp-chart --namespace {{namespace}} --create-namespace -f srdp-chart/values.yaml -f srdp-chart/values-local.yaml {{registry_args}} {{local_domain_args}} {{local_secrets_args}} {{args}}
+local-deploy *args: kind-load-images chart-deps local-secrets
+	cd deploy/kubernetes && helm upgrade --install srdp srdp-chart --namespace {{namespace}} --create-namespace -f srdp-chart/values.yaml -f srdp-chart/values-local.yaml {{registry_args}} {{local_domain_args}} {{args}}
 	@echo "Reading Traefik's assigned ClusterIP to wire it into oauth2-proxy's hostAliases..."
 	@TRAEFIK_IP=$(kubectl get svc srdp-traefik -n {{namespace}} -o jsonpath='{.spec.clusterIP}'); \
 	echo "Traefik ClusterIP: $TRAEFIK_IP"; \
-	cd deploy/kubernetes && helm upgrade srdp srdp-chart --namespace {{namespace}} -f srdp-chart/values.yaml -f srdp-chart/values-local.yaml {{registry_args}} {{local_domain_args}} {{local_secrets_args}} {{args}} --set-string "oauth2-proxy.hostAliases[0].ip=$TRAEFIK_IP"
+	cd deploy/kubernetes && helm upgrade srdp srdp-chart --namespace {{namespace}} -f srdp-chart/values.yaml -f srdp-chart/values-local.yaml {{registry_args}} {{local_domain_args}} {{args}} --set-string "oauth2-proxy.hostAliases[0].ip=$TRAEFIK_IP"
 
 # Uninstall the local Helm release and its PVCs
 local-delete:
@@ -123,13 +131,17 @@ local-delete:
 	kubectl delete jobs --all -n {{namespace}} || true
 	kubectl delete pvc --all -n {{namespace}} || true
 
+# Generate the empty credentials in deploy/docker/.env, once. Values you set stay.
+docker-secrets:
+	uv run --no-project python src/srdp/setup/local_secrets.py compose deploy/docker/.env deploy/docker/.env.example
+
 # Start the Docker Compose stack (local dev). Attached by default; pass -d to detach.
 # Builds from source and tags the platform images dev, whatever SRDP_VERSION says.
-docker-up *args:
+docker-up *args: docker-secrets
 	cd deploy/docker && SRDP_UID=$(id -u) SRDP_GID=$(id -g) SRDP_DOMAIN='{{domain}}' SRDP_VERSION=dev docker compose up --build {{args}}
 
 # Start the Docker Compose stack with the published platform images of a release, e.g. `just docker-up-release 0.4.0 -d`.
-docker-up-release version *args:
+docker-up-release version *args: docker-secrets
 	cd deploy/docker && SRDP_DOMAIN='{{domain}}' SRDP_VERSION='{{version}}' docker compose pull srdp-setup dagster-webserver dagster-daemon duckdb-ui hub
 	cd deploy/docker && SRDP_UID=$(id -u) SRDP_GID=$(id -g) SRDP_DOMAIN='{{domain}}' SRDP_VERSION='{{version}}' docker compose up {{args}}
 

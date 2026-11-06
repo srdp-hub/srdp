@@ -67,18 +67,19 @@ just prod-use-kubeconfig   # from repo root
 - The values files hold no passwords or keys.
   Before you install, create these Secrets in the `srdp` namespace, for example with External Secrets.
   Every consumer reads them by these fixed names.
+  `deploy/secrets.toml` lists the same Secrets and keys, with the format of each value.
 
   | Secret | Keys |
   |:---|:---|
-  | `srdp-postgres` | `postgres-password` (superuser), `replication-password` (replication only) |
+  | `srdp-postgres` | `password` (superuser), `replication-password` (replication only) |
   | `srdp-zitadel` | `masterkey`, `db-password` (the `zitadel` database role), `admin-password` (first admin) |
   | `srdp-oauth2-proxy` | `client-id`, `client-secret`, `cookie-secret` |
-  | `srdp-dagster-postgresql` | `postgresql-password` |
+  | `srdp-dagster` | `postgresql-password` |
   | `srdp-marquez` | `db-password` |
   | `srdp-ducklake-pg-writer` | `password` (the `ducklake_writer` role that Dagster uses) |
   | `srdp-ducklake-pg-reader` | `password` (the read-only `ducklake_reader` role of the four apps) |
-  | `srdp-ducklake-s3-writer` | `DUCKLAKE_S3_KEY_ID`, `DUCKLAKE_S3_SECRET` (only with `ducklakeStorage.backend: s3`) |
-  | `srdp-ducklake-s3-reader` | `DUCKLAKE_S3_KEY_ID`, `DUCKLAKE_S3_SECRET` (only with `ducklakeStorage.backend: s3`) |
+  | `srdp-ducklake-s3-writer` | `key-id`, `secret` (only with `ducklakeStorage.backend: s3`) |
+  | `srdp-ducklake-s3-reader` | `key-id`, `secret` (only with `ducklakeStorage.backend: s3`) |
 
 - The DuckLake catalog has two Postgres roles.
   Dagster writes the catalog as `ducklake_writer`, which owns the `ducklake` database.
@@ -90,7 +91,7 @@ just prod-use-kubeconfig   # from repo root
 
 - Zitadel never gets the Postgres superuser password.
   The `srdp-setup` Job creates the `zitadel` role from `db-password` in `srdp-zitadel`, and Zitadel logs in with that same value.
-- The `srdp-setup` Job reads `srdp-zitadel`, `srdp-dagster-postgresql`, `srdp-marquez` and the two `srdp-ducklake-pg-*` Secrets, and applies them to their roles on every install and upgrade.
+- The `srdp-setup` Job reads `srdp-zitadel`, `srdp-dagster`, `srdp-marquez` and the two `srdp-ducklake-pg-*` Secrets, and applies them to their roles on every install and upgrade.
   The Job also gives `ducklake_reader` its read rights, makes `ducklake_writer` the owner of an older catalog, and creates the catalog tables once.
   Set `setup.manageDatabases: false` when someone else creates the databases and roles.
   The Job then only checks that it can connect and that the databases exist, and it creates the catalog tables as `ducklake_writer`.

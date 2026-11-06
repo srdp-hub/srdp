@@ -8,41 +8,6 @@ traefik:
       defaultCertificate:
         secretName: custom-ingress-cert
 
-# Development credentials for kind, rendered into Secrets by
-# templates/local-secrets.yaml. Never reuse them outside a local cluster.
-localSecrets:
-  enabled: true
-  postgres:
-    postgresPassword: srdpTest123
-  zitadel:
-    masterkey: "51a69a373f45c60d2ae08c48bb89d03e" # Must be 32 chars
-    dbPassword: srdpTest123
-    adminPassword: "srdpTest123!"
-  oauth2Proxy:
-    clientID: "362914460869919313"
-    clientSecret: "6wdizcEbBnztdVvVoFwbSzHBfWYdBJshIOP6VlsxrDe5c1zSUQMvgDa6PfnA24BT"
-    cookieSecret: "VcZnfAWYCgMfNjRLvM1byUaAUs2jSvSE" # Must be 32 chars
-  dagster:
-    dbPassword: srdpTest123
-  marquez:
-    dbPassword: srdpTest123
-  # The DuckLake catalog roles: Dagster writes, the apps read.
-  ducklakePg:
-    writer: srdpTest123
-    reader: srdpTest123
-  # DuckLake on S3 against the bundled Garage (values-local-s3.yaml). Garage
-  # wants a key id of GK plus 24 hex characters and a 64-hex-character secret.
-  ducklakeS3:
-    writer:
-      keyId: GK000000000000000000000001
-      secret: "1111111111111111111111111111111111111111111111111111111111111111"
-    reader:
-      keyId: GK000000000000000000000002
-      secret: "2222222222222222222222222222222222222222222222222222222222222222"
-  garage:
-    rpcSecret: "3333333333333333333333333333333333333333333333333333333333333333" # 64 hex characters
-    adminToken: srdpLocalGarageAdmin
-
 zitadel-db:
   primary:
     # Local Docker Desktop can be noisy; relax probes to avoid unnecessary restarts.
@@ -180,13 +145,13 @@ dagster:
                 valueFrom:
                   secretKeyRef:
                     name: srdp-ducklake-s3-writer
-                    key: DUCKLAKE_S3_KEY_ID
+                    key: key-id
                     optional: true
               - name: DUCKLAKE_S3_SECRET
                 valueFrom:
                   secretKeyRef:
                     name: srdp-ducklake-s3-writer
-                    key: DUCKLAKE_S3_SECRET
+                    key: secret
                     optional: true
             command:
               - sh
@@ -281,13 +246,13 @@ dagster:
             valueFrom:
               secretKeyRef:
                 name: srdp-ducklake-s3-writer
-                key: DUCKLAKE_S3_KEY_ID
+                key: key-id
                 optional: true
           - name: DUCKLAKE_S3_SECRET
             valueFrom:
               secretKeyRef:
                 name: srdp-ducklake-s3-writer
-                key: DUCKLAKE_S3_SECRET
+                key: secret
                 optional: true
           # Dev only, see the OPENSSL_armcap note in docker-compose.override.yml.
           - name: OPENSSL_armcap

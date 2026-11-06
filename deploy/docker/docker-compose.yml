@@ -1,3 +1,6 @@
+# The project groups the containers for `docker compose`. Volumes and networks have fixed names below.
+name: srdp
+
 # Least privilege for every service SRDP builds or runs without a data directory of
 # its own: no root filesystem writes, no capabilities and no privilege escalation.
 # The DuckDB extensions are baked into the images (/opt/duckdb/extensions), so
@@ -79,8 +82,8 @@ services:
       # Setup stops before it changes anything when this volume belongs to another user.
       SETUP_DATA_DIR: /data/ducklake
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
-      SETUP_PASSWORDS__ZITADEL: "${ZITADEL_DATABASE_POSTGRES_USER_PASSWORD}"
-      SETUP_PASSWORDS__DAGSTER: "${DAGSTER_PG_PASSWORD}"
+      SETUP_PASSWORDS__ZITADEL: "${ZITADEL_DB_PASSWORD}"
+      SETUP_PASSWORDS__DAGSTER: "${DAGSTER_POSTGRESQL_PASSWORD}"
       SETUP_PASSWORDS__MARQUEZ: "${MARQUEZ_DB_PASSWORD}"
       SETUP_PASSWORDS__DUCKLAKE_WRITER: "${DUCKLAKE_PG_WRITER_PASSWORD}"
       SETUP_PASSWORDS__DUCKLAKE_READER: "${DUCKLAKE_PG_READER_PASSWORD}"
@@ -155,8 +158,9 @@ services:
     extends:
       service: zitadel-init
     container_name: srdp-zitadel
-    command: 'start-from-setup --masterkey "${ZITADEL_MASTERKEY}"'
+    command: start-from-setup --masterkeyFromEnv
     environment:
+      ZITADEL_MASTERKEY: "${ZITADEL_MASTERKEY}"
       ZITADEL_EXTERNALPORT: 443
       ZITADEL_EXTERNALSECURE: true
       ZITADEL_TLS_ENABLED: true
@@ -190,9 +194,9 @@ services:
       ZITADEL_EXTERNALDOMAIN: auth.${SRDP_DOMAIN:?set it in srdp.toml, use just docker-up}
       ZITADEL_LOGSTORE_ACCESS_STDOUT_ENABLED: true
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: false
-      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: "${ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD}"
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: "${ZITADEL_ADMIN_PASSWORD}"
       ZITADEL_DATABASE_POSTGRES_HOST: postgres
-      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: "${ZITADEL_DATABASE_POSTGRES_USER_PASSWORD}"
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: "${ZITADEL_DB_PASSWORD}"
       ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH: /current-dir/login-client.pat
       ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME: login-client
       ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_NAME: Automatically Initialized IAM Login Client
@@ -265,11 +269,11 @@ services:
       # access token this same session hands the user via /token) skip the
       # cookie/redirect flow entirely, for calling the API outside a browser.
       - --skip-jwt-bearer-tokens=true
-      - --extra-jwt-issuers=https://auth.${SRDP_DOMAIN:?set it in srdp.toml, use just docker-up}=${OIDC_CLIENT_ID}
+      - --extra-jwt-issuers=https://auth.${SRDP_DOMAIN:?set it in srdp.toml, use just docker-up}=${OAUTH2_PROXY_CLIENT_ID}
     environment:
-      OAUTH2_PROXY_CLIENT_ID: "${OIDC_CLIENT_ID}"
-      OAUTH2_PROXY_CLIENT_SECRET: "${OIDC_CLIENT_SECRET}"
-      OAUTH2_PROXY_COOKIE_SECRET: "${OIDC_COOKIE_SECRET}"
+      OAUTH2_PROXY_CLIENT_ID: "${OAUTH2_PROXY_CLIENT_ID}"
+      OAUTH2_PROXY_CLIENT_SECRET: "${OAUTH2_PROXY_CLIENT_SECRET}"
+      OAUTH2_PROXY_COOKIE_SECRET: "${OAUTH2_PROXY_COOKIE_SECRET}"
       OAUTH2_PROXY_COOKIE_CSRF_PER_REQUEST: true
       OAUTH2_PROXY_COOKIE_CSRF_EXPIRE: '5m'
     depends_on:
@@ -295,7 +299,7 @@ services:
       DAGSTER_HOME: /app/config/dagster
       DAGSTER_PG_HOST: postgres
       DAGSTER_PG_USER: dagster
-      DAGSTER_PG_PASSWORD: "${DAGSTER_PG_PASSWORD}"
+      DAGSTER_PG_PASSWORD: "${DAGSTER_POSTGRESQL_PASSWORD}"
       DAGSTER_PG_DB: dagster
     networks:
       - app
@@ -327,7 +331,7 @@ services:
       DAGSTER_HOME: /app/config/dagster
       DAGSTER_PG_HOST: postgres
       DAGSTER_PG_USER: dagster
-      DAGSTER_PG_PASSWORD: "${DAGSTER_PG_PASSWORD}"
+      DAGSTER_PG_PASSWORD: "${DAGSTER_POSTGRESQL_PASSWORD}"
       DAGSTER_PG_DB: dagster
     networks:
       - db
@@ -356,7 +360,7 @@ services:
     environment:
       DAGSTER_PG_HOST: postgres
       DAGSTER_PG_USER: dagster
-      DAGSTER_PG_PASSWORD: "${DAGSTER_PG_PASSWORD}"
+      DAGSTER_PG_PASSWORD: "${DAGSTER_POSTGRESQL_PASSWORD}"
       DAGSTER_PG_DB: dagster
       DAGSTER_CURRENT_IMAGE: srdp-dagster-code
       DUCKLAKE_PG_HOST: postgres

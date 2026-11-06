@@ -55,7 +55,7 @@ icon: lucide/life-buoy
 
 ### Dagster or Zitadel fails with `password authentication failed`
 
-- Cause: The role's password doesn't match its Secret, for example `dagster` and `srdp-dagster-postgresql` (key `postgresql-password`, locally `localSecrets.dagster.dbPassword` in `values-local.yaml`), `zitadel` and `srdp-zitadel` (key `db-password`, locally `localSecrets.zitadel.dbPassword`), or `ducklake_writer` and `ducklake_reader` with `srdp-ducklake-pg-writer` and `srdp-ducklake-pg-reader` (key `password`, locally `localSecrets.ducklakePg`), or the `srdp-setup` Job that creates and re-syncs it didn't run or failed.
+- Cause: The role's password doesn't match its Secret, for example `dagster` and `srdp-dagster` (key `postgresql-password`), `zitadel` and `srdp-zitadel` (key `db-password`), or `ducklake_writer` and `ducklake_reader` with `srdp-ducklake-pg-writer` and `srdp-ducklake-pg-reader` (key `password`), or the `srdp-setup` Job that creates and re-syncs it didn't run or failed.
 - Check the Job's logs with `kubectl -n srdp logs job/srdp-setup`.
   The Job stays until the next install or upgrade, so its logs show the last run, failed or successful.
   A missing `SETUP_PASSWORDS__<ROLE>` fails the Job before it touches Postgres.

@@ -6,6 +6,32 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 
 ### Added
 
+- The local stacks generate their own credentials, so no password lives in a tracked file.
+  `just docker-up` fills every empty credential in `deploy/docker/.env` once, and `just local-deploy` creates the kind Secrets once. Values that exist stay.
+  `deploy/secrets.toml` lists every credential with its Secret, key, `.env` variable and format, so a new component adds its entries there.
+  The chart no longer renders `localSecrets`. On an existing kind cluster, `just local-deploy` keeps the old Secrets and their values.
+  A `.env` variable is now the Secret name without `srdp-` plus the key, so Compose and Kubernetes use one name for each credential.
+
+### Changed
+
+- Credential names are the same on both targets. Rename these before you upgrade.
+
+  | Before | Now |
+  |:---|:---|
+  | `.env` `ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD` | `ZITADEL_ADMIN_PASSWORD` |
+  | `.env` `ZITADEL_DATABASE_POSTGRES_USER_PASSWORD` | `ZITADEL_DB_PASSWORD` |
+  | `.env` `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_COOKIE_SECRET` | `OAUTH2_PROXY_CLIENT_ID`, `OAUTH2_PROXY_CLIENT_SECRET`, `OAUTH2_PROXY_COOKIE_SECRET` |
+  | `.env` `DAGSTER_PG_PASSWORD` | `DAGSTER_POSTGRESQL_PASSWORD` |
+  | Secret `srdp-dagster-postgresql` | `srdp-dagster` |
+  | Secret `srdp-postgres`, key `postgres-password` | key `password` |
+  | Secrets `srdp-ducklake-s3-writer` and `-reader`, keys `DUCKLAKE_S3_KEY_ID`, `DUCKLAKE_S3_SECRET` | keys `key-id`, `secret` |
+
+  An old `.env` name that stays gets a new generated value under the new name, and Zitadel keeps its first admin password.
+  On an existing kind cluster, run `just kind-down` first, because the Garage keys and the Zitadel admin do not follow a new value.
+- The Compose project is now named `srdp` in `docker-compose.yml`, and `COMPOSE_PROJECT_NAME` is gone from `.env`.
+  Volumes and networks keep their names, so no data moves.
+  Before you upgrade, stop the old stack with `docker compose -p local down` in `deploy/docker`, and remove `COMPOSE_PROJECT_NAME` from your `.env`.
+  `just local-admin-password` prints the Zitadel admin password, and `just local-oidc-client` stores the OIDC client from the Zitadel console.
 - A `LICENSE` file with the Mozilla Public License 2.0, and a `CODEOWNERS` file that asks the core maintainers to review every change.
   SRDP moves from Apache-2.0 to MPL-2.0. A changed MPL file that someone distributes must stay open, and code next to it can keep its own license.
 - Hardened images for everything SRDP builds, including the example project's code location, API, marimo and streamlit images. They build on Docker Hardened Images, run as uid 65532 and scan clean in the Images workflow.
@@ -76,7 +102,7 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 - The apps that run user SQL (DuckDB UI, marimo, Streamlit, API) open the DuckLake catalog as a read-only Postgres role, `ducklake_reader`, and Dagster as the owner role, `ducklake_writer`.
   Before, all of them used the Postgres superuser.
   `srdp-setup` creates both roles, hands an older catalog to the owner, limits `CONNECT` on each managed database to its own roles, and creates the catalog tables once.
-  To upgrade, add `DUCKLAKE_PG_WRITER_PASSWORD` and `DUCKLAKE_PG_READER_PASSWORD` to `deploy/docker/.env`, or create the Secrets `srdp-ducklake-pg-writer` and `srdp-ducklake-pg-reader` (key `password`) on Kubernetes.
+  Locally, `just docker-up` and `just local-deploy` generate the two passwords. Elsewhere, create the Secrets `srdp-ducklake-pg-writer` and `srdp-ducklake-pg-reader` (key `password`).
   With `manage_databases` off you create the roles and grants yourself, as `docs/06-deployment.md` describes.
   `setup_ducklake()` no longer creates the database and writes nothing to the catalog. Only the Dagster IO manager and the dbt plugin apply the `DUCKLAKE_*` tuning options.
 - CI pins uv, Node, just, Terraform, tflint and zensical, and runs on `ubuntu-24.04`.

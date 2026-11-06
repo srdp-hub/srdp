@@ -12,12 +12,12 @@ global:
   # dagster.dagster-user-deployments.imagePullSecrets, the latter also
   # reaches run pods through includeConfigInLaunchedRuns.
 
-# No credentials in this file. Create the Secrets listed in values.yaml
-# (srdp-postgres, srdp-zitadel, srdp-oauth2-proxy, srdp-dagster-postgresql,
+# No credentials in this file. Create the Secrets listed in deploy/secrets.toml
+# (srdp-postgres, srdp-zitadel, srdp-oauth2-proxy, srdp-dagster,
 # srdp-marquez, srdp-ducklake-pg-writer, srdp-ducklake-pg-reader) before installing, e.g. with External Secrets. srdp-postgres
 # also needs replication-password here, because of architecture: replication.
 # DuckLake runs on S3 below, so also create srdp-ducklake-s3-writer and
-# srdp-ducklake-s3-reader, each with DUCKLAKE_S3_KEY_ID and DUCKLAKE_S3_SECRET.
+# srdp-ducklake-s3-reader, each with the keys key-id and secret.
 
 # DuckLake's Parquet files in object storage. A ReadWriteOnce data volume would
 # pin every DuckLake pod to one node, so there is none: the Dagster code
@@ -229,7 +229,7 @@ dagster:
           - name: PGPASSWORD
             valueFrom:
               secretKeyRef:
-                name: srdp-dagster-postgresql
+                name: srdp-dagster
                 key: postgresql-password
   dagsterDaemon:
     extraPrependedInitContainers: *wait-for-dagster-db-prod
@@ -301,13 +301,13 @@ dagster:
                 valueFrom:
                   secretKeyRef:
                     name: srdp-ducklake-s3-writer
-                    key: DUCKLAKE_S3_KEY_ID
+                    key: key-id
                     optional: true
               - name: DUCKLAKE_S3_SECRET
                 valueFrom:
                   secretKeyRef:
                     name: srdp-ducklake-s3-writer
-                    key: DUCKLAKE_S3_SECRET
+                    key: secret
                     optional: true
             command:
               - sh
@@ -398,11 +398,11 @@ dagster:
             valueFrom:
               secretKeyRef:
                 name: srdp-ducklake-s3-writer
-                key: DUCKLAKE_S3_KEY_ID
+                key: key-id
                 optional: true
           - name: DUCKLAKE_S3_SECRET
             valueFrom:
               secretKeyRef:
                 name: srdp-ducklake-s3-writer
-                key: DUCKLAKE_S3_SECRET
+                key: secret
                 optional: true
