@@ -10,8 +10,8 @@ from srdp.io.ducklake import (
     S3StorageBackend,
     S3StorageSettings,
     _attach_with_retry,
-    _catalog_data_path,
     _configure_extension_directory,
+    catalog_data_path,
     get_storage_backend,
     initialize_catalog,
     load_extension,
@@ -297,7 +297,7 @@ def test_a_local_catalog_path_creates_no_directory(tmp_path: Path) -> None:
     """The setup container has no data volume on Kubernetes, so naming the path must not create it."""
     lake = tmp_path / "lake"
 
-    assert _catalog_data_path(_settings(data_path=str(lake))) == str(lake.resolve())
+    assert catalog_data_path(_settings(data_path=str(lake))) == str(lake.resolve())
     assert not lake.exists()
 
 
@@ -312,7 +312,7 @@ def test_an_s3_catalog_path_needs_no_key(monkeypatch: pytest.MonkeyPatch) -> Non
     ):
         monkeypatch.setenv(f"DUCKLAKE_S3_{name.upper()}", value)
 
-    assert _catalog_data_path(_settings(storage_backend="s3")) == "s3://lake/dev/"
+    assert catalog_data_path(_settings(storage_backend="s3")) == "s3://lake/dev/"
 
 
 def test_initialize_catalog_attaches_once(monkeypatch: pytest.MonkeyPatch) -> None:

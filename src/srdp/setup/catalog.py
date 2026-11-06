@@ -9,7 +9,7 @@ import logging
 import psycopg2.extensions
 from psycopg2 import sql
 
-from srdp.io.ducklake import DuckLakeSettings, initialize_catalog
+from srdp.io.ducklake import DuckLakeSettings, catalog_data_path, initialize_catalog
 from srdp.setup.bootstrap import DatabaseTarget, SetupSettings, _connect_with_retry
 
 logger = logging.getLogger(__name__)
@@ -67,6 +67,36 @@ def reconcile_catalog_access(cur: psycopg2.extensions.cursor, target: DatabaseTa
     logger.info("Role '%s' reads '%s', role '%s' owns it.", target.reader_role, target.name, target.role)
 
 
+def _ducklake_settings(settings: SetupSettings, target: DatabaseTarget) -> DuckLakeSettings | None:
+    """Return the owner's DuckLake settings for ``target``, or ``None`` without an owner password."""
+    password = settings.passwords.get(target.role or "")
+    if target.role is None or password is None or not password.get_secret_value():
+        return None
+    return DuckLakeSettings(
+        pg_host=settings.pg_host,
+        pg_port=settings.pg_port,
+        pg_user=target.role,
+        pg_password=password.get_secret_value(),
+        pg_db=target.name,
+    )
+
+
+def check_catalogs(settings: SetupSettings) -> None:
+    """Read the ``DUCKLAKE_*`` storage settings of every catalog, so a bad value stops setup before any change.
+
+    Args:
+        settings: Validated setup settings.
+
+    Raises:
+        pydantic.ValidationError: If a storage setting is missing or invalid.
+    """
+    for target in settings.databases:
+        if target.enabled and target.reader_role is not None:
+            ducklake = _ducklake_settings(settings, target)
+            if ducklake is not None:
+                catalog_data_path(ducklake)
+
+
 def create_catalog(settings: SetupSettings, target: DatabaseTarget) -> None:
     """Create the catalog tables as the owner role, with the storage settings from ``DUCKLAKE_*``.
 
@@ -74,17 +104,10 @@ def create_catalog(settings: SetupSettings, target: DatabaseTarget) -> None:
         settings: Setup settings, holding the owner password and the Postgres address.
         target: The catalog database.
     """
-    password = settings.passwords.get(target.role or "")
-    if target.role is None or password is None or not password.get_secret_value():
+    ducklake = _ducklake_settings(settings, target)
+    if ducklake is None:
         logger.warning("No password for the owner of '%s', so setup does not create its catalog.", target.name)
         return
-    ducklake = DuckLakeSettings(
-        pg_host=settings.pg_host,
-        pg_port=settings.pg_port,
-        pg_user=target.role,
-        pg_password=password.get_secret_value(),
-        pg_db=target.name,
-    )
     initialize_catalog(ducklake)
 
 

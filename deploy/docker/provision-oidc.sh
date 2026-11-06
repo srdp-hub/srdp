@@ -90,6 +90,7 @@ set_env() { edit_env "$1" "$2"; }
 unset_env() { edit_env "$1" "-unset"; }
 # Read KEY as Compose does: the last line wins, with an optional "export", " #" comment or quotes.
 get_env() {
+  [ -f "$ENV_FILE" ] || return 0
   sed -nE "s/^[[:space:]]*(export[[:space:]]+)?$1[[:space:]]*=//p" "$ENV_FILE" 2>/dev/null | tail -n1 \
     | sed -E "s/[[:space:]]+#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^\"(.*)\"$/\1/; s/^'(.*)'$/\1/"
 }

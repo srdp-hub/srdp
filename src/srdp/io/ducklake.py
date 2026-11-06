@@ -365,7 +365,7 @@ class _CatalogPath(StorageBackend):
         """Do nothing, because ``ATTACH`` does not read the data files."""
 
 
-def _catalog_data_path(settings: DuckLakeSettings) -> str:
+def catalog_data_path(settings: DuckLakeSettings) -> str:
     """Return the data path that ``settings`` select, without creating a directory or needing an S3 key."""
     if settings.storage_backend == "s3":
         # Only the bucket and prefix make the path, so the key is a placeholder.
@@ -391,7 +391,7 @@ def initialize_catalog(settings: DuckLakeSettings) -> None:
         _configure_extension_directory(conn, settings)
         load_extension(conn, "ducklake")
         _attach_with_retry(
-            conn, _attach_sql(settings, _CatalogPath(_catalog_data_path(settings))), secret=settings.pg_password
+            conn, _attach_sql(settings, _CatalogPath(catalog_data_path(settings))), secret=settings.pg_password
         )
     finally:
         conn.close()

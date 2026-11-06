@@ -12,7 +12,7 @@ import sys
 from pydantic import ValidationError
 
 from srdp.setup.bootstrap import SetupSettings, bootstrap_databases
-from srdp.setup.catalog import setup_catalogs
+from srdp.setup.catalog import check_catalogs, setup_catalogs
 from srdp.setup.garage import setup_garage
 from srdp.setup.volume import VolumeNotWritableError, check_data_dir
 
@@ -24,6 +24,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     try:
         settings = SetupSettings()  # ty: ignore[missing-argument]
+        check_catalogs(settings)
     except ValidationError as exc:
         # Pydantic's default message echoes the raw input, which holds the
         # role passwords, so report only the location and message of each error.
