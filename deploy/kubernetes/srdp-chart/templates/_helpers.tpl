@@ -12,7 +12,7 @@ The image is Compose's postgres image, tests/deploy checks every copy.
     - -c
     - |
       for i in $(seq 1 60); do
-        psql -tAc "SELECT 1" >/dev/null && exit 0
+        psql -tAc {{ .query | default "SELECT 1" | squote }} >/dev/null && exit 0
         echo "waiting for $PGUSER to log in to $PGDATABASE ($i/60)..."
         sleep 2
       done
@@ -40,11 +40,13 @@ The image is Compose's postgres image, tests/deploy checks every copy.
 
 {{/*
 The `ducklake` database holds DuckLake's catalog; the Parquet files live in
-the data path or the bucket, see srdp.waitForDucklakeBucket. DuckLake connects
-as the superuser, see DUCKLAKE_PG_* in srdp.ducklakeEnv.
+the data path or the bucket, see srdp.waitForDucklakeBucket. The apps connect as
+the read-only role, see DUCKLAKE_PG_* in srdp.ducklakeEnv. They start only when
+that role can log in and the srdp-setup Job has created the catalog tables,
+because a read-only role cannot create them.
 */}}
 {{- define "srdp.waitForDucklakeDb" -}}
-{{ include "srdp.waitForDbLogin" (dict "root" . "db" "ducklake" "user" "postgres" "secretName" "srdp-postgres" "secretKey" "postgres-password") }}
+{{ include "srdp.waitForDbLogin" (dict "root" . "db" "ducklake" "user" "ducklake_reader" "secretName" "srdp-ducklake-pg-reader" "secretKey" "password" "query" "SELECT 1 FROM ducklake_metadata LIMIT 1") }}
 {{- end -}}
 
 {{/*
@@ -110,12 +112,12 @@ equivalent of the DUCKLAKE_* block on each app in docker-compose.yml.
 - name: DUCKLAKE_PG_HOST
   value: {{ .Values.global.postgresqlHost | quote }}
 - name: DUCKLAKE_PG_USER
-  value: postgres
+  value: ducklake_reader
 - name: DUCKLAKE_PG_PASSWORD
   valueFrom:
     secretKeyRef:
-      name: srdp-postgres
-      key: postgres-password
+      name: srdp-ducklake-pg-reader
+      key: password
 - name: DUCKLAKE_PG_DB
   value: ducklake
 - name: DUCKLAKE_DATA_PATH
@@ -134,13 +136,13 @@ local storage needs no such Secret.
   valueFrom:
     secretKeyRef:
       name: {{ . }}
-      key: DUCKLAKE_S3_KEY_ID
+      key: key-id
       optional: true
 - name: DUCKLAKE_S3_SECRET
   valueFrom:
     secretKeyRef:
       name: {{ . }}
-      key: DUCKLAKE_S3_SECRET
+      key: secret
       optional: true
 {{- end -}}
 
@@ -229,23 +231,6 @@ Pod-level imagePullSecrets from global.imagePullSecrets, empty when unset.
 imagePullSecrets:
   {{- toYaml . | nindent 2 }}
 {{- end }}
-{{- end -}}
-
-{{/*
-Pod annotation for pods that read a localSecrets Secret. A secretKeyRef does
-not change the pod spec, so without it a pod keeps the old value after a
-redeploy, e.g. Marquez after srdp-setup resets its role's password. Hashes
-the whole local-secrets.yaml, so any local Secret change rolls every reader.
-Kind only: External Secrets (#69) covers this in the cloud. Subcharts get the
-same annotation from the Justfile's local_secrets_args. A rolled pod waits in
-its login init container until the srdp-setup hook has reset the role's
-password, so a changed password needs no manual restart.
-*/}}
-{{- define "srdp.localSecretsChecksum" -}}
-{{- if .Values.localSecrets.enabled -}}
-annotations:
-  checksum/local-secrets: {{ include (print .Template.BasePath "/local-secrets.yaml") . | sha256sum }}
-{{- end -}}
 {{- end -}}
 
 {{/*

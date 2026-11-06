@@ -86,8 +86,10 @@ EOF
 }
 set_env() { edit_env "$1" "$2"; }
 unset_env() { edit_env "$1" "-unset"; }
+# The last line wins, as in Compose.
+get_env() { grep "^$1=" "$ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2- || true; }
 
-ADMIN_PAT=$(grep -m1 '^ZITADEL_ADMIN_PAT=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
+ADMIN_PAT=$(get_env ZITADEL_ADMIN_PAT)
 
 # A PAT from a Zitadel that was reset since (a wiped volume) is rejected, so mint a new one.
 # Any other answer, such as a stopped Zitadel, must not throw a valid PAT away.
@@ -182,8 +184,8 @@ if [ -z "$APP_ID" ]; then
   CREATED=$(admin_api POST "projects/$PROJECT_ID/apps/oidc" \
     "{\"name\":\"$APP_NAME\",\"redirectUris\":[\"https://$FIRST_HOST/oauth2/callback\"],\"responseTypes\":[\"OIDC_RESPONSE_TYPE_CODE\"],\"grantTypes\":[\"OIDC_GRANT_TYPE_AUTHORIZATION_CODE\"],\"appType\":\"OIDC_APP_TYPE_WEB\",\"authMethodType\":\"OIDC_AUTH_METHOD_TYPE_BASIC\"}")
   APP_ID=$(echo "$CREATED" | jq_get "d['appId']")
-  set_env OIDC_CLIENT_ID "$(echo "$CREATED" | jq_get "d['clientId']")"
-  set_env OIDC_CLIENT_SECRET "$(echo "$CREATED" | jq_get "d['clientSecret']")"
+  set_env OAUTH2_PROXY_CLIENT_ID "$(echo "$CREATED" | jq_get "d['clientId']")"
+  set_env OAUTH2_PROXY_CLIENT_SECRET "$(echo "$CREATED" | jq_get "d['clientSecret']")"
   NEW_CREDENTIALS=1
   echo "created app '$APP_NAME' ($APP_ID), saved its client ID and secret to .env"
 fi
@@ -192,11 +194,11 @@ CURRENT=$(admin_api GET "projects/$PROJECT_ID/apps/$APP_ID")
 
 # The app is the source of truth. When .env holds another client ID, issue a new secret and save both.
 APP_CLIENT_ID=$(echo "$CURRENT" | jq_get "d['app']['oidcConfig']['clientId']")
-ENV_CLIENT_ID=$(grep -m1 '^OIDC_CLIENT_ID=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
+ENV_CLIENT_ID=$(get_env OAUTH2_PROXY_CLIENT_ID)
 if [ "$APP_CLIENT_ID" != "$ENV_CLIENT_ID" ]; then
   SECRET=$(admin_api POST "projects/$PROJECT_ID/apps/$APP_ID/oidc_config/_generate_client_secret" "{}" | jq_get "d['clientSecret']")
-  set_env OIDC_CLIENT_ID "$APP_CLIENT_ID"
-  set_env OIDC_CLIENT_SECRET "$SECRET"
+  set_env OAUTH2_PROXY_CLIENT_ID "$APP_CLIENT_ID"
+  set_env OAUTH2_PROXY_CLIENT_SECRET "$SECRET"
   NEW_CREDENTIALS=1
   echo ".env had another client ID, saved the client ID and a new secret of '$APP_NAME'"
 fi
@@ -235,7 +237,7 @@ else
 fi
 
 if [ -n "$NEW_CREDENTIALS" ]; then
-  echo "OIDC_CLIENT_ID and OIDC_CLIENT_SECRET changed in .env, run 'just docker-up -d' to recreate oauth2-proxy with them"
+  echo "OAUTH2_PROXY_CLIENT_ID and OAUTH2_PROXY_CLIENT_SECRET changed in .env, run 'just docker-up -d' to recreate oauth2-proxy with them"
 fi
 
 # ---------------------------------------------------------------------------

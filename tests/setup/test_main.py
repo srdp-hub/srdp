@@ -92,6 +92,20 @@ def test_bad_garage_config_stops_setup_before_postgres(monkeypatch: pytest.Monke
     assert events == []
 
 
+def test_bad_s3_config_stops_setup_before_postgres(monkeypatch: pytest.MonkeyPatch, events: list[str]) -> None:
+    """A missing DuckLake S3 setting stops setup before it changes any database."""
+    monkeypatch.setenv("SETUP_DATABASES", json.dumps([{"name": "ducklake", "role": "w", "reader_role": "r"}]))
+    monkeypatch.setenv("SETUP_PASSWORDS", json.dumps({"w": "writer-pw", "r": "reader-pw"}))
+    monkeypatch.setenv("DUCKLAKE_STORAGE_BACKEND", "s3")
+    monkeypatch.setenv("DUCKLAKE_S3_BUCKET", "lake")
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+
+    assert exc.value.code == 1
+    assert events == []
+
+
 def test_disabled_garage_step_never_contacts_garage(events: list[str]) -> None:
     main()
 

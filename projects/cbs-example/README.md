@@ -64,7 +64,7 @@ Zitadel doesn't know about `oauth2-proxy` until you tell it. On a fresh stack:
 
 1. Open `https://auth.srdp.localhost`, sign in as the first-instance admin (see `docs/03-configuration.md` for the default login name/password).
 2. Create a project and a **Web** app with the **Code** auth flow, redirect URIs for each service (`https://dagster.srdp.localhost/oauth2/callback`, `.../marimo...`, `.../streamlit...`, `.../srdp.localhost/oauth2/callback` for the hub; see `docs/03-configuration.md` for the full list).
-3. Copy the generated client ID/secret into `deploy/docker/.env` (`OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`), then `docker compose up -d --force-recreate oauth2-proxy`.
+3. Copy the generated client ID/secret into `deploy/docker/.env` (`OAUTH2_PROXY_CLIENT_ID`, `OAUTH2_PROXY_CLIENT_SECRET`), then `docker compose up -d --force-recreate oauth2-proxy`.
 
 This is the known, documented bootstrap gap (tracked as issue #35).
 It is not specific to this project: every service behind the shared SSO gate needs it done once per fresh Zitadel instance.

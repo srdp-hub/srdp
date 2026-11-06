@@ -44,14 +44,17 @@ Install `mkcert` following its own instructions, then run:
 just docker-tls   # trusts mkcert's local CA and generates certs in deploy/docker/certs/
 ```
 
+`just docker-up` also runs it, so the certificate always matches the domain.
+
 ### 3) Create the environment file
 
 ```bash
 cp deploy/docker/.env.example deploy/docker/.env
 ```
 
-Fill in the empty values in `deploy/docker/.env`, which are required, and the comment above each one says how to generate it.
-You will need to update `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` after you create the OIDC application in Zitadel; see [First boot: create the Zitadel OIDC application](#first-boot-create-the-zitadel-oidc-application) below.
+`just docker-up` generates every empty password, key and token in `deploy/docker/.env` once.
+A value you set yourself stays.
+You will need to update `OAUTH2_PROXY_CLIENT_ID` and `OAUTH2_PROXY_CLIENT_SECRET` after you create the OIDC application in Zitadel; see [First boot: create the Zitadel OIDC application](#first-boot-create-the-zitadel-oidc-application) below.
 
 DuckLake keeps its Parquet files in the `ducklake-data` volume by default.
 To keep them in an S3 bucket on the bundled Garage server instead, set these in `.env`:
@@ -108,6 +111,8 @@ Install `mkcert` and `kind` following their own instructions, then run:
 just local-tls   # trusts mkcert's local CA, creates the kind cluster (if needed), certs, and the k8s TLS secret
 ```
 
+`just local-deploy` also runs it, so a new cluster always gets the certificate.
+
 `just local-tls` depends on `kind-up`, so it creates the `srdp` kind cluster on first run and points `kubectl` at it; on later runs it just reuses the existing cluster. `kind` runs as plain containers on whatever Docker daemon you already have (Colima, OrbStack, native Docker Engine on Linux, your own preference, this repo doesn't assume one), no separate VM for Kubernetes itself.
 
 ### 4) Build local container images
@@ -118,11 +123,11 @@ The Helm chart references the application images that the `kind-load-images` rec
 just kind-load-images
 ```
 
-### 5) Fill in secrets and local values
+### 5) Secrets and local values
 
-The `localSecrets` block in `deploy/kubernetes/srdp-chart/values-local.yaml` holds throwaway development values, so the local cluster runs without extra setup.
-The chart turns it into the Secrets every service reads (`templates/local-secrets.yaml`), and `values.yaml` itself holds no credentials.
-Never reuse those values outside your own machine, and keep real secrets out of tracked files (#61).
+`just local-deploy` runs `just local-secrets`, which generates every password and key once as a Secret in the `srdp` namespace.
+A Secret that exists keeps its values, so a redeploy changes no password.
+No values file holds a credential.
 Keep `custom-ingress-cert` (created above), or point to another TLS secret if you prefer.
 
 ### 6) Install the chart locally
@@ -149,8 +154,8 @@ OAuth2-Proxy needs an OIDC client registered in Zitadel. Zitadel creates its fir
 Open `https://auth.srdp.localhost` and sign in as the first-instance admin. Zitadel derives the default admin login name from the configured `ExternalDomain`, so for the local stack it is:
 
 - Login name: `zitadel-admin@zitadel.auth.srdp.localhost`
-- Password: for the Kubernetes chart, the value of `localSecrets.zitadel.adminPassword` in `values-local.yaml`.
-  The Docker Compose stack requires `ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD` to be set in `deploy/docker/.env` (see `.env.example`).
+- Password: for the Kubernetes chart, run `just local-admin-password`.
+  For the Docker Compose stack, it is `ZITADEL_ADMIN_PASSWORD` in `deploy/docker/.env`.
   Zitadel's own complexity rule applies, so the password needs an uppercase letter, a lowercase letter, a digit, and a symbol.
 
 If the login name differs, check it under **Users** in the Zitadel console.
@@ -166,7 +171,7 @@ Zitadel then shows a **Client ID** and **Client Secret**.
 
 ### 3) Apply the credentials
 
-- **Docker Compose**: set `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` in `deploy/docker/.env`, then run `just docker-up` to recreate OAuth2-Proxy with the new values.
-- **Kubernetes**: set `localSecrets.oauth2Proxy.clientID` and `localSecrets.oauth2Proxy.clientSecret` in `values-local.yaml`, then run `just local-deploy`.
+- **Docker Compose**: set `OAUTH2_PROXY_CLIENT_ID` and `OAUTH2_PROXY_CLIENT_SECRET` in `deploy/docker/.env`, then run `just docker-up` to recreate OAuth2-Proxy with the new values.
+- **Kubernetes**: run `just local-oidc-client`. It asks for the client ID and the secret, stores them in the `srdp-oauth2-proxy` Secret and restarts OAuth2-Proxy.
 
 **Congratulations! The local environment should now be up and running.** Proceed to the next section, **Usage & Verification**, to confirm that everything is working correctly.

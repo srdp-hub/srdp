@@ -12,13 +12,18 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src/ src/
 RUN uv sync --locked --no-dev --no-editable --extra ducklake --extra api
 
+# DuckDB extensions are baked in, so no container downloads code at start.
+RUN /app/.venv/bin/python -m srdp.io.extensions /opt/duckdb/extensions
+
 # The runtime stage doesn't need uv.
 FROM dhi.io/python:3.13@sha256:43b01c42d91a2e2ae676f974778518661c2fa97cb2b85c3fc737f75545524eb9
 
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /opt/duckdb/extensions /opt/duckdb/extensions
 
-ENV PATH="/app/.venv/bin:${PATH}"
+ENV PATH="/app/.venv/bin:${PATH}" \
+    DUCKLAKE_EXTENSION_DIRECTORY=/opt/duckdb/extensions
 
 # The project's own API add-on: mounts its router onto the platform's core app.
 COPY projects/cbs-example/api/app.py app.py
