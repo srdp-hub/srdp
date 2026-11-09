@@ -193,7 +193,8 @@ services:
     environment:
       ZITADEL_EXTERNALDOMAIN: auth.${SRDP_DOMAIN:?set it in srdp.toml, use just docker-up}
       ZITADEL_LOGSTORE_ACCESS_STDOUT_ENABLED: true
-      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: false
+      # The first admin must change the generated password at first login. Only `just docker-up` (dev) turns this off.
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: ${SRDP_DEV_PASSWORD_CHANGE_REQUIRED:-true}
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: "${ZITADEL_ADMIN_PASSWORD}"
       ZITADEL_DATABASE_POSTGRES_HOST: postgres
       ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: "${ZITADEL_DB_PASSWORD}"

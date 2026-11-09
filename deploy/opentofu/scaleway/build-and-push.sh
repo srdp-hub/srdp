@@ -28,9 +28,9 @@ echo "Building SRDP ETL (Dagster user code)..."
 # Build context is repo root — the Dockerfile needs access to src/ and projects/
 docker build --platform linux/amd64 \
   -f "$REPO_ROOT/projects/cbs-example/Dockerfile" \
-  -t "$REGISTRY/srdp-etl:$VERSION" \
+  -t "$REGISTRY/cbs-example:$VERSION" \
   "$REPO_ROOT"
-docker push "$REGISTRY/srdp-etl:$VERSION"
+docker push "$REGISTRY/cbs-example:$VERSION"
 
 echo "Building SRDP API..."
 docker build --platform linux/amd64 \

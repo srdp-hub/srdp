@@ -1,0 +1,11 @@
+# Copy to tofu.tfvars and fill in the values. tofu.tfvars is gitignored.
+gcp_project_id = "CHANGE_ME_GCP_PROJECT_ID"
+repo_url       = "https://github.com/srdp-hub/srdp.git"
+acme_email     = "CHANGE_ME_EMAIL"
+domain_name    = "CHANGE_ME_DOMAIN"
+
+# Secrets. Generate them, never commit them.
+zitadel_masterkey  = ""
+oidc_client_id     = ""
+oidc_client_secret = ""
+oidc_cookie_secret = ""

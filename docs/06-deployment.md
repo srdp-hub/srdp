@@ -34,7 +34,7 @@ Run the build recipe from the repository root. It sources `deploy/opentofu/scale
 ```bash
 just build-and-push
 ```
-This builds and pushes Marimo, srdp-etl (Dagster user code), the API and Streamlit to the registry in `srdp.toml` under `[deploy] registry`, tagged with the version in `pyproject.toml`.
+This builds and pushes Marimo, cbs-example (Dagster user code), the API and Streamlit to the registry in `srdp.toml` under `[deploy] registry`, tagged with the version in `pyproject.toml`.
 The platform images, including `srdp-setup`, come from `ghcr.io/srdp-hub` and need no push.
 Quarto is disabled by default (`quarto.enabled: false`).
 `docs/03-configuration.md` explains why.
@@ -63,7 +63,7 @@ just prod-use-kubeconfig   # from repo root
   A machine that isn't reachable can still use Let's Encrypt through a DNS challenge, if the organisation controls the public DNS of a real domain.
   A machine with only an internal name needs the organisation's own certificate.
 - Set the registry in `srdp.toml` under `[deploy] registry`.
-  The `prod-*` recipes pass it to the chart as `global.srdpRegistry` and as the `srdp-etl` repository.
+  The `prod-*` recipes pass it to the chart as `global.srdpRegistry` and as the `cbs-example` repository.
 - The values files hold no passwords or keys.
   Before you install, create these Secrets in the `srdp` namespace, for example with External Secrets.
   Every consumer reads them by these fixed names.
@@ -101,7 +101,7 @@ just prod-use-kubeconfig   # from repo root
   Add `ALTER DEFAULT PRIVILEGES FOR ROLE ducklake_writer IN SCHEMA public GRANT SELECT ON TABLES TO ducklake_reader`, because DuckLake creates tables at run time.
 - **Changing an internal password**: these are service-to-service credentials, so change one only as a deliberate rotation.
   Change the value in its Secret, run `helm upgrade`, then restart the services that use it.
-  Marquez restarts by itself. For Dagster, run `kubectl -n srdp rollout restart deploy/srdp-dagster-webserver deploy/srdp-dagster-webserver-read-only deploy/srdp-dagster-daemon deploy/srdp-dagster-user-deployments-srdp-etl`.
+  Marquez restarts by itself. For Dagster, run `kubectl -n srdp rollout restart deploy/srdp-dagster-webserver deploy/srdp-dagster-webserver-read-only deploy/srdp-dagster-daemon deploy/srdp-dagster-user-deployments-cbs-example`.
   For Zitadel, run `kubectl -n srdp rollout restart deploy/srdp-zitadel`, because a running pod keeps the old password.
   The new pod waits in an init container until its new password works.
 - **Master key format**: ZITADEL expects a 32-character master key string. Generate one, for example, with `tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32`.

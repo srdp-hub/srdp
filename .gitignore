@@ -9,6 +9,10 @@
 secrets.sh
 .secrets/
 
+# OpenTofu variable files hold secrets. Only the examples are tracked.
+deploy/opentofu/**/*.tfvars
+!deploy/opentofu/**/*.tfvars.example
+
 # Local certificates and PAT for Zitadel
 certs/
 login-client.pat
