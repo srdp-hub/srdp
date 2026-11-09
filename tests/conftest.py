@@ -25,7 +25,7 @@ def docker(*args: str) -> subprocess.CompletedProcess[bytes]:
     """Run the docker CLI with fixed arguments and capture its output."""
     if DOCKER is None:
         pytest.skip("needs Docker for a throwaway Postgres")
-    return subprocess.run([DOCKER, *args], capture_output=True, check=False)  # noqa: S603 — fixed argv, no shell
+    return subprocess.run([DOCKER, *args], capture_output=True, check=False)  # noqa: S603
 
 
 def _free_port() -> int:

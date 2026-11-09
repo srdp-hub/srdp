@@ -120,6 +120,8 @@ equivalent of the DUCKLAKE_* block on each app in docker-compose.yml.
       key: password
 - name: DUCKLAKE_PG_DB
   value: ducklake
+- name: DUCKLAKE_READ_ONLY
+  value: "true"
 - name: DUCKLAKE_DATA_PATH
   value: {{ .Values.ducklakeData.mountPath | quote }}
 {{ include "srdp.ducklakeS3Key" "srdp-ducklake-s3-reader" }}

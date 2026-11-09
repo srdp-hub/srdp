@@ -14,18 +14,19 @@ from srdp.setup.bootstrap import DatabaseTarget, SetupSettings, _connect_with_re
 
 logger = logging.getLogger(__name__)
 
-_SCHEMA = sql.Identifier("public")
+_SCHEMA_NAME = "public"
+_SCHEMA = sql.Identifier(_SCHEMA_NAME)
 
 
 def _hand_over(cur: psycopg2.extensions.cursor, owner: str) -> None:
     """Make ``owner`` own every table, sequence and view in the schema, as the owner role must change them."""
     queries = (
-        ("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tableowner <> %s", "TABLE"),
-        ("SELECT sequencename FROM pg_sequences WHERE schemaname = 'public' AND sequenceowner <> %s", "SEQUENCE"),
-        ("SELECT viewname FROM pg_views WHERE schemaname = 'public' AND viewowner <> %s", "VIEW"),
+        ("SELECT tablename FROM pg_tables WHERE schemaname = %s AND tableowner <> %s", "TABLE"),
+        ("SELECT sequencename FROM pg_sequences WHERE schemaname = %s AND sequenceowner <> %s", "SEQUENCE"),
+        ("SELECT viewname FROM pg_views WHERE schemaname = %s AND viewowner <> %s", "VIEW"),
     )
     for query, kind in queries:
-        cur.execute(query, (owner,))
+        cur.execute(query, (_SCHEMA_NAME, owner))
         for (name,) in cur.fetchall():
             cur.execute(
                 sql.SQL("ALTER {} {}.{} OWNER TO {}").format(

@@ -218,6 +218,7 @@ def test_apps_open_the_catalog_with_the_reader_role(local: list[Manifest], app: 
     env = pod_env(local, "Deployment", app)
     assert env["DUCKLAKE_PG_USER"]["value"] == "ducklake_reader"
     assert secret_ref(env, "DUCKLAKE_PG_PASSWORD") == ("srdp-ducklake-pg-reader", "password")
+    assert env["DUCKLAKE_READ_ONLY"]["value"] == "true"
 
 
 def test_dagster_uses_the_writer_role(local: list[Manifest]) -> None:

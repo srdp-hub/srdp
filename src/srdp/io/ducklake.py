@@ -62,6 +62,7 @@ class DuckLakeSettings(BaseSettings):
     pg_user: str = Field(default="postgres")
     pg_password: str
     pg_db: str = Field(default="ducklake")
+    read_only: bool = False
 
     storage_backend: Literal["local", "s3"] = "local"
     data_path: str = Field(default=".data/ducklake")
@@ -359,6 +360,7 @@ class _CatalogPath(StorageBackend):
         self._base_path = base_path
 
     def get_base_path(self) -> str:
+        """Return the data path of the catalog."""
         return self._base_path
 
     def configure_duckdb(self, conn: duckdb.DuckDBPyConnection) -> None:
@@ -470,7 +472,8 @@ def _attach_sql(settings: DuckLakeSettings, backend: StorageBackend) -> str:
     """Build the ``ATTACH`` statement for the DuckLake catalog on ``backend``."""
     catalog = _sql_string(f"ducklake:postgres:{settings.pg_connection_string}")
     data_path = _sql_string(backend.get_base_path())
-    return f"ATTACH {catalog} AS {_CATALOG} (DATA_PATH {data_path}, OVERRIDE_DATA_PATH TRUE)"
+    read_only = ", READ_ONLY" if settings.read_only else ""
+    return f"ATTACH {catalog} AS {_CATALOG} (DATA_PATH {data_path}, OVERRIDE_DATA_PATH TRUE{read_only})"
 
 
 # ---------------------------------------------------------------------------

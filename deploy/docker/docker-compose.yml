@@ -38,6 +38,7 @@ x-ducklake-writer: &ducklake-writer
 
 x-ducklake-reader: &ducklake-reader
   <<: *ducklake-storage
+  DUCKLAKE_READ_ONLY: "true"
   DUCKLAKE_S3_KEY_ID: "${DUCKLAKE_S3_READER_KEY_ID:-}"
   DUCKLAKE_S3_SECRET: "${DUCKLAKE_S3_READER_SECRET:-}"
 

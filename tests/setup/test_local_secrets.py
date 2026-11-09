@@ -75,7 +75,7 @@ def test_set_values_stay() -> None:
     """A value the user set, or a placeholder, is never replaced."""
     text = "POSTGRES_PASSWORD=mine\nOAUTH2_PROXY_CLIENT_ID=CHANGE_ME_OAUTH2_PROXY_CLIENT_ID # comment\n"
     env = _env(fill_env(text, SECRETS)[0])
-    assert env["POSTGRES_PASSWORD"] == "mine"  # noqa: S105 — throwaway test value
+    assert env["POSTGRES_PASSWORD"] == "mine"  # noqa: S105  # throwaway test value
     assert env["OAUTH2_PROXY_CLIENT_ID"].startswith("CHANGE_ME_OAUTH2_PROXY_CLIENT_ID")
 
 
@@ -236,5 +236,5 @@ def test_quoted_empty_value_is_filled(empty: str) -> None:
 def test_hash_inside_a_value_counts_as_set() -> None:
     """Compose keeps a "#" that follows no space, so such a value is not empty."""
     env = _env(fill_env("POSTGRES_PASSWORD=#abc\nMARQUEZ_DB_PASSWORD= # empty\n", SECRETS)[0])
-    assert env["POSTGRES_PASSWORD"] == "#abc"  # noqa: S105 — throwaway test value
+    assert env["POSTGRES_PASSWORD"] == "#abc"  # noqa: S105  # throwaway test value
     assert env["MARQUEZ_DB_PASSWORD"]

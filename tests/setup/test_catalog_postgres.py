@@ -38,7 +38,9 @@ def catalog(postgres: "Postgres", tmp_path_factory: pytest.TempPathFactory) -> t
     return postgres, data_path
 
 
-def _connect(catalog: tuple["Postgres", Path], user: str, password: str) -> duckdb.DuckDBPyConnection:
+def _connect(
+    catalog: tuple["Postgres", Path], user: str, password: str, *, read_only: bool = False
+) -> duckdb.DuckDBPyConnection:
     postgres, data_path = catalog
     return setup_ducklake(
         DuckLakeSettings(
@@ -48,6 +50,7 @@ def _connect(catalog: tuple["Postgres", Path], user: str, password: str) -> duck
             pg_user=user,
             pg_password=password,
             pg_db="ducklake",
+            read_only=read_only,
             data_path=str(data_path),
         )
     )
@@ -88,3 +91,15 @@ def test_reader_cannot_change_the_catalog_tables(catalog: tuple["Postgres", Path
                 cur.execute(statement)
     finally:
         conn.close()
+
+
+def test_read_only_reader_reads_and_cannot_write(catalog: tuple["Postgres", Path]) -> None:
+    """The apps attach read-only as the reader role, which reads and refuses a write."""
+    writer = _connect(catalog, "ducklake_writer", WRITER_PW)
+    writer.execute("CREATE TABLE ducklake.main.rivers AS SELECT 'Maas' AS name")
+
+    reader = _connect(catalog, "ducklake_reader", READER_PW, read_only=True)
+
+    assert reader.execute("SELECT name FROM ducklake.main.rivers").fetchall() == [("Maas",)]
+    with pytest.raises(duckdb.Error, match="read-only"):
+        reader.execute("CREATE TABLE ducklake.main.nope AS SELECT 1 AS x")

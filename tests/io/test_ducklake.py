@@ -29,7 +29,7 @@ S3 = {
 
 
 def _settings(**overrides) -> DuckLakeSettings:
-    return DuckLakeSettings(_env_file=None, pg_password="pw", **overrides)  # noqa: S106 — throwaway test value
+    return DuckLakeSettings(_env_file=None, pg_password="pw", **overrides)  # noqa: S106  # throwaway test value
 
 
 def _s3_backend(**overrides) -> S3StorageBackend:
@@ -155,7 +155,7 @@ def test_s3_connection_gets_a_secret_scoped_to_the_lake():
 def test_a_quote_in_a_credential_cannot_break_out_of_the_secret_sql():
     conn = duckdb.connect()
 
-    _s3_backend(key_id="a'b", secret="x'); DROP TABLE t; --").configure_duckdb(conn)  # noqa: S106 — injection probe
+    _s3_backend(key_id="a'b", secret="x'); DROP TABLE t; --").configure_duckdb(conn)  # noqa: S106  # injection probe
 
     [secret] = _s3_secrets(conn)
     assert secret["key_id"] == "a'b"
@@ -225,7 +225,7 @@ def test_any_other_attach_error_fails_at_once(sleeps):
 def test_a_settings_error_does_not_print_the_secret():
     """The error lands in startup logs, so it must not echo the key it was given."""
     with pytest.raises(ValidationError) as exc:
-        S3StorageSettings(_env_file=None, bucket="lake", secret="do-not-log-me")  # noqa: S106 — leak probe
+        S3StorageSettings(_env_file=None, bucket="lake", secret="do-not-log-me")  # noqa: S106  # leak probe
 
     assert "do-not-log-me" not in str(exc.value)
 
@@ -331,7 +331,7 @@ def test_initialize_catalog_attaches_once(monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_password_is_quoted_for_libpq() -> None:
     """A space, quote or backslash in the password stays inside its libpq value."""
-    settings = DuckLakeSettings(_env_file=None, pg_password="a b'c\\d")  # noqa: S106 — throwaway test value
+    settings = DuckLakeSettings(_env_file=None, pg_password="a b'c\\d")  # noqa: S106  # throwaway test value
 
     assert "password='a b\\'c\\\\d'" in settings.pg_connection_string
 
@@ -341,7 +341,7 @@ def test_attach_error_masks_the_password(sleeps: list[float]) -> None:
     conn = _ScriptedConnection(duckdb.IOException("Unable to connect at \"user='u' password='Top\\'Secret'\""))
 
     with pytest.raises(duckdb.IOException) as raised:
-        _attach_with_retry(conn, "ATTACH 'ducklake:...' AS ducklake", secret="Top'Secret")  # noqa: S106 — throwaway test value
+        _attach_with_retry(conn, "ATTACH 'ducklake:...' AS ducklake", secret="Top'Secret")  # noqa: S106  # throwaway test value
 
     assert "Top" not in str(raised.value)
     assert raised.value.__cause__ is None

@@ -131,3 +131,9 @@ def test_garage_signs_with_the_region_the_consumers_use(s3: dict[str, Any]) -> N
     assert mount["target"] == "/etc/garage.toml"
     garage_toml = tomllib.loads((COMPOSE_FILE.parent / "garage.toml").read_text())
     assert garage_toml["s3_api"]["s3_region"] == s3["dagster-code"]["environment"]["DUCKLAKE_S3_REGION"]
+
+
+@pytest.mark.parametrize("name", READERS)
+def test_apps_attach_the_catalog_read_only(tmp_path: Path, name: str) -> None:
+    """Every app that reads the catalog attaches it read-only."""
+    assert render(tmp_path, {})[name]["environment"]["DUCKLAKE_READ_ONLY"] == "true"

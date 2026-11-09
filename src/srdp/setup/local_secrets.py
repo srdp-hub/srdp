@@ -177,7 +177,7 @@ def _kubectl(*args: str, stdin: str | None = None) -> subprocess.CompletedProces
     if kubectl is None:
         msg = "kubectl not found"
         raise RuntimeError(msg)
-    return subprocess.run([kubectl, *args], input=stdin, capture_output=True, text=True, check=False)  # noqa: S603 — fixed argv, values go through stdin
+    return subprocess.run([kubectl, *args], input=stdin, capture_output=True, text=True, check=False)  # noqa: S603
 
 
 def _read_secret(namespace: str, name: str) -> dict | None:
