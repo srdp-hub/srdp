@@ -10,7 +10,7 @@ registry := `uv run --no-project python -c 'import sys, tomllib; sys.stdout.writ
 platform_registry := "ghcr.io/srdp-hub"
 # Helm patches deployments[0] in place only when a -f file defines the list
 # (values.yaml or values-prod.yaml do), otherwise the --set replaces it.
-registry_args := "--set-string 'global.srdpRegistry=" + registry + "' --set-string 'dagster.dagster-user-deployments.deployments[0].image.repository=" + registry + "/srdp-etl'"
+registry_args := "--set-string 'global.srdpRegistry=" + registry + "' --set-string 'dagster.dagster-user-deployments.deployments[0].image.repository=" + registry + "/cbs-example'"
 # Base domain of every hostname, from srdp.toml [deploy]. Compose reads it as
 # SRDP_DOMAIN. The local kind deploy passes it to the chart as global.domain
 # and to the Zitadel and OAuth2-Proxy subchart values derived from it, which
@@ -72,7 +72,7 @@ kind-load-images: kind-up
 	docker build -t {{platform_registry}}/duckdb-ui:dev --build-arg DUCKDB_EXTENSIONS="${DUCKDB_EXTENSIONS:-}" -f services/duckdb-ui/Dockerfile .
 	docker build -t {{platform_registry}}/hub:dev services/hub
 	docker build -t {{registry}}/marimo:dev -f projects/cbs-example/notebooks/Dockerfile .
-	docker build -t {{registry}}/srdp-etl:dev -f projects/cbs-example/Dockerfile .
+	docker build -t {{registry}}/cbs-example:dev -f projects/cbs-example/Dockerfile .
 	docker build -t {{registry}}/srdp-api:dev -f projects/cbs-example/api/Dockerfile .
 	docker build -t {{registry}}/streamlit:dev -f projects/cbs-example/streamlit/Dockerfile .
 	kind load docker-image \
@@ -81,7 +81,7 @@ kind-load-images: kind-up
 		{{platform_registry}}/duckdb-ui:dev \
 		{{platform_registry}}/hub:dev \
 		{{registry}}/marimo:dev \
-		{{registry}}/srdp-etl:dev \
+		{{registry}}/cbs-example:dev \
 		{{registry}}/srdp-api:dev \
 		{{registry}}/streamlit:dev \
 		--name srdp
@@ -141,7 +141,7 @@ docker-secrets:
 # Start the Docker Compose stack (local dev). Attached by default; pass -d to detach.
 # Builds from source and tags the platform images dev, whatever SRDP_VERSION says.
 docker-up *args: docker-tls docker-secrets
-	cd deploy/docker && SRDP_UID=$(id -u) SRDP_GID=$(id -g) SRDP_DOMAIN='{{domain}}' SRDP_VERSION=dev docker compose up --build {{args}}
+	cd deploy/docker && SRDP_UID=$(id -u) SRDP_GID=$(id -g) SRDP_DOMAIN='{{domain}}' SRDP_VERSION=dev SRDP_DEV_PASSWORD_CHANGE_REQUIRED=false docker compose up --build {{args}}
 
 # Start the Docker Compose stack with the published platform images of a release, e.g. `just docker-up-release 0.4.0 -d`.
 docker-up-release version *args: docker-secrets

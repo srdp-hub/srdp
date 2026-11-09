@@ -27,7 +27,7 @@ from srdp.io.ducklake import setup_ducklake
 logger = logging.getLogger("srdp.api")
 
 DAGSTER_GRAPHQL_URL = os.environ.get("DAGSTER_GRAPHQL_URL", "http://dagster-webserver:3000/graphql")
-DAGSTER_REPOSITORY_LOCATION = os.environ.get("DAGSTER_REPOSITORY_LOCATION", "grpc:srdp-dagster-code:3030")
+DAGSTER_REPOSITORY_LOCATION = os.environ.get("DAGSTER_REPOSITORY_LOCATION", "cbs-example")
 DAGSTER_REPOSITORY_NAME = os.environ.get("DAGSTER_REPOSITORY_NAME", "__repository__")
 
 router = APIRouter()

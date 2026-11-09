@@ -2,3 +2,5 @@ load_from:
   - grpc_server:
       host: srdp-dagster-code
       port: 3030
+      # The same name as the chart's code location, so the API finds it on both targets.
+      location_name: cbs-example

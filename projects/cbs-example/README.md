@@ -133,9 +133,9 @@ Copy this directory, rename it, and update:
 - `projects/<new>/dbt/`: your dbt project (or delete it if you're not using dbt)
 - `projects/<new>/Dockerfile`: replace `projects/cbs-example` in the `COPY` and `PYTHONPATH` lines with the new name
 - `deploy/docker/docker-compose.yml`: point the `dockerfile` of `dagster-code` at the new Dockerfile (the build context stays the repo root)
-- Kubernetes: the chart's code location deployment is `srdp-etl`, built by the `kind-load-images` recipe in the `Justfile` and by `deploy/opentofu/scaleway/build-and-push.sh`, so point the Dockerfile path in both at the new project
+- Kubernetes: the chart's code location deployment is `cbs-example`, built by the `kind-load-images` recipe in the `Justfile` and by `deploy/opentofu/scaleway/build-and-push.sh`, so point the Dockerfile path in both at the new project
 
-The module name `etl` and the names `dagster-code` and `srdp-etl` are hardcoded in several places, so keep them for now. A second project next to this one is not supported yet.
+The module name `etl` and the names `dagster-code` and `cbs-example` are hardcoded in several places, so keep them for now. A second project next to this one is not supported yet.
 
 See `.github/instructions/dagster.instructions.md` for the Dagster conventions, and the docstrings in `src/srdp/io/ducklake.py` for how an asset key maps to a DuckLake table.
 

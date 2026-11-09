@@ -25,6 +25,13 @@ zitadel-db:
       failureThreshold: 12
 
 zitadel:
+  # Dev wipes its data, so the first admin skips the forced password change.
+  zitadel:
+    configmapConfig:
+      FirstInstance:
+        Org:
+          Human:
+            PasswordChangeRequired: false
   # Source: https://github.com/zitadel/zitadel/issues/11163
   login:
     customConfigmapConfig: |
@@ -86,9 +93,9 @@ dagster:
           - OPENSSL_armcap=0
   dagster-user-deployments:
     deployments:
-      - name: srdp-etl
+      - name: cbs-example
         image:
-          repository: rg.nl-ams.scw.cloud/srdp-registry/srdp-etl
+          repository: ghcr.io/srdp-hub/cbs-example
           tag: "dev"
           pullPolicy: Never
         dagsterApiGrpcArgs: ["-m", "etl.definitions"]

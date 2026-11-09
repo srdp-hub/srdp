@@ -13,7 +13,7 @@ OWN_IMAGE = re.compile(r"\$\{SRDP_PLATFORM_REGISTRY|^local-|^ghcr\.io/srdp-hub/"
 
 
 # Structured chart images that SRDP builds, which follow the release version.
-OWN_CHART_IMAGE = re.compile(r"^ghcr\.io/srdp-hub/|/srdp-etl:")
+OWN_CHART_IMAGE = re.compile(r"^ghcr\.io/srdp-hub/|/cbs-example:")
 
 
 def repo_files(*patterns: str) -> list[Path]:

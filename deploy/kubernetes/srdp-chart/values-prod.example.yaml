@@ -2,9 +2,9 @@
 global:
   domain: "LOAD_BALANCER_IP.nip.io" # CHANGE THIS to the dedicated domain
   postgresqlHost: "db-postgresql-primary"
-  # The prod-* Justfile recipes override this and the srdp-etl repository
+  # The prod-* Justfile recipes override this and the cbs-example repository
   # below with srdp.toml [deploy].registry. Change the registry there.
-  srdpRegistry: "rg.nl-ams.scw.cloud/srdp-registry"
+  srdpRegistry: "ghcr.io/srdp-hub"
   # imagePullSecrets:
   #   - name: registry-key
   # The Dagster subcharts do not read global.imagePullSecrets. Set the same
@@ -115,7 +115,9 @@ zitadel:
             Email:
               Address: zitadel-admin@auth.LOAD_BALANCER_IP.nip.io
               Verified: true
-            PasswordChangeRequired: false
+            # The first admin must change the generated password at first login.
+            # Only the dev deploy turns this off, in values-local.yaml.
+            PasswordChangeRequired: true
     # CA only, postgres-cert also holds the server key.
     dbSslCaCrtSecret: postgres-ca
     dbSslUserCrtSecret: zitadel-cert
@@ -236,9 +238,9 @@ dagster:
     postgresqlDatabase: dagster
   dagster-user-deployments:
     deployments:
-      - name: srdp-etl
+      - name: cbs-example
         image:
-          repository: "rg.nl-ams.scw.cloud/srdp-registry/srdp-etl" # Set from srdp.toml by the Justfile
+          repository: "ghcr.io/srdp-hub/cbs-example" # Set from srdp.toml by the Justfile
           tag: "0.3.1" # release-tag
           pullPolicy: IfNotPresent
         dagsterApiGrpcArgs:
