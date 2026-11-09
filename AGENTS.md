@@ -49,6 +49,7 @@ The goal is a secure platform that one command deploys with the settings in `srd
 
 ## Python
 
+- Follow [`python.instructions.md`](.github/instructions/python.instructions.md) for every Python file.
 - Write tests with pytest.
 - Use native type hints, such as `str | None`. Never add `from __future__ import annotations`.
 - Log with `logging.getLogger(__name__)`. Never use `print()`.
