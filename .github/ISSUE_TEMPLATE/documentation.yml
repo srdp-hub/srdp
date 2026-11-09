@@ -1,6 +1,6 @@
 name: "📖 Documentation"
 description: Report a documentation issue or suggest an improvement
-labels: ["documentation"]
+labels: ["documentation", "needs triage"]
 
 body:
   - type: textarea
