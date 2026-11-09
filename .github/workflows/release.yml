@@ -11,16 +11,20 @@ permissions:
 jobs:
   release:
     name: Create draft GitHub Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Verify tagged commit is on main
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
           git fetch origin main
-          if ! git merge-base --is-ancestor "${{ github.sha }}" origin/main; then
-            echo "::error::Tag ${{ github.ref_name }} points at a commit not reachable from main, refusing to draft a release."
+          if ! git merge-base --is-ancestor "$COMMIT_SHA" origin/main; then
+            echo "::error::Tag $TAG_NAME points at a commit not reachable from main, refusing to draft a release."
             exit 1
           fi
 
@@ -28,6 +32,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           VERSION="${TAG_NAME#v}"
           HEADING=$(grep -m1 "^## \[$VERSION\]" CHANGELOG.md | sed 's/^## //')
@@ -45,13 +50,13 @@ jobs:
             fi
           fi
 
-          gh api "repos/${{ github.repository }}/releases/generate-notes" \
+          gh api "repos/$REPOSITORY/releases/generate-notes" \
             -f tag_name="$TAG_NAME" -f target_commitish=main "${NOTES_ARGS[@]}" --jq .body > notes.md
 
           if [ -n "$HEADING" ]; then
             ANCHOR=$(echo "$HEADING" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9 -]//g' | tr ' ' '-')
             {
-              echo "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md#$ANCHOR) for the full categorized summary of what changed."
+              echo "See [CHANGELOG.md](https://github.com/$REPOSITORY/blob/main/CHANGELOG.md#$ANCHOR) for the full categorized summary of what changed."
               echo ""
               cat notes.md
             } > combined-notes.md

@@ -128,7 +128,7 @@ Production deployments can also be triggered manually via `just prod-full` as a 
 We follow the [Linux Foundation policy on generative AI](https://www.linuxfoundation.org/legal/generative-ai): AI-generated code is treated the same as any other contribution.
 
 1. **You own your commits.** Review, understand, and validate before committing.
-2. **License compliance.** Ensure AI output does not conflict with Apache-2.0.
+2. **License compliance.** Ensure AI output does not conflict with MPL-2.0.
 3. **No special process.** Same PR review as any other change.
 
 ### Agent configuration

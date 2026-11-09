@@ -12,7 +12,6 @@ spec:
       app: duckdb-ui
   template:
     metadata:
-      {{- include "srdp.localSecretsChecksum" . | nindent 6 }}
       labels:
         app: duckdb-ui
     spec:

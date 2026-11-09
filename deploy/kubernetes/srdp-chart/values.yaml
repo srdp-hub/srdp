@@ -24,22 +24,7 @@ global:
     runAsGroup: 65532
     fsGroup: 65532
 
-# Credentials: none live in this file. Every password and key comes from a
-# Secret with a fixed name, created outside the chart (External Secrets in the
-# cloud, templates/local-secrets.yaml in kind):
-#   srdp-postgres            postgres-password (superuser, never read by Zitadel),
-#                            replication-password (replication only)
-#   srdp-zitadel             masterkey, db-password, admin-password
-#   srdp-oauth2-proxy        client-id, client-secret, cookie-secret
-#   srdp-dagster-postgresql  postgresql-password
-#   srdp-marquez             db-password
-#   srdp-ducklake-s3-writer  DUCKLAKE_S3_KEY_ID, DUCKLAKE_S3_SECRET
-#   srdp-ducklake-s3-reader  DUCKLAKE_S3_KEY_ID, DUCKLAKE_S3_SECRET
-#                            (both only with ducklakeStorage.backend: s3)
-#   srdp-garage              rpc-secret, admin-token (only with garage.enabled)
-localSecrets:
-  enabled: false
-
+# Credentials come from the Secrets in deploy/secrets.toml, created outside the chart.
 # Traefik
 traefik:
   enabled: true
@@ -72,7 +57,7 @@ zitadel-db:
   auth:
     existingSecret: srdp-postgres
     secretKeys:
-      adminPasswordKey: postgres-password
+      adminPasswordKey: password
       replicationPasswordKey: replication-password
   # Bitnami publishes only `latest`, so these are pinned by digest. This one is
   # PostgreSQL 18.6.0, the Compose major. Renovate does not track them, so bump
@@ -306,14 +291,12 @@ dagster:
   # routes to it and the read-write webserver stays cluster-internal for
   # operators (port-forward). Dagster OSS has no per-user authorization, so
   # an exposed read-write UI would bypass the writer role (see ADR-0005).
-  # The password comes from srdp-dagster-postgresql (key postgresql-password),
-  # for the webserver, daemon, code location and run pods alike.
   # No usage reporting to Dagster, as in Compose's config/dagster/dagster.yaml.
   # Enabled telemetry also writes under DAGSTER_HOME, which is read-only here.
   telemetry:
     enabled: false
   global:
-    postgresqlSecretName: srdp-dagster-postgresql
+    postgresqlSecretName: srdp-dagster
   generatePostgresqlPasswordSecret: false
   # The webserver and daemon run SRDP's dagster-webserver image, built from
   # uv.lock like Compose's. The tag follows appVersion (tested).
@@ -384,7 +367,7 @@ dagster:
           - name: PGPASSWORD
             valueFrom:
               secretKeyRef:
-                name: srdp-dagster-postgresql
+                name: srdp-dagster
                 key: postgresql-password
   ingress:
     enabled: false
@@ -491,14 +474,14 @@ dagster:
               - name: PGHOST
                 value: db-postgresql
               - name: PGUSER
-                value: postgres
+                value: ducklake_writer
               - name: PGDATABASE
                 value: ducklake
               - name: PGPASSWORD
                 valueFrom:
                   secretKeyRef:
-                    name: srdp-postgres
-                    key: postgres-password
+                    name: srdp-ducklake-pg-writer
+                    key: password
           - name: wait-for-ducklake-bucket
             # Same container as srdp.waitForDucklakeBucket in templates/_helpers.tpl,
             # with the writer key. includeConfigInLaunchedRuns copies it into
@@ -519,13 +502,13 @@ dagster:
                 valueFrom:
                   secretKeyRef:
                     name: srdp-ducklake-s3-writer
-                    key: DUCKLAKE_S3_KEY_ID
+                    key: key-id
                     optional: true
               - name: DUCKLAKE_S3_SECRET
                 valueFrom:
                   secretKeyRef:
                     name: srdp-ducklake-s3-writer
-                    key: DUCKLAKE_S3_SECRET
+                    key: secret
                     optional: true
             command:
               - sh
@@ -597,12 +580,12 @@ dagster:
           - name: DUCKLAKE_PG_HOST
             value: db-postgresql
           - name: DUCKLAKE_PG_USER
-            value: postgres
+            value: ducklake_writer
           - name: DUCKLAKE_PG_PASSWORD
             valueFrom:
               secretKeyRef:
-                name: srdp-postgres
-                key: postgres-password
+                name: srdp-ducklake-pg-writer
+                key: password
           - name: DUCKLAKE_PG_DB
             value: ducklake
           - name: DUCKLAKE_DATA_PATH
@@ -614,13 +597,13 @@ dagster:
             valueFrom:
               secretKeyRef:
                 name: srdp-ducklake-s3-writer
-                key: DUCKLAKE_S3_KEY_ID
+                key: key-id
                 optional: true
           - name: DUCKLAKE_S3_SECRET
             valueFrom:
               secretKeyRef:
                 name: srdp-ducklake-s3-writer
-                key: DUCKLAKE_S3_SECRET
+                key: secret
                 optional: true
 
 # Marimo app
@@ -648,13 +631,8 @@ ducklakeData:
   accessMode: ReadWriteOnce
   storageClassName: ""
 
-# Where DuckLake keeps its Parquet files, rendered into the
-# srdp-ducklake-storage ConfigMap that every DuckLake consumer reads
-# (templates/ducklake-storage-configmap.yaml). `local` uses the ducklake-data
-# volume above. `s3` uses the bucket below: Dagster and its run pods get the
-# key in the srdp-ducklake-s3-writer Secret, the apps the read-only key in
-# srdp-ducklake-s3-reader. Both Secrets hold DUCKLAKE_S3_KEY_ID and
-# DUCKLAKE_S3_SECRET. values-local-s3.yaml switches kind to the bundled Garage.
+# Where DuckLake keeps its Parquet files. `local` uses the volume above, `s3` the bucket below.
+# Dagster gets the S3 writer key, the apps the reader key.
 ducklakeStorage:
   backend: local
   s3:
@@ -712,8 +690,10 @@ setup:
       role: dagster
     - name: marquez
       role: marquez
-    # DuckLake connects as the superuser (DUCKLAKE_PG_USER=postgres).
+    # The apps read the catalog as reader_role, which can only SELECT.
     - name: ducklake
+      role: ducklake_writer
+      reader_role: ducklake_reader
 
 # SRDP API (core routes + cbs-example's income-ingest router)
 api:

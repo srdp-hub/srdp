@@ -1,15 +1,16 @@
+name: srdp
+
 # Least privilege for every service SRDP builds or runs without a data directory of
 # its own: no root filesystem writes, no capabilities and no privilege escalation.
-# DuckDB downloads its extensions into the home directory at every start and
-# loads them as shared libraries, so the home directory is a tmpfs that allows
-# execution.
+# The DuckDB extensions are baked into the images (/opt/duckdb/extensions), so
+# the home directory is a plain tmpfs for scratch files.
 x-hardened: &hardened
   read_only: true
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
   tmpfs:
     - /tmp
-    - /home/nonroot:uid=65532,gid=65532,exec
+    - /home/nonroot:uid=65532,gid=65532
 
 x-ducklake-depends: &ducklake-depends
   depends_on:
@@ -37,6 +38,7 @@ x-ducklake-writer: &ducklake-writer
 
 x-ducklake-reader: &ducklake-reader
   <<: *ducklake-storage
+  DUCKLAKE_READ_ONLY: "true"
   DUCKLAKE_S3_KEY_ID: "${DUCKLAKE_S3_READER_KEY_ID:-}"
   DUCKLAKE_S3_SECRET: "${DUCKLAKE_S3_READER_SECRET:-}"
 
@@ -80,9 +82,14 @@ services:
       # Setup stops before it changes anything when this volume belongs to another user.
       SETUP_DATA_DIR: /data/ducklake
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
-      SETUP_PASSWORDS__ZITADEL: "${ZITADEL_DATABASE_POSTGRES_USER_PASSWORD}"
-      SETUP_PASSWORDS__DAGSTER: "${DAGSTER_PG_PASSWORD}"
+      SETUP_PASSWORDS__ZITADEL: "${ZITADEL_DB_PASSWORD}"
+      SETUP_PASSWORDS__DAGSTER: "${DAGSTER_POSTGRESQL_PASSWORD}"
       SETUP_PASSWORDS__MARQUEZ: "${MARQUEZ_DB_PASSWORD}"
+      SETUP_PASSWORDS__DUCKLAKE_WRITER: "${DUCKLAKE_PG_WRITER_PASSWORD}"
+      SETUP_PASSWORDS__DUCKLAKE_READER: "${DUCKLAKE_PG_READER_PASSWORD}"
+      # The catalog keeps the data path it is created with, so this must match the services.
+      <<: *ducklake-storage
+      DUCKLAKE_DATA_PATH: /data/ducklake
       # The optional Garage step ([setup.garage] in srdp.toml,
       # src/srdp/setup/garage.py) runs only with SETUP_GARAGE_ENABLED=true,
       # set in .env next to COMPOSE_PROFILES=s3. It creates the bucket and
@@ -151,8 +158,9 @@ services:
     extends:
       service: zitadel-init
     container_name: srdp-zitadel
-    command: 'start-from-setup --masterkey "${ZITADEL_MASTERKEY}"'
+    command: start-from-setup --masterkeyFromEnv
     environment:
+      ZITADEL_MASTERKEY: "${ZITADEL_MASTERKEY}"
       ZITADEL_EXTERNALPORT: 443
       ZITADEL_EXTERNALSECURE: true
       ZITADEL_TLS_ENABLED: true
@@ -186,9 +194,9 @@ services:
       ZITADEL_EXTERNALDOMAIN: auth.${SRDP_DOMAIN:?set it in srdp.toml, use just docker-up}
       ZITADEL_LOGSTORE_ACCESS_STDOUT_ENABLED: true
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: false
-      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: "${ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD}"
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: "${ZITADEL_ADMIN_PASSWORD}"
       ZITADEL_DATABASE_POSTGRES_HOST: postgres
-      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: "${ZITADEL_DATABASE_POSTGRES_USER_PASSWORD}"
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: "${ZITADEL_DB_PASSWORD}"
       ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH: /current-dir/login-client.pat
       ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME: login-client
       ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_NAME: Automatically Initialized IAM Login Client
@@ -261,11 +269,11 @@ services:
       # access token this same session hands the user via /token) skip the
       # cookie/redirect flow entirely, for calling the API outside a browser.
       - --skip-jwt-bearer-tokens=true
-      - --extra-jwt-issuers=https://auth.${SRDP_DOMAIN:?set it in srdp.toml, use just docker-up}=${OIDC_CLIENT_ID}
+      - --extra-jwt-issuers=https://auth.${SRDP_DOMAIN:?set it in srdp.toml, use just docker-up}=${OAUTH2_PROXY_CLIENT_ID}
     environment:
-      OAUTH2_PROXY_CLIENT_ID: "${OIDC_CLIENT_ID}"
-      OAUTH2_PROXY_CLIENT_SECRET: "${OIDC_CLIENT_SECRET}"
-      OAUTH2_PROXY_COOKIE_SECRET: "${OIDC_COOKIE_SECRET}"
+      OAUTH2_PROXY_CLIENT_ID: "${OAUTH2_PROXY_CLIENT_ID}"
+      OAUTH2_PROXY_CLIENT_SECRET: "${OAUTH2_PROXY_CLIENT_SECRET}"
+      OAUTH2_PROXY_COOKIE_SECRET: "${OAUTH2_PROXY_COOKIE_SECRET}"
       OAUTH2_PROXY_COOKIE_CSRF_PER_REQUEST: true
       OAUTH2_PROXY_COOKIE_CSRF_EXPIRE: '5m'
     depends_on:
@@ -281,7 +289,7 @@ services:
     <<: *hardened
     tmpfs:
       - /tmp
-      - /home/nonroot:uid=65532,gid=65532,exec
+      - /home/nonroot:uid=65532,gid=65532
     image: ${SRDP_PLATFORM_REGISTRY:-ghcr.io/srdp-hub}/dagster-webserver:${SRDP_VERSION:-dev}
     build:
       context: ../../
@@ -291,7 +299,7 @@ services:
       DAGSTER_HOME: /app/config/dagster
       DAGSTER_PG_HOST: postgres
       DAGSTER_PG_USER: dagster
-      DAGSTER_PG_PASSWORD: "${DAGSTER_PG_PASSWORD}"
+      DAGSTER_PG_PASSWORD: "${DAGSTER_POSTGRESQL_PASSWORD}"
       DAGSTER_PG_DB: dagster
     networks:
       - app
@@ -313,7 +321,7 @@ services:
     <<: *hardened
     tmpfs:
       - /tmp
-      - /home/nonroot:uid=65532,gid=65532,exec
+      - /home/nonroot:uid=65532,gid=65532
     image: ${SRDP_PLATFORM_REGISTRY:-ghcr.io/srdp-hub}/dagster-webserver:${SRDP_VERSION:-dev}
     build:
       context: ../../
@@ -323,7 +331,7 @@ services:
       DAGSTER_HOME: /app/config/dagster
       DAGSTER_PG_HOST: postgres
       DAGSTER_PG_USER: dagster
-      DAGSTER_PG_PASSWORD: "${DAGSTER_PG_PASSWORD}"
+      DAGSTER_PG_PASSWORD: "${DAGSTER_POSTGRESQL_PASSWORD}"
       DAGSTER_PG_DB: dagster
     networks:
       - db
@@ -340,7 +348,7 @@ services:
     <<: *hardened
     tmpfs:
       - /tmp
-      - /home/nonroot:uid=65532,gid=65532,exec
+      - /home/nonroot:uid=65532,gid=65532
       - /opt/dagster/dagster_home:uid=65532,gid=65532
       - /app/config/dagster:uid=65532,gid=65532
       - /app/projects/cbs-example/dbt/target:uid=65532,gid=65532
@@ -352,12 +360,12 @@ services:
     environment:
       DAGSTER_PG_HOST: postgres
       DAGSTER_PG_USER: dagster
-      DAGSTER_PG_PASSWORD: "${DAGSTER_PG_PASSWORD}"
+      DAGSTER_PG_PASSWORD: "${DAGSTER_POSTGRESQL_PASSWORD}"
       DAGSTER_PG_DB: dagster
       DAGSTER_CURRENT_IMAGE: srdp-dagster-code
       DUCKLAKE_PG_HOST: postgres
-      DUCKLAKE_PG_USER: postgres
-      DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
+      DUCKLAKE_PG_USER: ducklake_writer
+      DUCKLAKE_PG_PASSWORD: "${DUCKLAKE_PG_WRITER_PASSWORD}"
       DUCKLAKE_PG_DB: ducklake
       DUCKLAKE_DATA_PATH: /data/ducklake
       <<: *ducklake-writer
@@ -397,8 +405,8 @@ services:
     container_name: srdp-marimo
     environment:
       DUCKLAKE_PG_HOST: postgres
-      DUCKLAKE_PG_USER: postgres
-      DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
+      DUCKLAKE_PG_USER: ducklake_reader
+      DUCKLAKE_PG_PASSWORD: "${DUCKLAKE_PG_READER_PASSWORD}"
       DUCKLAKE_PG_DB: ducklake
       DUCKLAKE_DATA_PATH: /data/ducklake
       <<: *ducklake-reader
@@ -419,8 +427,8 @@ services:
     container_name: srdp-streamlit
     environment:
       DUCKLAKE_PG_HOST: postgres
-      DUCKLAKE_PG_USER: postgres
-      DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
+      DUCKLAKE_PG_USER: ducklake_reader
+      DUCKLAKE_PG_PASSWORD: "${DUCKLAKE_PG_READER_PASSWORD}"
       DUCKLAKE_PG_DB: ducklake
       DUCKLAKE_DATA_PATH: /data/ducklake
       <<: *ducklake-reader
@@ -441,8 +449,8 @@ services:
     container_name: srdp-api
     environment:
       DUCKLAKE_PG_HOST: postgres
-      DUCKLAKE_PG_USER: postgres
-      DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
+      DUCKLAKE_PG_USER: ducklake_reader
+      DUCKLAKE_PG_PASSWORD: "${DUCKLAKE_PG_READER_PASSWORD}"
       DUCKLAKE_PG_DB: ducklake
       DUCKLAKE_DATA_PATH: /data/ducklake
       <<: *ducklake-reader
@@ -462,11 +470,13 @@ services:
     build:
       context: ../../
       dockerfile: services/duckdb-ui/Dockerfile
+      args:
+        DUCKDB_EXTENSIONS: "${DUCKDB_EXTENSIONS:-}"
     container_name: srdp-duckdb-ui
     environment:
       DUCKLAKE_PG_HOST: postgres
-      DUCKLAKE_PG_USER: postgres
-      DUCKLAKE_PG_PASSWORD: "${POSTGRES_PASSWORD}"
+      DUCKLAKE_PG_USER: ducklake_reader
+      DUCKLAKE_PG_PASSWORD: "${DUCKLAKE_PG_READER_PASSWORD}"
       DUCKLAKE_PG_DB: ducklake
       DUCKLAKE_DATA_PATH: /data/ducklake
       <<: *ducklake-reader
