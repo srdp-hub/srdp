@@ -14,6 +14,9 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 
 ### Changed
 
+- The example project's code location and image are called `cbs-example` instead of `srdp-etl`.
+  The default registry in `srdp.toml` and the chart is `ghcr.io/srdp-hub`, where CI publishes the images.
+  The Dagster code location is renamed too, from `srdp-dagster-code:3030` on Compose and `srdp-etl` on Kubernetes. Runs of an existing install keep the old location name.
 - `just docker-up` and `just local-deploy` create the local TLS certificate. Before, a new kind cluster served Traefik's default certificate.
 - Credential names are the same on both targets. Rename these before you upgrade.
 
@@ -87,6 +90,9 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 
 ### Security
 
+- The first Zitadel admin must change the password at first login. Only `just docker-up` and `just local-deploy` skip this.
+  An existing install keeps its admin, because Zitadel applies this setting only on a new database.
+- `deploy/opentofu/gcp/tofu.tfvars` is no longer tracked, because it held a real cookie secret. Rotate that secret where the GCP deploy ran.
 - A DuckLake settings error no longer prints the values it was given, so a misconfigured start cannot write the Postgres password or the S3 secret to the logs.
 - Garage runs hardened.
   In the chart it runs as a non-root user with a read-only root filesystem, no capabilities, RuntimeDefault seccomp and no service account token.
@@ -103,6 +109,7 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
   The Compose home tmpfs no longer allows execution.
 - The apps that run user SQL (DuckDB UI, marimo, Streamlit, API) open the DuckLake catalog as a read-only Postgres role, `ducklake_reader`, and Dagster as the owner role, `ducklake_writer`.
   Before, all of them used the Postgres superuser.
+  These apps also attach the catalog read-only (`DUCKLAKE_READ_ONLY`), so DuckDB refuses a write before it reaches Postgres.
   `srdp-setup` creates both roles, hands an older catalog to the owner, limits `CONNECT` on each managed database to its own roles, and creates the catalog tables once.
   Locally, `just docker-up` and `just local-deploy` generate the two passwords. Elsewhere, create the Secrets `srdp-ducklake-pg-writer` and `srdp-ducklake-pg-reader` (key `password`).
   With `manage_databases` off you create the roles and grants yourself, as `docs/06-deployment.md` describes.
@@ -180,6 +187,7 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 
 ### Fixed
 
+- `/ingest/income` works on Kubernetes, because the API and the chart use the same code location name (#103).
 - The `ducklake` database is now created at startup, before any consumer connects (#57).
 - `docker-compose.prod.yml` serves HTTPS with Let's Encrypt certificates and keeps the Traefik dashboard off (#92).
   It gives Traefik a static configuration of its own, because Traefik ignored the flags it used to pass.

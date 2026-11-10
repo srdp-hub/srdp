@@ -13,13 +13,13 @@ from typing import Any
 import pytest
 import yaml
 
+from srdp.api.main import DAGSTER_REPOSITORY_LOCATION
 from srdp.setup.bootstrap import DATABASE_WAIT_SECONDS, DatabaseTarget
 from srdp.setup.garage import GARAGE_WAIT_SECONDS
 from srdp.setup.local_secrets import load_secrets
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CHART_DIR = REPO_ROOT / "deploy" / "kubernetes" / "srdp-chart"
-# The registry of the images this repo builds when no Justfile override applies.
 DEFAULT_REGISTRY = tomllib.loads((REPO_ROOT / "srdp.toml").read_text())["deploy"]["registry"]
 
 pytestmark = pytest.mark.skipif(shutil.which("helm") is None, reason="needs helm")
@@ -280,7 +280,6 @@ def test_apps_wait_for_the_catalog_tables(local: list[Manifest]) -> None:
     assert secret_ref(env, "PGPASSWORD") == ("srdp-ducklake-pg-reader", "password")
 
 
-# The example project's images. They follow srdp.toml's registry, while the platform images stay on ghcr.io.
 PROJECT_IMAGES = {"marimo", "cbs-example", "srdp-api", "streamlit"}
 
 
@@ -1174,3 +1173,15 @@ def test_first_admin_must_change_password(values_files: tuple[str, ...], *, requ
     """Every install forces the change at first login, except the local dev deploy."""
     config = find(render(*values_files), "ConfigMap", "srdp-zitadel-config-yaml")["data"]["zitadel-config-yaml"]
     assert yaml.safe_load(config)["FirstInstance"]["Org"]["Human"]["PasswordChangeRequired"] is required
+
+
+def test_one_code_location_name_everywhere(local: list[Manifest]) -> None:
+    """The chart, the Compose workspace and the API default name the same Dagster code location."""
+    chart_name = yaml.safe_load((CHART_DIR / "values.yaml").read_text())["dagster"]["dagster-user-deployments"][
+        "deployments"
+    ][0]["name"]
+    workspace = yaml.safe_load((REPO_ROOT / "config" / "dagster" / "workspace.yaml").read_text())
+    api_env = pod_env(local, "Deployment", "api")
+    assert workspace["load_from"][0]["grpc_server"]["location_name"] == chart_name
+    assert api_env["DAGSTER_REPOSITORY_LOCATION"]["value"] == chart_name
+    assert chart_name == DAGSTER_REPOSITORY_LOCATION

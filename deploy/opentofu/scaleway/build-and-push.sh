@@ -8,6 +8,14 @@ REPO_ROOT="$(cd -- "$SCRIPT_DIR/../../.." && pwd)"
 REGISTRY="${REGISTRY:?set REGISTRY, or run via just build-and-push}"
 VERSION="${VERSION:-$(cd "$REPO_ROOT" && uv run --no-project python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')}"
 
+case "$REGISTRY" in
+  rg.*.scw.cloud/*) ;;
+  *)
+    echo "error: $REGISTRY is not a Scaleway registry. Set [deploy] registry in srdp.toml to your Scaleway registry, such as rg.nl-ams.scw.cloud/<namespace>." >&2
+    exit 1
+    ;;
+esac
+
 echo "Logging into Scaleway Registry"
 echo "$SCW_SECRET_KEY" | docker login "${REGISTRY%%/*}" -u nologin --password-stdin
 
