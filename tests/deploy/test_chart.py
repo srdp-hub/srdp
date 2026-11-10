@@ -13,12 +13,14 @@ from typing import Any
 import pytest
 import yaml
 
+from srdp.api.main import DAGSTER_REPOSITORY_LOCATION
 from srdp.setup.bootstrap import DATABASE_WAIT_SECONDS, DatabaseTarget
 from srdp.setup.garage import GARAGE_WAIT_SECONDS
 from srdp.setup.local_secrets import load_secrets
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CHART_DIR = REPO_ROOT / "deploy" / "kubernetes" / "srdp-chart"
+DEFAULT_REGISTRY = tomllib.loads((REPO_ROOT / "srdp.toml").read_text())["deploy"]["registry"]
 
 pytestmark = pytest.mark.skipif(shutil.which("helm") is None, reason="needs helm")
 
@@ -100,7 +102,7 @@ def test_setup_can_be_told_not_to_manage_databases() -> None:
 
 
 def test_dagster_code_location_uses_the_compose_module_path(local: list[Manifest]) -> None:
-    deployment = find(local, "Deployment", "srdp-dagster-user-deployments-srdp-etl")
+    deployment = find(local, "Deployment", "srdp-dagster-user-deployments-cbs-example")
     args = deployment["spec"]["template"]["spec"]["containers"][0]["args"]
     assert args[args.index("-m") + 1] == "etl.definitions"
 
@@ -118,7 +120,7 @@ def test_compose_and_chart_queue_runs_the_same_way(local: list[Manifest]) -> Non
 
 @pytest.mark.parametrize(
     "name",
-    ["srdp-dagster-user-deployments-srdp-etl", "api", "duckdb-ui", "marimo", "streamlit"],
+    ["srdp-dagster-user-deployments-cbs-example", "api", "duckdb-ui", "marimo", "streamlit"],
 )
 def test_ducklake_readers_and_writers_share_one_data_volume(local: list[Manifest], name: str) -> None:
     spec = find(local, "Deployment", name)["spec"]["template"]["spec"]
@@ -209,7 +211,7 @@ def test_setup_job_and_marquez_read_the_same_marquez_password(local: list[Manife
 
 
 CATALOG_APPS = ("api", "duckdb-ui", "marimo", "streamlit")
-CODE_LOCATION = "srdp-dagster-user-deployments-srdp-etl"
+CODE_LOCATION = "srdp-dagster-user-deployments-cbs-example"
 
 
 @pytest.mark.parametrize("app", CATALOG_APPS)
@@ -278,13 +280,21 @@ def test_apps_wait_for_the_catalog_tables(local: list[Manifest]) -> None:
     assert secret_ref(env, "PGPASSWORD") == ("srdp-ducklake-pg-reader", "password")
 
 
-def srdp_images(manifests: list[Manifest], registry: str) -> list[str]:
-    """Return every image built by this repo, on the given registry or the default one."""
+PROJECT_IMAGES = {"marimo", "cbs-example", "srdp-api", "streamlit"}
+
+
+def image_name(image: str) -> str:
+    """Return the repository name of an image, without registry, tag or digest."""
+    return image.rsplit("/", 1)[-1].split("@", maxsplit=1)[0].split(":", maxsplit=1)[0]
+
+
+def project_images(manifests: list[Manifest]) -> list[str]:
+    """Return every image of the example project in the manifests."""
     return [
         c["image"]
         for _, spec in pod_specs(manifests)
         for c in containers(spec)
-        if c["image"].startswith(registry) or "srdp-registry" in c["image"]
+        if image_name(c["image"]) in PROJECT_IMAGES
     ]
 
 
@@ -314,9 +324,8 @@ def test_the_justfile_registry_moves_every_srdp_image() -> None:
             "global.imagePullSecrets[0].name=registry-key",
         ),
     )
-    images = srdp_images(manifests, registry)
-    names = {image.rsplit("/", 1)[1].split(":")[0] for image in images}
-    assert names >= {"marimo", "srdp-etl", "srdp-api", "streamlit"}
+    images = project_images(manifests)
+    assert {image_name(image) for image in images} == PROJECT_IMAGES
     assert all(image.startswith(f"{registry}/") for image in images), images
     # The platform images SRDP publishes stay on their own registry.
     platform = {i for i in manifest_images(manifests) if i.startswith(f"{PLATFORM_REGISTRY}/")}
@@ -342,7 +351,7 @@ def test_chart_registry_defaults_match_srdp_toml(values_file: str) -> None:
     if "srdpRegistry" in values.get("global", {}):
         assert values["global"]["srdpRegistry"] == registry
     deployments = values["dagster"]["dagster-user-deployments"]["deployments"]
-    assert [d["image"]["repository"] for d in deployments] == [f"{registry}/srdp-etl"]
+    assert [d["image"]["repository"] for d in deployments] == [f"{registry}/cbs-example"]
 
 
 def just_args(variable: str, *overrides: str) -> tuple[str, ...]:
@@ -413,7 +422,7 @@ def test_staged_prod_recipes_deploy_only_what_their_name_says(variable: str, exp
 
 
 def test_writers_and_readers_mount_ducklake_data_at_the_same_path(local: list[Manifest]) -> None:
-    names = ["srdp-dagster-user-deployments-srdp-etl", "api", "duckdb-ui", "marimo", "streamlit"]
+    names = ["srdp-dagster-user-deployments-cbs-example", "api", "duckdb-ui", "marimo", "streamlit"]
     paths = set()
     for name in names:
         container = find(local, "Deployment", name)["spec"]["template"]["spec"]["containers"][0]
@@ -422,7 +431,7 @@ def test_writers_and_readers_mount_ducklake_data_at_the_same_path(local: list[Ma
 
 
 # DuckLake on S3 (values-local-s3.yaml). The apps must only ever see the read-only key.
-DUCKLAKE_WRITER = "srdp-dagster-user-deployments-srdp-etl"
+DUCKLAKE_WRITER = "srdp-dagster-user-deployments-cbs-example"
 DUCKLAKE_READERS = ["api", "duckdb-ui", "marimo", "streamlit"]
 READER_KEY = "srdp-ducklake-s3-reader"
 WRITER_KEY = "srdp-ducklake-s3-writer"
@@ -899,7 +908,7 @@ def test_every_chart_image_is_pinned(case: str) -> None:
     values_files, set_values = RENDERS[case]
     images = set(manifest_images(render(*values_files, set_values=set_values)))
     # Our own images are tagged with the release (or dev locally), which the next tests check.
-    own = {i for i in images if "srdp-registry/" in i or i.startswith(f"{PLATFORM_REGISTRY}/")}
+    own = {i for i in images if i.startswith((f"{DEFAULT_REGISTRY}/", f"{PLATFORM_REGISTRY}/"))}
     unpinned = {i for i in images if not is_pinned(i)} - own - UNPINNABLE
     assert not unpinned, unpinned
 
@@ -1154,3 +1163,25 @@ def test_login_gate_is_mandatory(gate: str, app: str) -> None:
     others = tuple(f"{a}.enabled=false" for a in GATED if a != app)
     error = render_error("values.yaml", set_values=(*others, f"{app}.enabled=true", f"{gate}.enabled=false"))
     assert f"mandatory while {app} runs" in error
+
+
+@pytest.mark.parametrize(
+    ("values_files", "required"),
+    [(("values.yaml",), True), (("values-prod.example.yaml",), True), (("values.yaml", "values-local.yaml"), False)],
+)
+def test_first_admin_must_change_password(values_files: tuple[str, ...], *, required: bool) -> None:
+    """Every install forces the change at first login, except the local dev deploy."""
+    config = find(render(*values_files), "ConfigMap", "srdp-zitadel-config-yaml")["data"]["zitadel-config-yaml"]
+    assert yaml.safe_load(config)["FirstInstance"]["Org"]["Human"]["PasswordChangeRequired"] is required
+
+
+def test_one_code_location_name_everywhere(local: list[Manifest]) -> None:
+    """The chart, the Compose workspace and the API default name the same Dagster code location."""
+    chart_name = yaml.safe_load((CHART_DIR / "values.yaml").read_text())["dagster"]["dagster-user-deployments"][
+        "deployments"
+    ][0]["name"]
+    workspace = yaml.safe_load((REPO_ROOT / "config" / "dagster" / "workspace.yaml").read_text())
+    api_env = pod_env(local, "Deployment", "api")
+    assert workspace["load_from"][0]["grpc_server"]["location_name"] == chart_name
+    assert api_env["DAGSTER_REPOSITORY_LOCATION"]["value"] == chart_name
+    assert chart_name == DAGSTER_REPOSITORY_LOCATION

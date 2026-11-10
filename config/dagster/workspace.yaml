@@ -2,3 +2,4 @@ load_from:
   - grpc_server:
       host: srdp-dagster-code
       port: 3030
+      location_name: cbs-example

@@ -137,3 +137,10 @@ def test_garage_signs_with_the_region_the_consumers_use(s3: dict[str, Any]) -> N
 def test_apps_attach_the_catalog_read_only(tmp_path: Path, name: str) -> None:
     """Every app that reads the catalog attaches it read-only."""
     assert render(tmp_path, {})[name]["environment"]["DUCKLAKE_READ_ONLY"] == "true"
+
+
+@pytest.mark.parametrize(("env", "required"), [({}, "true"), ({"SRDP_DEV_PASSWORD_CHANGE_REQUIRED": "false"}, "false")])
+def test_first_admin_must_change_password(tmp_path: Path, env: dict[str, str], required: str) -> None:
+    """Compose forces the change at first login, and only the dev recipe turns it off."""
+    zitadel = render(tmp_path, env)["zitadel"]["environment"]
+    assert zitadel["ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED"] == required

@@ -61,7 +61,7 @@ icon: lucide/life-buoy
   A missing `SETUP_PASSWORDS__<ROLE>` fails the Job before it touches Postgres.
 - Fix: rerun `helm upgrade` (or `just local-deploy`).
   The Job creates any missing role or database and resets every configured role's password, keeping existing data.
-- If the pods don't recover on their own, run `kubectl -n srdp rollout restart deploy/srdp-dagster-webserver deploy/srdp-dagster-webserver-read-only deploy/srdp-dagster-daemon deploy/srdp-dagster-user-deployments-srdp-etl`.
+- If the pods don't recover on their own, run `kubectl -n srdp rollout restart deploy/srdp-dagster-webserver deploy/srdp-dagster-webserver-read-only deploy/srdp-dagster-daemon deploy/srdp-dagster-user-deployments-cbs-example`.
 
 ### An app fails with `permission denied for table ducklake_metadata`
 

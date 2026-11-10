@@ -74,7 +74,7 @@ jobs:
           - name: quarto
             context: services/quarto
             dockerfile: services/quarto/Dockerfile
-          - name: srdp-etl
+          - name: cbs-example
             context: .
             dockerfile: projects/cbs-example/Dockerfile
           - name: srdp-api
