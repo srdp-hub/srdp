@@ -8,6 +8,8 @@ icon: lucide/circle-play
 All apps are protected behind OAuth2-Proxy, so opening one redirects to Zitadel for login first.
 You can use the admin credentials from [03-configuration.md](./03-configuration.md).
 The hub at `https://srdp.localhost` links to every service.
+The portal at `https://portal.srdp.localhost` shows the same tools as cards, grouped by purpose, and opens most of them inside the page.
+Tools that refuse to be framed (DuckDB UI, Zitadel) and the API token page open in a new tab.
 
 ## Docker Compose
 
