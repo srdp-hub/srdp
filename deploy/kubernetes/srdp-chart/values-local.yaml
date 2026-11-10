@@ -25,7 +25,6 @@ zitadel-db:
       failureThreshold: 12
 
 zitadel:
-  # Dev wipes its data, so the first admin skips the forced password change.
   zitadel:
     configmapConfig:
       FirstInstance:
