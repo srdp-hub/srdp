@@ -45,7 +45,7 @@ jobs:
           enable-cache: true
       # tests/deploy renders the chart with `helm template`, against the
       # subcharts `just chart-deps` fetches from Chart.lock.
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5
         with:
           version: v4.3.0
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
