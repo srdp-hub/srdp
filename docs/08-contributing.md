@@ -44,6 +44,7 @@ We use GitHub Flow: feature branches from `main`, merged via PR.
 
 Branch naming: `<type>/<issue-number>-<short-slug>` (e.g. `fix/123-short-desc`), where `<type>` is a Conventional Commits type such as `feat`, `fix`, `docs` or `chore`.
 Open an issue first if none exists.
+A chore needs no issue and uses `chore/<short-slug>`.
 
 ## Pull requests
 

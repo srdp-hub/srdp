@@ -22,6 +22,7 @@ This file gives the rules that a linter cannot check.
 - Never add `from __future__ import annotations`.
 - Group imports as stdlib, third-party, `srdp.*` and local.
 - Use a `TYPE_CHECKING` guard for an import that only type checks need.
+- Keep `requires-python` below `3.14`, because some dependencies lag behind.
 
 ### Typing
 
