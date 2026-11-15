@@ -7,7 +7,8 @@ applyTo:
 
 ## Markdown file rules
 
-- Never use em dashes. Use a comma, period, colon or parentheses instead.
+- Never use em dashes. Rewrite the sentence instead.
+- Use a colon only to introduce a list or an example, never as a habit.
 - Write full sentences. Do not join fragments with commas.
 - Do not use "not X, but Y" or "not just X" contrasts. State the point directly.
 - Do not end a sentence with a colon and a noun-phrase fragment, such as "X: a direction, not a task". Write a full sentence.
@@ -38,7 +39,8 @@ Instruction files include this file, `AGENTS.md` and every file in `.github/inst
 - Remove filler and buzzwords.
 
 Explanations are ADRs, architecture pages and design pages.
-They follow the same rules, except the word limits.
+Write them in plain technical English, without the ASD-STE100 rules.
+The general rules at the top of this file still apply.
 Use a longer sentence when it carries a reason or a trade-off.
 
 ## Documentation content rules

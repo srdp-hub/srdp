@@ -6,7 +6,7 @@ Thank you for your interest in contributing to SRDP.
 
 1. Check the [open issues](https://github.com/srdp-hub/srdp/issues) to see if your idea or bug is already tracked.
 2. For new features or significant changes, open an issue to discuss before submitting a PR.
-3. Fork the repository and create a branch from `main`, named `<type>/<issue-number>-<short-slug>` (e.g. `fix/123-short-desc`). `<type>` matches the Conventional Commits types used for commits and PR titles: `feat`, `fix`, `docs`, `chore`, `refactor`, `perf`, `test`, `ci`, `revert`.
+3. Fork the repository and create a branch from `main`, named `<type>/<issue-number>-<short-slug>` (e.g. `fix/123-short-desc`). A chore needs no issue and uses `chore/<short-slug>`. `<type>` matches the Conventional Commits types used for commits and PR titles: `feat`, `fix`, `docs`, `chore`, `refactor`, `perf`, `test`, `ci`, `revert`.
 
 ## Development setup
 
