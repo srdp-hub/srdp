@@ -242,6 +242,7 @@ def test_the_justfile_registry_moves_every_srdp_image() -> None:
         "srdp-setup",
         "duckdb-ui",
         "hub",
+        "portal",
         "dagster-webserver",
     }
     for name in ("marimo", "api", "streamlit", "srdp-setup"):
@@ -1102,7 +1103,7 @@ def test_zitadel_wait_verifies_postgres(case: str) -> None:
         assert "db-ssl-ca-crt" in {v["name"] for v in spec["volumes"]}, name
 
 
-GATED = ["hub", "dagster", "marimo", "quarto", "streamlit", "api", "duckdbUi", "marquez", "setup"]
+GATED = ["hub", "portal", "dagster", "marimo", "quarto", "streamlit", "api", "duckdbUi", "marquez", "setup"]
 
 
 @pytest.mark.parametrize("gate", ["zitadel", "oauth2-proxy"])

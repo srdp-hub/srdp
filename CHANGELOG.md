@@ -20,6 +20,10 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 - `DHI_USERNAME` and `DHI_TOKEN` repository secrets, for the Images and Renovate workflows to pull the base images.
 - Actions and pre-commit hooks are pinned by commit SHA, chart images by digest, and the Dockerfiles use `uv sync --locked`. Tests in `tests/deploy` fail on an unpinned image, Action or hook.
 - Signed platform images: every release builds `srdp-setup`, `dagster-webserver`, `duckdb-ui` and `hub` for amd64 and arm64, scans them for critical vulnerabilities, signs them with cosign, attests their provenance and publishes them to `ghcr.io/srdp-hub` once all four pass, tagged with the exact version (which never moves) and `latest` for the newest stable release. Pull requests and pushes to `main` that touch the images build and scan them without publishing. See "Verifying published images" in the deployment docs.
+- Portal on `portal.<domain>`, on Docker Compose and Kubernetes: one page with a card for every tool, grouped by purpose, behind the same sign-in as the tools.
+  It is plain nginx and static files like the hub, ships as one of the signed platform images, and leaves the hub on the bare domain untouched.
+  The tools open inside the portal, next to a sidebar, except DuckDB UI, Zitadel and the API token page, which refuse to be framed and open in a new tab.
+  Roles and data status are not part of it yet (#129).
 - Renovate proposes one weekly PR for the images, the chart dependencies and the Dagster packages. It needs a `RENOVATE_TOKEN` secret. Dependabot stays for GitHub Actions.
 - `just pre-commit`, which runs every pre-commit hook on all files.
 - `srdp-setup` service that creates every service database and role before the services that need them start, on Docker Compose and Kubernetes.

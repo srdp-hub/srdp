@@ -1,4 +1,4 @@
-{{- if and (index .Values "oauth2-proxy" "enabled") (or .Values.marimo.enabled .Values.streamlit.enabled .Values.quarto.enabled .Values.dagster.enabled .Values.api.enabled .Values.duckdbUi.enabled .Values.hub.enabled .Values.marquez.enabled) }}
+{{- if and (index .Values "oauth2-proxy" "enabled") (or .Values.marimo.enabled .Values.streamlit.enabled .Values.quarto.enabled .Values.dagster.enabled .Values.api.enabled .Values.duckdbUi.enabled .Values.hub.enabled .Values.portal.enabled .Values.marquez.enabled) }}
 # Middlewares
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
@@ -65,6 +65,9 @@ spec:
 {{- end }}
 {{- if .Values.marquez.enabled }}
         - marquez.{{ .Values.global.domain }}
+{{- end }}
+{{- if .Values.portal.enabled }}
+        - portal.{{ .Values.global.domain }}
 {{- end }}
       {{- if .Values.traefik.certResolver }}
       secretName: {{ .Values.global.domain | replace "." "-" }}-tls
@@ -146,6 +149,18 @@ spec:
 {{- end }}
 {{- if .Values.hub.enabled }}
     - host: {{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /oauth2
+            pathType: Prefix
+            backend:
+              service:
+                name: srdp-oauth2-proxy
+                port:
+                  number: 80
+{{- end }}
+{{- if .Values.portal.enabled }}
+    - host: portal.{{ .Values.global.domain }}
       http:
         paths:
           - path: /oauth2
@@ -476,6 +491,39 @@ spec:
             backend:
               service:
                 name: hub
+                port:
+                  number: 80
+{{- end }}
+
+{{- if .Values.portal.enabled }}
+---
+# Protected Portal Routes, served on portal.<domain>
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: portal-ingress
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-oauth-errors@kubernetescrd,{{ .Release.Namespace }}-oauth-auth@kubernetescrd
+spec:
+  ingressClassName: srdp-traefik
+  tls:
+    - hosts:
+        - portal.{{ .Values.global.domain }}
+      {{- if .Values.traefik.certResolver }}
+      secretName: portal-tls-prod
+      {{- else }}
+      secretName: custom-ingress-cert
+      {{- end }}
+  rules:
+    - host: portal.{{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: portal
                 port:
                   number: 80
 {{- end }}

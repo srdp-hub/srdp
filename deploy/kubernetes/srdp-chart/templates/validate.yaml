@@ -1,7 +1,7 @@
 {{- /* The login gate is mandatory. Only prod-traefik-only runs without it, with nothing behind it. */ -}}
 {{- $v := .Values }}
 {{- $running := list }}
-{{- range $app := list "hub" "dagster" "marimo" "quarto" "streamlit" "api" "duckdbUi" "marquez" "setup" }}
+{{- range $app := list "hub" "portal" "dagster" "marimo" "quarto" "streamlit" "api" "duckdbUi" "marquez" "setup" }}
 {{- if (get $v $app).enabled }}{{ $running = append $running $app }}{{ end }}
 {{- end }}
 {{- if and $running (not (and $v.zitadel.enabled (index $v "oauth2-proxy").enabled)) }}
