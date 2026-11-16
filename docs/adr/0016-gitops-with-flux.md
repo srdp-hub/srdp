@@ -29,7 +29,7 @@ Compose and kind are outside its scope.
 
 ## Decision Outcome
 
-Chosen option: "Flux in each cluster", because Git then shows what runs in every environment, a deploy needs no credentials outside the cluster, and a chart version moves from dev to stage by changing one pin.
+Chosen option: "Flux in each cluster", because Git then shows what runs in every environment, a deploy needs no credentials outside the cluster, and a change only reaches prod through a release tag.
 
 ### Flux comes with the cluster
 
@@ -67,16 +67,31 @@ It creates the Secrets with the fixed names that the chart reads.
 ### OpenTofu outputs
 
 Some chart values come from OpenTofu outputs, such as the database host and the bucket names.
-For now, a table in the runbook says which output fills which value, and an operator copies the values into the leaf.
-#38 proposed that OpenTofu writes the outputs into a ConfigMap that the HelmRelease reads through `valuesFrom`.
-That handoff stays the preferred next step.
+OpenTofu writes these outputs into Secret Manager through the `secrets` module, next to the passwords that it generates.
+An ExternalSecret in the leaf turns them into one Secret, and the HelmRelease reads that Secret through `valuesFrom`.
+Each key maps to one chart value through `targetPath`.
+So the outputs reach the chart on the same path as the passwords, and nobody copies them by hand.
 
-### Which branch Flux reads
+#38 proposed a ConfigMap that OpenTofu writes into the cluster.
+That needs the Kubernetes provider to write into the cluster on every apply, and it adds a second path next to External Secrets.
+Some outputs are not secret, such as the bucket names.
+They go to Secret Manager anyway, because one path for all values is simpler than two.
 
-Dev reads `main`, so a merge that changes `deploy/gitops/` is a deploy to dev.
-Such a PR says how to roll back, which is a revert of the PR.
+### Which Git reference Flux reads
+
+Each environment follows its own Git reference.
+
+- Dev follows `main`, so a merge that changes `deploy/gitops/` is a deploy to dev. Dev is the staging environment for every change.
+- Stage follows the highest tag with `ref.semver`, and that includes release candidates such as `v0.4.0-rc.1`.
+- Prod follows the highest release tag with `ref.semver`, such as `v0.4.0`. It ignores release candidates.
+
+A PR that changes `deploy/gitops/` says how to roll back, which is a revert of the PR.
 To test a change before the merge, an operator can point dev's Flux at the PR branch with the `git_branch` variable, and point it back after the check.
-Stage and prod get their own leaf later, and their chart version only changes through a PR that changes their pin.
+The chart pin stays in each leaf, so a tag fixes the chart version and the values of stage and prod together.
+A change to the prod leaf on `main` waits for the next release tag.
+A repository ruleset limits who can create `v*` tags, because a release tag is a deploy to prod.
+To roll back prod, a maintainer reverts the change on `main` and creates a new patch tag, because Flux always takes the highest tag.
+The `flux` module only sets `ref.branch` today, so it needs a variable for `ref.semver`.
 
 ### Local setups
 
@@ -87,13 +102,15 @@ Compose does not use the chart.
 
 - Good, because Git shows the chart version and the values of every environment.
 - Good, because a deploy needs no cloud or cluster credentials outside the cluster, which matches the CI rule in ADR-0015.
-- Good, because a rollback is a revert in Git, and a promotion to stage changes one pin.
+- Good, because a rollback is a revert in Git, and a release tag records exactly what runs in prod.
+- Good, because the OpenTofu outputs reach the chart through External Secrets, without a manual copy.
 - Good, because Flux restores drift, so a manual change in the cluster does not last unnoticed.
 - Bad, because a merge to `main` deploys to dev at once, so a broken GitOps change breaks dev until someone reverts it.
 - Bad, because a failed reconcile only shows up in the cluster, so the author must check `flux get` after the merge.
 - Bad, because Flux reverts a manual hotfix in the cluster, unless the operator suspends the Kustomization first.
 - Bad, because Flux, its controllers and External Secrets are more components to pin and upgrade.
-- Bad, because an operator copies the OpenTofu outputs into the leaf by hand until the ConfigMap handoff exists.
+- Bad, because a release tag is a deploy to prod, so the tag ruleset is part of the security of prod.
+- Bad, because a fix for prod goes through `main` and a new tag, even when `main` already holds changes that are not ready for prod.
 - Neutral, because kind and the cloud install the same chart through different paths, so a problem in the Flux layer can show up only in the cloud.
 
 ## Pros and Cons of the Options
@@ -120,7 +137,9 @@ Compose does not use the chart.
 ## Not verified
 
 - Whether the pinned `flux2` chart reads OCI charts from the Scaleway registry with the pull secret from External Secrets.
-- In which order Flux and External Secrets come up on a fresh cluster, and whether the HelmRelease waits for its Secrets.
+- In which order Flux and External Secrets come up on a fresh cluster, and whether the HelmRelease waits for its Secrets, including the Secret with the OpenTofu outputs.
+- Whether the HelmRelease reconciles at once when the Secret with the OpenTofu outputs changes.
+- Whether the `ref.semver` range for stage picks release candidates and the range for prod skips them.
 
 ## Related
 
