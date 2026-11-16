@@ -37,7 +37,9 @@ The hub is one Scaleway Project with the parts that every environment shares.
 - The Container Registry holds the project images and the OCI chart, which Flux installs as [ADR-0016](./0016-gitops-with-flux.md) describes.
 - Headscale runs on one small VM and coordinates the operator mesh, as [ADR-0015](./0015-operator-access-on-scaleway.md) describes.
 
-The hub and the spokes are not peered.
+VPC peering connects two VPCs, so that resources on their private networks can reach each other without the internet.
+The hub and the spokes are not peered, because the hub runs no private service that a spoke needs, and peering would make the hub a network path into every spoke, which weakens the isolation boundary of ADR-0006.
+The blueprint can turn on peering later for each spoke with `enable_hub_peering`, because the address ranges of the hub and the spokes do not overlap.
 A spoke reaches the registry and Headscale on their public endpoints, through its Public Gateway.
 A second customer gets its own hub, so no hub is shared across the isolation boundary of ADR-0006.
 
@@ -56,8 +58,9 @@ Each environment is one Scaleway Project with its own OpenTofu state bucket and 
 
 All outbound traffic leaves through the Public Gateway.
 That covers images from ghcr.io and the hub registry, the certificate from Let's Encrypt, the lakehouse buckets on the public S3 endpoint, Secret Manager and the Kapsule API.
-One fixed IP makes two other controls possible.
-The Kapsule API ACL allows that IP instead of every node, and an egress allowlist (#87) can later restrict where the traffic goes.
+One fixed IP makes three other controls possible.
+The Kapsule API ACL allows that IP instead of every node, and an egress allowlist (#180) can later restrict where the traffic goes.
+A customer can also allow that one IP in its own firewall, so that Dagster can read from a source system behind that firewall.
 
 Object Storage private access would keep lakehouse traffic on the private network.
 It is in private beta in `fr-par` only, so the buckets use the public endpoint until it reaches `nl-ams`.
@@ -68,14 +71,15 @@ Zitadel, Dagster, Marquez and the DuckLake catalog keep their state in Postgres.
 That state includes the users, the run history and the table metadata, and the platform cannot rebuild it from Git.
 We considered two places for Postgres in a spoke.
 
-1. The in-cluster Postgres from the Bitnami subchart, which kind uses today.
+1. An in-cluster Postgres, which kind uses today.
 2. Scaleway's managed database on the spoke's private network.
 
 Each spoke uses the managed database.
 Issue #65 showed the risk of the in-cluster option.
 On a fresh install the subchart's default memory limit of 192 MiB stopped Postgres during startup, and Zitadel and both Dagster webservers failed with it.
 A larger limit fixes that one failure, but the database still shares nodes, memory and node pool changes with the apps that it serves.
-#65 concluded that Postgres must not run inside the application cluster, and #123 continues that work for the chart.
+#65 concluded that Postgres must not run inside the application cluster.
+For kind, #123 replaces the Bitnami subchart with an SRDP template that runs the same Postgres image as Compose.
 
 The blueprint's `postgres` module gives the managed database these properties.
 
@@ -85,7 +89,7 @@ The blueprint's `postgres` module gives the managed database these properties.
 - The managed database only creates an admin user, so the setup Job creates one role per app (#132), and no workload gets the admin credentials.
 - Each app connects with its own role over TLS.
 
-In the cloud the chart turns the Bitnami subchart off and points `global.postgresqlHost` at the private hostname of the managed database.
+In the cloud the chart turns the in-cluster Postgres off and points `global.postgresqlHost` at the private hostname of the managed database.
 Compose and kind keep a Postgres container next to the apps, because they are local setups without managed services.
 
 Dev also uses the managed database, because dev is identical to the stage design.
@@ -130,8 +134,9 @@ Production adds these items on top of the dev design.
 - The managed database in high-availability mode, with a tested restore.
 - At least two nodes in the system pool.
 - Monitoring and a recreate runbook for the Public Gateway that keeps its IP.
-- The egress allowlist from #87.
+- The egress allowlist from #180.
 - Object Storage private access once it is available in `nl-ams`.
+- VPC peering between the hub and each spoke, when the hub gets a private service that the spokes need, such as a registry mirror. The trade-off is that the hub becomes a network path into every spoke, which weakens the ADR-0006 boundary.
 
 ### Customer data
 
@@ -144,7 +149,7 @@ Until then, dev and the demo run on CBS sample data only.
 4. The project-scoped RBAC from [ADR-0005](./0005-authorization-and-data-access.md) exists.
 5. No data-plane credential outlives a capability token, as [ADR-0009](./0009-data-plane-credential-materialization.md) requires. Today the static reader key in the DuckDB UI breaks this rule.
 6. The baseline audit passes.
-7. Egress filtering works (#87).
+7. Egress filtering works (#180).
 
 ## Pros and Cons of the Options
 
@@ -163,10 +168,12 @@ Until then, dev and the demo run on CBS sample data only.
 
 ## Not verified
 
-- Whether a recreated Public Gateway keeps its IP when OpenTofu only replaces the gateway.
+- Whether a replaced Public Gateway keeps its IP. The `egress-gateway` module creates the IP as a separate resource, so only an apply that replaces the gateway is left to test.
 - Whether Scaleway offers a highly available Public Gateway type.
 - When Object Storage private access comes to `nl-ams`, and what it costs.
+- Whether the Container Registry has a private-network endpoint. The Scaleway documentation describes none.
+- Whether VPC peering works between Projects. The blueprint records an `invalid argument(s)` error from the API for a connector between Projects.
 
 ## Related
 
-#44 (combine the two Scaleway setups), #37 (demo on Scaleway), #43 (blueprint hardening), #87 (egress filtering), #65 and #123 (where Postgres runs), #132 (a role for DuckLake), [ADR-0006](./0006-deployment-and-project-isolation-model.md) (deployment as the isolation unit), [ADR-0014](./0014-ingress-on-scaleway.md) (ingress), [ADR-0015](./0015-operator-access-on-scaleway.md) (operator access), [ADR-0016](./0016-gitops-with-flux.md) (GitOps with Flux).
+#44 (combine the two Scaleway setups), #37 (demo on Scaleway), #43 (blueprint hardening), #180 (egress filtering), #65 and #123 (where Postgres runs), #132 (a role for DuckLake), [ADR-0006](./0006-deployment-and-project-isolation-model.md) (deployment as the isolation unit), [ADR-0014](./0014-ingress-on-scaleway.md) (ingress), [ADR-0015](./0015-operator-access-on-scaleway.md) (operator access), [ADR-0016](./0016-gitops-with-flux.md) (GitOps with Flux).

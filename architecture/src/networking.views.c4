@@ -13,8 +13,16 @@ views {
 
   deployment view scaleway-ingress {
     title '3. Deployment / Scaleway networking (draft) / Ingress and login'
-    description 'One Traefik with a public and a private load balancer. Operator routes only sit on the admin entrypoint.'
+    description 'A public and a private Traefik, each with its own load balancer. A route is private unless it sets the public IngressClass.'
     include end-user, operator, scw-dev.lb-public, scw-dev.pn.router, scw-dev.pn.lb-private, scw-dev.pn.kapsule.system.srdp-ns.*, scw-dev.pn.db.*
+    // The logical model lets every reverse proxy route to every app. Each Traefik only routes to its own side.
+    exclude scw-dev.pn.kapsule.system.srdp-ns.traefik-public -> scw-dev.pn.kapsule.system.srdp-ns.dagster-ui
+    exclude scw-dev.pn.kapsule.system.srdp-ns.traefik -> scw-dev.pn.kapsule.system.srdp-ns.dagster-ui-readonly
+    exclude scw-dev.pn.kapsule.system.srdp-ns.traefik -> scw-dev.pn.kapsule.system.srdp-ns.duckdb-ui
+    exclude scw-dev.pn.kapsule.system.srdp-ns.traefik -> scw-dev.pn.kapsule.system.srdp-ns.zitadel
+    exclude scw-dev.pn.kapsule.system.srdp-ns.traefik -> scw-dev.pn.kapsule.system.srdp-ns.apps
+    exclude scw-dev.pn.kapsule.system.srdp-ns.traefik -> scw-dev.pn.kapsule.system.srdp-ns.api
+    exclude scw-dev.pn.kapsule.system.srdp-ns.traefik -> scw-dev.pn.kapsule.system.srdp-ns.hub
     style scw-dev.pn.router {
       color red
     }
@@ -33,8 +41,8 @@ views {
 
   deployment view scaleway-outbound {
     title '3. Deployment / Scaleway networking (draft) / Outbound traffic'
-    description 'All outbound traffic leaves through the Public Gateway with one fixed IP. The egress allowlist follows in #87.'
-    include scw-dev.pn.kapsule, scw-dev.pn.kapsule.system.flux-ns.flux, scw-dev.pn.kapsule.system.eso-ns.eso, scw-dev.pn.kapsule.system.srdp-ns.traefik, scw-dev.pn.gateway, scw-dev.api, scw-dev.secrets, scw-dev.dns, scw-dev.buckets, scw-hub.registry, internet, internet.*
+    description 'All outbound traffic leaves through the Public Gateway with one fixed IP. The egress allowlist follows in #180.'
+    include scw-dev.pn.kapsule, scw-dev.pn.kapsule.system.flux-ns.flux, scw-dev.pn.kapsule.system.eso-ns.eso, scw-dev.pn.kapsule.system.srdp-ns.traefik, scw-dev.pn.kapsule.system.srdp-ns.traefik-public, scw-dev.pn.gateway, scw-dev.api, scw-dev.secrets, scw-dev.dns, scw-dev.buckets, scw-hub.registry, internet, internet.*
     style scw-dev.pn.gateway {
       color red
     }

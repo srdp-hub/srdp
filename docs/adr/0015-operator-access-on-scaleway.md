@@ -39,7 +39,7 @@ Chosen option: "A Headscale mesh for operators", because it gives operators one 
   It lets operators reach the environment's network range and the API `/32` on port 443, and nothing else.
 - `tagOwners` and `autoApprovers.routes` map `tag:router-<env>` to the network range and the API `/32`, so a recreated router approves its own routes.
 - A tagged router is not a member, so it cannot start connections into the network itself.
-- MagicDNS stays on with the base domain `mesh.srdp.internal`, and `extra_records` point the operator hostnames at the private load balancer.
+- MagicDNS stays on with the base domain `mesh.srdp.internal`, and `extra_records` point the operator hostnames under `ops.<domain>` at the private load balancer.
 - Operators and routers join with pre-auth keys from Secret Manager.
   Each operator gets a key of their own that expires.
   Zitadel is not involved.
@@ -81,7 +81,7 @@ So CI needs no cluster credentials either.
 [Operator access](/architecture-viewer/#/view/scaleway-operators/) shows the two operator paths.
 On the mesh path, the laptop joins Headscale in the hub and sends traffic over WireGuard to the mesh router.
 The router forwards API traffic through the Public Gateway, whose IP is in the ACL.
-It forwards browser traffic for the operator tools to the private load balancer and Traefik's `admin` entrypoint.
+It forwards browser traffic for the operator tools to the private load balancer and the private Traefik.
 On the break-glass path, the laptop calls the Kapsule API directly from the one `/32` in the ACL.
 Red marks Headscale, the router and the gateway as single points of failure.
 
