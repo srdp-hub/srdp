@@ -70,11 +70,47 @@ Operators run `tailscale set --accept-routes --accept-dns` after they join.
 
 CI has no Scaleway credentials.
 It only runs checks that need no cloud access, such as `tofu fmt`, `tofu validate` and the linters.
-An operator runs every `tofu plan` and `tofu apply` from their own machine, with the API key of that environment.
 A leaked CI secret or a malicious pull request then cannot change the infrastructure or read the state.
-The CI runner module in the blueprint stays unused until the team decides that CI may plan or apply.
+The CI runner module in the blueprint stays unused.
 Changes inside the cluster reach it through Flux, which pulls from Git, as [ADR-0016](./0016-gitops-with-flux.md) describes.
 So CI needs no cluster credentials either.
+
+In dev an operator runs `tofu plan` and `tofu apply` from their own machine, with the API key of that environment.
+The S3 backend uses `use_lockfile`, so a second apply waits until the first one releases the lock in the state bucket.
+This needs OpenTofu 1.10 or later, and the blueprint does not set it yet.
+Locking stops two applies at the same time, but local applies keep two other problems as the team grows.
+A plan is not visible in the pull request.
+An operator can also apply a branch that never merges, and then the environment drifts from `main`.
+
+Atlantis is the planned next step, and it must run before stage and production exist.
+It runs `tofu plan` for every approved pull request that changes the OpenTofu code, posts the plan as a comment, and applies it before the merge.
+
+The common pattern runs plan and apply in GitHub Actions with short-lived credentials.
+The cloud issues them in exchange for the OIDC token that GitHub gives each job.
+Scaleway IAM documents no way to trust that token, and its identity federation only covers single sign-on for people.
+So the pipeline needs long-lived API keys, and those keys must stay on a machine that we control.
+If Scaleway adds OIDC federation for workloads, we reconsider GitHub Actions with environment approvals.
+
+The repository is public, and a plan runs code from the pull request, such as an external data source or a provider.
+These rules keep the cloud keys away from GitHub and from code that nobody has reviewed.
+
+- Atlantis runs on a VM in the hub. GitHub only sends it webhooks, signed with a shared secret, and holds no Scaleway key.
+- The Atlantis VM has its own public IP, because GitHub must reach the webhook and the hub has no Public Gateway.
+- A security group on that IP allows incoming traffic only on port 443, and only from the webhook address ranges that GitHub publishes.
+- A reverse proxy on the VM passes only the webhook path from the public IP. The Atlantis UI shows plan output, so operators reach it only over the mesh.
+- Atlantis ignores pull requests from forks, and only the members of one GitHub team can run Atlantis commands.
+- Atlantis plans only approved pull requests, so no code runs with a cloud key before a reviewer has read it.
+- Atlantis applies only pull requests that are approved, mergeable and undiverged. Undiverged means that `main` has not changed since the plan.
+- The server config does not let a pull request change the workflow or these requirements.
+- Each environment has a plan key and an apply key, and both keys only reach the Project of that environment.
+- The plan key can read resources and write the lock file in the state bucket. The apply key can change resources.
+- The plan key can still read the state, which holds the kubeconfig token, so the approval before the plan is the main control.
+- Prod gets its own Atlantis VM in the hub, so a compromised dev pipeline cannot reach the prod keys.
+- Atlantis reaches the Kapsule API over the mesh as a tagged node, so the API ACL does not change.
+
+We also considered Flux's Tofu Controller, because it fits [ADR-0016](./0016-gitops-with-flux.md).
+It runs inside the cluster, so it cannot repair or recreate the cluster that it runs in.
+Atlantis runs in the hub, outside every spoke.
 
 ### Figure
 
@@ -96,7 +132,9 @@ Red marks Headscale, the router and the gateway as single points of failure.
 - Bad, because Headscale, the mesh router and the Public Gateway are single instances. The break-glass `/32` with `kubectl port-forward` covers their failure in dev.
 - Bad, because pre-auth keys are created and handed out by hand, and an operator who leaves needs their node removed in Headscale.
 - Bad, because the Headscale VM costs about €10 per month and the router VM adds a small amount on top.
-- Bad, because every infrastructure change waits for an operator with the key, and a `tofu plan` only reaches a PR when the operator pastes it.
+- Bad, because until Atlantis runs, every infrastructure change waits for an operator with the key, and a `tofu plan` only reaches a PR when the operator pastes it.
+- Bad, because Atlantis will hold long-lived API keys, so an attacker on an Atlantis VM can change every environment that the VM serves.
+- Bad, because the plan only runs after an approval, so a reviewer reads the code before they see its plan.
 
 ### Production hardening
 
@@ -104,6 +142,8 @@ Red marks Headscale, the router and the gateway as single points of failure.
 - Headscale data on a separate volume, with backups, monitoring and a rebuild runbook.
 - Expiry and rotation for every pre-auth key.
 - A break-glass `/32` that is only present while it is in use.
+- Atlantis in the hub plans and applies every infrastructure change. A local `tofu apply` is then only for break-glass.
+- The Atlantis API keys are rotated on a schedule. This stops when Scaleway supports OIDC federation for workloads.
 
 ## Pros and Cons of the Options
 
@@ -140,6 +180,11 @@ Red marks Headscale, the router and the gateway as single points of failure.
 - Whether the API ACL needs `scaleway_ranges` for Kapsule's own components.
 - Whether the Headscale version in the blueprint supports failover between two subnet routers.
 - How long existing mesh connections keep working while Headscale is down.
+- Whether Scaleway Object Storage supports the conditional writes that `use_lockfile` needs.
+- Whether Scaleway IAM supports OIDC federation for workloads. We found no documentation of it.
+- Whether a bucket policy can limit the plan key to the lock file in the state bucket.
+- Whether the undiverged requirement works with the checkout strategy that the Atlantis config uses.
+- How the security group follows changes to the webhook address ranges that GitHub publishes.
 
 ## Related
 
