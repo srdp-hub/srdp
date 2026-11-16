@@ -79,7 +79,7 @@ It reads the lakehouse files with the S3 reader key, so it cannot change the fil
 It connects to the DuckLake catalog as the `postgres` superuser, so a user can change or delete the catalog and can reach the other databases on the same server.
 That makes it more dangerous than the read-only Dagster.
 It stays public for the #37 demo on sample data only.
-#132 replaces the superuser with a DuckLake role, and the DuckDB UI needs a role that can only read the catalog.
+#132 gives the apps a reader role that can only read the catalog, so no app gets the superuser password.
 It moves to the private Traefik, or gets scoped credentials as [ADR-0009](./0009-data-plane-credential-materialization.md) requires, before any customer data arrives.
 
 ### Domain and certificates
@@ -201,4 +201,4 @@ The read-write and the read-only Dagster are two instances of the same webserver
 
 ## Related
 
-#37 (demo on Scaleway), #40 (access model), #132 (a role for DuckLake), [ADR-0002](./0002-api-and-access-strategy.md) (Traefik and Zitadel at the edge), [ADR-0005](./0005-authorization-and-data-access.md) (role per route, read-only Dagster), [ADR-0008](./0008-identity-propagation-and-data-contracts.md) (the identity headers are hints), [ADR-0009](./0009-data-plane-credential-materialization.md) (scoped credentials), [ADR-0013](./0013-scaleway-network-topology.md) (topology), [ADR-0015](./0015-operator-access-on-scaleway.md) (operator access).
+#37 (demo on Scaleway), #40 (access model), #132 (catalog roles instead of the superuser), [ADR-0002](./0002-api-and-access-strategy.md) (Traefik and Zitadel at the edge), [ADR-0005](./0005-authorization-and-data-access.md) (role per route, read-only Dagster), [ADR-0008](./0008-identity-propagation-and-data-contracts.md) (the identity headers are hints), [ADR-0009](./0009-data-plane-credential-materialization.md) (scoped credentials), [ADR-0013](./0013-scaleway-network-topology.md) (topology), [ADR-0015](./0015-operator-access-on-scaleway.md) (operator access).
