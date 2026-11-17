@@ -182,7 +182,7 @@ invalid-return-type = "error"
 invalid-argument-type = "error"
 division-by-zero = "error"
 redundant-cast = "warn"
-invalid-method-override = "warn"
+incompatible-method-override = "warn"
 
 # ---------------------------------------------------------------------------
 # pytest
