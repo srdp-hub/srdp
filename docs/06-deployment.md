@@ -67,26 +67,38 @@ just prod-use-kubeconfig   # from repo root
 - The values files hold no passwords or keys.
   Before you install, create these Secrets in the `srdp` namespace, for example with External Secrets.
   Every consumer reads them by these fixed names.
+  `deploy/secrets.toml` lists the same Secrets and keys, with the format of each value.
 
   | Secret | Keys |
   |:---|:---|
-  | `srdp-postgres` | `postgres-password` (superuser), `replication-password` (replication only) |
+  | `srdp-postgres` | `password` (superuser), `replication-password` (replication only) |
   | `srdp-zitadel` | `masterkey`, `db-password` (the `zitadel` database role), `admin-password` (first admin) |
   | `srdp-oauth2-proxy` | `client-id`, `client-secret`, `cookie-secret` |
-  | `srdp-dagster-postgresql` | `postgresql-password` |
+  | `srdp-dagster` | `postgresql-password` |
   | `srdp-marquez` | `db-password` |
-  | `srdp-ducklake-s3-writer` | `DUCKLAKE_S3_KEY_ID`, `DUCKLAKE_S3_SECRET` (only with `ducklakeStorage.backend: s3`) |
-  | `srdp-ducklake-s3-reader` | `DUCKLAKE_S3_KEY_ID`, `DUCKLAKE_S3_SECRET` (only with `ducklakeStorage.backend: s3`) |
+  | `srdp-ducklake-pg-writer` | `password` (the `ducklake_writer` role that Dagster uses) |
+  | `srdp-ducklake-pg-reader` | `password` (the read-only `ducklake_reader` role of the four apps) |
+  | `srdp-ducklake-s3-writer` | `key-id`, `secret` (only with `ducklakeStorage.backend: s3`) |
+  | `srdp-ducklake-s3-reader` | `key-id`, `secret` (only with `ducklakeStorage.backend: s3`) |
 
+- The DuckLake catalog has two Postgres roles.
+  Dagster writes the catalog as `ducklake_writer`, which owns the `ducklake` database.
+  The four apps connect as `ducklake_reader`, which can only read the catalog tables.
+  No app gets the writer Secret or the Postgres superuser Secret.
 - `values-prod.example.yaml` keeps DuckLake on S3 with no `ducklake-data` volume, so a deploy from it needs both S3 Secrets.
 - With `ducklakeStorage.backend: s3`, Dagster and its run pods get the writer key and the four apps get the read-only key.
   Give the reader key read access to the lake prefix only, because a SQL console like duckdb-ui runs with the full authority of its key.
 
 - Zitadel never gets the Postgres superuser password.
   The `srdp-setup` Job creates the `zitadel` role from `db-password` in `srdp-zitadel`, and Zitadel logs in with that same value.
-- The `srdp-setup` Job reads `srdp-zitadel`, `srdp-dagster-postgresql` and `srdp-marquez`, and applies them to their roles on every install and upgrade.
+- The `srdp-setup` Job reads `srdp-zitadel`, `srdp-dagster`, `srdp-marquez` and the two `srdp-ducklake-pg-*` Secrets, and applies them to their roles on every install and upgrade.
+  The Job also gives `ducklake_reader` its read rights, makes `ducklake_writer` the owner of an older catalog, and creates the catalog tables once.
   Set `setup.manageDatabases: false` when someone else creates the databases and roles.
-  The Job then only checks that it can connect and that the databases exist.
+  The Job then only checks that it can connect and that the databases exist, and it creates the catalog tables as `ducklake_writer`.
+  In that case create the roles yourself.
+  Make `ducklake_writer` the owner of the `ducklake` database, and grant `ducklake_reader` `USAGE` on the `public` schema and `SELECT` on its tables.
+  Run `REVOKE CREATE ON SCHEMA public FROM PUBLIC`, because before Postgres 15 every role can create tables there.
+  Add `ALTER DEFAULT PRIVILEGES FOR ROLE ducklake_writer IN SCHEMA public GRANT SELECT ON TABLES TO ducklake_reader`, because DuckLake creates tables at run time.
 - **Changing an internal password**: these are service-to-service credentials, so change one only as a deliberate rotation.
   Change the value in its Secret, run `helm upgrade`, then restart the services that use it.
   Marquez restarts by itself. For Dagster, run `kubectl -n srdp rollout restart deploy/srdp-dagster-webserver deploy/srdp-dagster-webserver-read-only deploy/srdp-dagster-daemon deploy/srdp-dagster-user-deployments-srdp-etl`.

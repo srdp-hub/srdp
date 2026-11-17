@@ -26,6 +26,8 @@ spec:
           {{- include "srdp.containerSecurityContext" . | nindent 10 }}
           image: {{ include "srdp.image" (list . .Values.setup.image) }}
           imagePullPolicy: {{ .Values.setup.image.pullPolicy }}
+          envFrom:
+            {{- include "srdp.ducklakeEnvFrom" . | nindent 12 }}
           env:
             - name: SETUP_PG_HOST
               value: {{ .Values.global.postgresqlHost | quote }}
@@ -33,7 +35,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: srdp-postgres
-                  key: postgres-password
+                  key: password
             # Same Secret keys the consumers read, otherwise the Job resets a
             # role to a password its application does not know.
             - name: SETUP_PASSWORDS__ZITADEL
@@ -44,13 +46,26 @@ spec:
             - name: SETUP_PASSWORDS__DAGSTER
               valueFrom:
                 secretKeyRef:
-                  name: srdp-dagster-postgresql
+                  name: srdp-dagster
                   key: postgresql-password
             - name: SETUP_PASSWORDS__MARQUEZ
               valueFrom:
                 secretKeyRef:
                   name: srdp-marquez
                   key: db-password
+            - name: SETUP_PASSWORDS__DUCKLAKE_WRITER
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-ducklake-pg-writer
+                  key: password
+            - name: SETUP_PASSWORDS__DUCKLAKE_READER
+              valueFrom:
+                secretKeyRef:
+                  name: srdp-ducklake-pg-reader
+                  key: password
+            # The catalog keeps the data path it is created with, so this must match the consumers.
+            - name: DUCKLAKE_DATA_PATH
+              value: {{ .Values.ducklakeData.mountPath | quote }}
             {{- if .Values.garage.enabled }}
             # Secrets of the optional Garage step (src/srdp/setup/garage.py),
             # only with the bundled Garage. The step itself is switched on in
@@ -66,22 +81,22 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: srdp-ducklake-s3-writer
-                  key: DUCKLAKE_S3_KEY_ID
+                  key: key-id
             - name: SETUP_GARAGE__WRITER_SECRET
               valueFrom:
                 secretKeyRef:
                   name: srdp-ducklake-s3-writer
-                  key: DUCKLAKE_S3_SECRET
+                  key: secret
             - name: SETUP_GARAGE__READER_KEY_ID
               valueFrom:
                 secretKeyRef:
                   name: srdp-ducklake-s3-reader
-                  key: DUCKLAKE_S3_KEY_ID
+                  key: key-id
             - name: SETUP_GARAGE__READER_SECRET
               valueFrom:
                 secretKeyRef:
                   name: srdp-ducklake-s3-reader
-                  key: DUCKLAKE_S3_SECRET
+                  key: secret
             {{- end }}
           volumeMounts:
             - name: setup-config

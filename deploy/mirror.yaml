@@ -1,0 +1,6 @@
+# Images copied from dhi.io to ghcr.io/srdp-hub/<name>:<tag>, so a deployment needs no dhi.io login.
+mirror:
+  - name: traefik
+    source: dhi.io/traefik:3.6@sha256:cf6a07e36f84f7edfd5102c2c7b7edf69cf11109c392fda22610d98a9331c4c0
+  - name: oauth2-proxy
+    source: dhi.io/oauth2-proxy:7@sha256:796498820c9270cb641da63406f017d57e602ee7b5a791058419318cad62e3c8

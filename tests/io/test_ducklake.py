@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import duckdb
 import pytest
 from pydantic import ValidationError
@@ -8,7 +10,11 @@ from srdp.io.ducklake import (
     S3StorageBackend,
     S3StorageSettings,
     _attach_with_retry,
+    _configure_extension_directory,
+    catalog_data_path,
     get_storage_backend,
+    initialize_catalog,
+    load_extension,
 )
 
 S3 = {
@@ -23,7 +29,7 @@ S3 = {
 
 
 def _settings(**overrides) -> DuckLakeSettings:
-    return DuckLakeSettings(_env_file=None, pg_password="pw", **overrides)  # noqa: S106 — throwaway test value
+    return DuckLakeSettings(_env_file=None, pg_password="pw", **overrides)  # noqa: S106  # throwaway test value
 
 
 def _s3_backend(**overrides) -> S3StorageBackend:
@@ -149,7 +155,7 @@ def test_s3_connection_gets_a_secret_scoped_to_the_lake():
 def test_a_quote_in_a_credential_cannot_break_out_of_the_secret_sql():
     conn = duckdb.connect()
 
-    _s3_backend(key_id="a'b", secret="x'); DROP TABLE t; --").configure_duckdb(conn)  # noqa: S106 — injection probe
+    _s3_backend(key_id="a'b", secret="x'); DROP TABLE t; --").configure_duckdb(conn)  # noqa: S106  # injection probe
 
     [secret] = _s3_secrets(conn)
     assert secret["key_id"] == "a'b"
@@ -219,6 +225,123 @@ def test_any_other_attach_error_fails_at_once(sleeps):
 def test_a_settings_error_does_not_print_the_secret():
     """The error lands in startup logs, so it must not echo the key it was given."""
     with pytest.raises(ValidationError) as exc:
-        S3StorageSettings(_env_file=None, bucket="lake", secret="do-not-log-me")  # noqa: S106 — leak probe
+        S3StorageSettings(_env_file=None, bucket="lake", secret="do-not-log-me")  # noqa: S106  # leak probe
 
     assert "do-not-log-me" not in str(exc.value)
+
+
+# Extensions
+
+
+class _RecordingConnection:
+    """Records the statements it receives and answers the autoinstall setting query."""
+
+    def __init__(self, *, autoinstall: bool) -> None:
+        self.autoinstall = autoinstall
+        self.statements: list[str] = []
+        self.closed = False
+
+    def execute(self, query: str) -> "_RecordingConnection":
+        self.statements.append(query)
+        return self
+
+    def fetchall(self) -> list[tuple[bool]]:
+        return [(self.autoinstall,)]
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_extension_installs_before_load() -> None:
+    """A connection that may download extensions (local development) runs INSTALL first."""
+    conn = _RecordingConnection(autoinstall=True)
+
+    load_extension(conn, "ducklake")
+
+    assert conn.statements[-2:] == ["INSTALL ducklake", "LOAD ducklake"]
+
+
+def test_extension_only_loads_offline() -> None:
+    """With the extension directory set, nothing is downloaded at start."""
+    conn = _RecordingConnection(autoinstall=False)
+
+    load_extension(conn, "ducklake")
+
+    assert conn.statements[-1] == "LOAD ducklake"
+    assert "INSTALL ducklake" not in conn.statements
+
+
+def test_the_extension_directory_turns_downloads_off() -> None:
+    """DUCKLAKE_EXTENSION_DIRECTORY points DuckDB at the baked extensions and stops autoinstall."""
+    conn = duckdb.connect()
+
+    _configure_extension_directory(conn, _settings(extension_directory="/opt/duckdb/extensions"))
+
+    assert conn.execute("SELECT current_setting('extension_directory')").fetchall()[0][0] == "/opt/duckdb/extensions"
+    assert conn.execute("SELECT current_setting('autoinstall_known_extensions')").fetchall()[0][0] is False
+
+
+def test_no_extension_dir_keeps_downloads() -> None:
+    """Local development keeps the default behaviour."""
+    conn = duckdb.connect()
+
+    _configure_extension_directory(conn, _settings())
+
+    assert conn.execute("SELECT current_setting('autoinstall_known_extensions')").fetchall()[0][0] is True
+
+
+# Catalog initialization
+
+
+def test_a_local_catalog_path_creates_no_directory(tmp_path: Path) -> None:
+    """The setup container has no data volume on Kubernetes, so naming the path must not create it."""
+    lake = tmp_path / "lake"
+
+    assert catalog_data_path(_settings(data_path=str(lake))) == str(lake.resolve())
+    assert not lake.exists()
+
+
+def test_an_s3_catalog_path_needs_no_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The path is bucket and prefix, so the setup service needs no storage key to create the catalog."""
+    for name, value in (
+        ("bucket", "lake"),
+        ("prefix", "dev"),
+        ("endpoint", "s3.nl-ams.scw.cloud"),
+        ("url_style", "path"),
+        ("region", "nl-ams"),
+    ):
+        monkeypatch.setenv(f"DUCKLAKE_S3_{name.upper()}", value)
+
+    assert catalog_data_path(_settings(storage_backend="s3")) == "s3://lake/dev/"
+
+
+def test_initialize_catalog_attaches_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The first attach creates the catalog tables, and the connection closes after it."""
+    conn = _RecordingConnection(autoinstall=False)
+    monkeypatch.setattr(duckdb, "connect", lambda: conn)
+
+    initialize_catalog(_settings(pg_user="ducklake_writer", pg_db="ducklake", data_path="/data/ducklake"))
+
+    attach = [s for s in conn.statements if s.startswith("ATTACH")]
+    assert len(attach) == 1
+    assert "user=''ducklake_writer''" in attach[0]
+    assert "DATA_PATH '/data/ducklake'" in attach[0]
+    assert conn.closed
+
+
+def test_password_is_quoted_for_libpq() -> None:
+    """A space, quote or backslash in the password stays inside its libpq value."""
+    settings = DuckLakeSettings(_env_file=None, pg_password="a b'c\\d")  # noqa: S106  # throwaway test value
+
+    assert "password='a b\\'c\\\\d'" in settings.pg_connection_string
+
+
+def test_attach_error_masks_the_password(sleeps: list[float]) -> None:
+    """DuckDB repeats the connection string in a failed attach, so the password is masked."""
+    conn = _ScriptedConnection(duckdb.IOException("Unable to connect at \"user='u' password='Top\\'Secret'\""))
+
+    with pytest.raises(duckdb.IOException) as raised:
+        _attach_with_retry(conn, "ATTACH 'ducklake:...' AS ducklake", secret="Top'Secret")  # noqa: S106  # throwaway test value
+
+    assert "Top" not in str(raised.value)
+    assert raised.value.__cause__ is None

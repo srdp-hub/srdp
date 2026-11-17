@@ -10,11 +10,13 @@
     "helmv3",
     "helm-values",
     "custom.regex",
-    "pep621"
+    "pep621",
+    "pre-commit"
   ],
   "schedule": [
     "before 6am on monday"
   ],
+  "minimumReleaseAge": "7 days",
   "packageRules": [
     {
       "description": "One PR per week for all container image and chart bumps.",
@@ -119,6 +121,17 @@
       ],
       "matchStrings": [
         "image:\\s*[\"']?(?<depName>[^\\s\"':@{}]+):(?<currentValue>[^\\s\"'@]+)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))?"
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Images in deploy/mirror.yaml, written as 'source: name:tag@digest'.",
+      "managerFilePatterns": [
+        "/^deploy/mirror\\.yaml$/"
+      ],
+      "matchStrings": [
+        "source:\\s*(?<depName>[^\\s:@]+/[^\\s:@]+):(?<currentValue>[^\\s@]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
       ],
       "datasourceTemplate": "docker"
     }

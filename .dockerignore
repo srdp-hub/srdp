@@ -1,2 +1,10 @@
 .env
 .secrets/*
+**/.env
+.git
+.agents
+.claude
+**/certs
+**/target
+**/logs
+**/.user.yml

@@ -22,3 +22,7 @@ Opens the site at `localhost:8000` with live reload.
 Documentation is built with [Zensical](https://zensical.org/) and deployed automatically to GitHub Pages on every push to `main` via the [Build and deploy Documentation](.github/workflows/docs.yml) GitHub Actions workflow.
 
 ---
+
+## License
+
+SRDP is licensed under the [Mozilla Public License 2.0](LICENSE).

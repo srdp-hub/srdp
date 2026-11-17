@@ -47,10 +47,27 @@ class DatabaseTarget(BaseModel):
 
     name: Identifier
     # Lowercase, SETUP_PASSWORDS__<ROLE> keys are lowercased.
-    # None reuses the superuser as owner (DuckLake connects as the superuser).
+    # None reuses the superuser as owner.
     role: Identifier | None = None
+    # A role that can only read. Setup grants it SELECT on every table the owner creates.
+    reader_role: Identifier | None = None
     # False leaves the target out of setup, checks included.
     enabled: bool = True
+
+    @property
+    def roles(self) -> tuple[str, ...]:
+        """The roles of this target, the owner first."""
+        return tuple(role for role in (self.role, self.reader_role) if role is not None)
+
+    @model_validator(mode="after")
+    def _check_reader(self) -> "DatabaseTarget":
+        if self.reader_role is not None and self.role is None:
+            msg = f"Database '{self.name}' has a `reader_role`, so it needs a `role` that owns it."
+            raise ValueError(msg)
+        if self.reader_role is not None and self.reader_role == self.role:
+            msg = f"Database '{self.name}' uses '{self.role}' as owner and as reader, give the reader its own role."
+            raise ValueError(msg)
+        return self
 
 
 class SetupSettings(BaseSettings):
@@ -102,19 +119,24 @@ class SetupSettings(BaseSettings):
             msg = f"Duplicate database names in setup config: {', '.join(duplicates)}."
             raise ValueError(msg)
 
-        if any(target.role == self.pg_user for target in self.databases):
+        roles = [role for target in self.databases for role in target.roles]
+        if self.pg_user in roles:
             msg = f"Role '{self.pg_user}' is the superuser, leave `role` out to use it."
+            raise ValueError(msg)
+        shared = sorted({role for role in roles if roles.count(role) > 1})
+        if shared:
+            msg = f"Role(s) {', '.join(shared)} belong to more than one database, give each database its own roles."
             raise ValueError(msg)
 
         if not self.manage_databases:
             return self
 
         missing = sorted(
-            target.role
+            role
             for target in self.databases
             if target.enabled
-            and target.role is not None
-            and not (target.role in self.passwords and self.passwords[target.role].get_secret_value())
+            for role in target.roles
+            if not (role in self.passwords and self.passwords[role].get_secret_value())
         )
         if missing:
             env_vars = ", ".join(f"SETUP_PASSWORDS__{role.upper()}" for role in missing)
@@ -133,36 +155,57 @@ def _database_exists(cur: psycopg2.extensions.cursor, database: str) -> bool:
     return cur.fetchone() is not None
 
 
+def _ensure_role(cur: psycopg2.extensions.cursor, role: str, settings: SetupSettings) -> None:
+    """Create ``role`` with login, or reset its password when it exists."""
+    # Hashed client-side, so a logged statement never holds the plain password.
+    password = encrypt_password(settings.passwords[role].get_secret_value(), role, cur, "scram-sha-256")
+    identifier = sql.Identifier(role)
+    if _role_exists(cur, role):
+        cur.execute(sql.SQL("ALTER ROLE {} WITH LOGIN PASSWORD %s").format(identifier), (password,))
+        logger.info("Role '%s' already exists, password reconciled.", role)
+    else:
+        cur.execute(sql.SQL("CREATE ROLE {} WITH LOGIN PASSWORD %s").format(identifier), (password,))
+        logger.info("Created role '%s'.", role)
+
+
+def _reconcile_owner(cur: psycopg2.extensions.cursor, database: str, owner: str) -> None:
+    """Hand ``database`` to ``owner`` when someone else owns it, as on an install from before the role split."""
+    cur.execute("SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = %s", (database,))
+    row = cur.fetchone()
+    if row is not None and row[0] != owner:
+        cur.execute(sql.SQL("ALTER DATABASE {} OWNER TO {}").format(sql.Identifier(database), sql.Identifier(owner)))
+        logger.info("Database '%s' now belongs to '%s' (was '%s').", database, owner, row[0])
+
+
+def _restrict_connect(cur: psycopg2.extensions.cursor, target: DatabaseTarget) -> None:
+    """Let only the target's own roles connect, because Postgres lets every role connect by default."""
+    database = sql.Identifier(target.name)
+    cur.execute(sql.SQL("REVOKE CONNECT ON DATABASE {} FROM PUBLIC").format(database))
+    for role in target.roles:
+        cur.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(database, sql.Identifier(role)))
+
+
 def ensure_target(cur: psycopg2.extensions.cursor, target: DatabaseTarget, settings: SetupSettings) -> None:
-    """Idempotently create one target's role (if any) and database, and reconcile the role's password.
+    """Idempotently create one target's roles and database, and reconcile passwords, owner and connect rights.
 
     Args:
         cur: An autocommit cursor connected as the Postgres superuser.
-        target: The database (and optional role) to ensure exists.
-        settings: Validated settings, holding the role's password.
+        target: The database (and optional roles) to ensure exists.
+        settings: Validated settings, holding the role passwords.
     """
-    if target.role is not None:
-        # Hashed client-side, so a logged statement never holds the plain password.
-        password = encrypt_password(
-            settings.passwords[target.role].get_secret_value(), target.role, cur, "scram-sha-256"
-        )
-        role = sql.Identifier(target.role)
-        if _role_exists(cur, target.role):
-            cur.execute(sql.SQL("ALTER ROLE {} WITH LOGIN PASSWORD %s").format(role), (password,))
-            logger.info("Role '%s' already exists, password reconciled.", target.role)
-        else:
-            cur.execute(sql.SQL("CREATE ROLE {} WITH LOGIN PASSWORD %s").format(role), (password,))
-            logger.info("Created role '%s'.", target.role)
-
-    if _database_exists(cur, target.name):
-        logger.info("Database '%s' already exists.", target.name)
-        return
+    for role in target.roles:
+        _ensure_role(cur, role, settings)
 
     owner = target.role or settings.pg_user
-    cur.execute(
-        sql.SQL("CREATE DATABASE {} OWNER {}").format(sql.Identifier(target.name), sql.Identifier(owner)),
-    )
-    logger.info("Created database '%s' (owner '%s').", target.name, owner)
+    if _database_exists(cur, target.name):
+        logger.info("Database '%s' already exists.", target.name)
+        _reconcile_owner(cur, target.name, owner)
+    else:
+        cur.execute(
+            sql.SQL("CREATE DATABASE {} OWNER {}").format(sql.Identifier(target.name), sql.Identifier(owner)),
+        )
+        logger.info("Created database '%s' (owner '%s').", target.name, owner)
+    _restrict_connect(cur, target)
 
 
 def check_targets(cur: psycopg2.extensions.cursor, settings: SetupSettings) -> None:
@@ -190,6 +233,7 @@ def _connect_with_retry(
     settings: SetupSettings,
     max_attempts: int = CONNECT_ATTEMPTS,
     delay_seconds: float = CONNECT_RETRY_DELAY_SECONDS,
+    dbname: str = "postgres",
 ) -> psycopg2.extensions.connection:
     """Connect to Postgres, retrying while it's still starting up.
 
@@ -203,6 +247,7 @@ def _connect_with_retry(
         settings: Superuser connection settings.
         max_attempts: How many times to try before giving up.
         delay_seconds: Delay between attempts.
+        dbname: The database to connect to. Role and database changes run in ``postgres``.
 
     Returns:
         An open connection.
@@ -215,7 +260,7 @@ def _connect_with_retry(
                 port=settings.pg_port,
                 user=settings.pg_user,
                 password=settings.pg_password.get_secret_value(),
-                dbname="postgres",
+                dbname=dbname,
                 connect_timeout=CONNECT_TIMEOUT_SECONDS,
             )
         except psycopg2.OperationalError as exc:

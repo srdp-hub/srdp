@@ -49,3 +49,23 @@ On another cluster, use the domain from `global.domain` in your values.
 - One service, for example Marimo: `kubectl logs -n srdp deploy/marimo -f`
 - Dagster webserver: `kubectl logs -n srdp deploy/srdp-dagster-webserver -f`
 - Dagster daemon: `kubectl logs -n srdp deploy/srdp-dagster-daemon -f`
+
+## Add DuckDB extensions to the DuckDB UI
+
+The DuckDB UI image has no network access at start, so every extension must be in the image.
+The image includes `ducklake`, `httpfs`, `postgres` and `ui`.
+Use the `DUCKDB_EXTENSIONS` build argument to add more, for example `spatial`.
+You do not need to change the Dockerfile.
+
+1. Set the extension names, separated by spaces: `export DUCKDB_EXTENSIONS="spatial excel"`.
+2. Build the image. For Docker Compose, run `docker compose build duckdb-ui` in `deploy/docker/`. For kind, run `just kind-load-images`.
+3. Run `LOAD spatial;` in the DuckDB UI.
+
+The extensions are fixed when you build the image, and a deployment only pulls the image.
+The published `ghcr.io/srdp-hub/duckdb-ui` image has the default extensions only.
+For a cluster, build the image with `docker build --build-arg DUCKDB_EXTENSIONS="spatial excel" -f services/duckdb-ui/Dockerfile .`.
+Push it to your registry and set the image in your chart values.
+`just build-and-push` does not build this image.
+A name can contain only lowercase letters, digits and underscores, and the build fails for any other name.
+This argument installs core extensions only.
+The Python images of a project bake extensions in their own Dockerfile, with `python -m srdp.io.extensions /opt/duckdb/extensions <name> ...`.

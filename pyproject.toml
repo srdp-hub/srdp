@@ -2,9 +2,11 @@
 name = "srdp"
 version = "0.3.1"
 description = "Single Repo Data Platform: a composable, self-hostable data stack"
-license = { text = "Apache-2.0" }
+license = { text = "MPL-2.0" }
 authors = [
     { name = "Yannick Vinkesteijn" },
+    { name = "Daniel Kapitan" },
+    { name = "Thomas Start" },
 ]
 readme = "README.md"
 requires-python = ">=3.13,<3.14"

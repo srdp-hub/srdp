@@ -12,6 +12,9 @@ COPY src/ src/
 RUN uv sync --locked --no-dev --extra ducklake --no-editable \
     && mkdir -p /data/ducklake
 
+# Setup creates the DuckLake catalog tables, so it needs the extensions without a download at start.
+RUN /app/.venv/bin/python -m srdp.io.extensions /opt/duckdb/extensions
+
 # The runtime stage doesn't need uv.
 FROM dhi.io/python:3.13@sha256:43b01c42d91a2e2ae676f974778518661c2fa97cb2b85c3fc737f75545524eb9
 
@@ -19,7 +22,9 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 # srdp-setup is the first to mount the ducklake-data volume, which inherits this ownership.
 COPY --from=builder --chown=65532:65532 /data/ducklake /data/ducklake
+COPY --from=builder /opt/duckdb/extensions /opt/duckdb/extensions
 
-ENV PATH="/app/.venv/bin:${PATH}"
+ENV PATH="/app/.venv/bin:${PATH}" \
+    DUCKLAKE_EXTENSION_DIRECTORY=/opt/duckdb/extensions
 
 ENTRYPOINT ["python", "-m", "srdp.setup"]

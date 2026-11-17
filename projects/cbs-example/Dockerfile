@@ -16,6 +16,9 @@ COPY src/ src/
 RUN uv sync --locked --no-dev --no-editable --extra ducklake --extra dbt --extra dagster-postgres --extra openlineage \
     && mkdir -p /opt/dagster/dagster_home /app/compute_logs
 
+# DuckDB extensions are baked in, so no container downloads code at start.
+RUN /app/.venv/bin/python -m srdp.io.extensions /opt/duckdb/extensions
+
 COPY projects/cbs-example/ projects/cbs-example/
 RUN mkdir -p projects/cbs-example/dbt/target projects/cbs-example/dbt/logs
 
@@ -24,6 +27,7 @@ FROM dhi.io/python:3.13@sha256:43b01c42d91a2e2ae676f974778518661c2fa97cb2b85c3fc
 
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /opt/duckdb/extensions /opt/duckdb/extensions
 COPY --from=builder /app/projects/cbs-example/src projects/cbs-example/src
 # dbt writes its manifest and logs next to the project.
 COPY --from=builder --chown=65532:65532 /app/projects/cbs-example/dbt projects/cbs-example/dbt
@@ -36,7 +40,8 @@ COPY --from=builder --chown=65532:65532 /app/compute_logs /app/compute_logs
 ENV DAGSTER_HOME=/opt/dagster/dagster_home
 ENV PYTHONPATH="/app/projects/cbs-example/src"
 # The venv is on PATH so the k8s chart can exec `dagster` directly.
-ENV PATH="/app/.venv/bin:${PATH}"
+ENV PATH="/app/.venv/bin:${PATH}" \
+    DUCKLAKE_EXTENSION_DIRECTORY=/opt/duckdb/extensions
 
 EXPOSE 3030
 

@@ -1,8 +1,5 @@
 import shutil
-import socket
-import subprocess
 import threading
-import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
@@ -14,46 +11,13 @@ DOCKER = shutil.which("docker")
 pytestmark = pytest.mark.skipif(DOCKER is None, reason="needs Docker for a throwaway Postgres")
 
 
-def _docker(*args: str) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run([DOCKER, *args], capture_output=True, check=False)  # noqa: S603 — fixed argv, no shell
-
-
-def _free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
-
-
-@pytest.fixture(scope="module")
-def postgres():
-    """Start a throwaway Postgres and yield its container name and host port."""
-    name = f"srdp-test-pg-{uuid.uuid4().hex[:8]}"
-    port = _free_port()
-    started = _docker(
-        "run", "-d", "--rm", "--name", name, "-p", f"127.0.0.1:{port}:5432",
-        "-e", "POSTGRES_PASSWORD=pw", "postgres:17-alpine",
-    )  # fmt: skip
-    if started.returncode != 0:
-        pytest.skip(f"cannot start Postgres in Docker: {started.stderr.decode().strip()}")
-    try:
-        deadline = time.monotonic() + 60
-        while _docker("exec", name, "pg_isready", "-U", "postgres", "-h", "127.0.0.1").returncode != 0:
-            if time.monotonic() > deadline:
-                pytest.fail("Postgres did not become ready within 60 s")
-            time.sleep(0.5)
-        yield name, port
-    finally:
-        _docker("rm", "-f", name)
-
-
 @pytest.fixture
 def ducklake_env(monkeypatch, postgres, tmp_path):
     """Point the settings at a fresh catalog database, because a catalog keeps the data path it was created with."""
-    container, port = postgres
     database = f"ducklake_{uuid.uuid4().hex[:8]}"
-    assert _docker("exec", container, "createdb", "-U", "postgres", database).returncode == 0
+    postgres.createdb(database)
     monkeypatch.setenv("DUCKLAKE_PG_HOST", "127.0.0.1")
-    monkeypatch.setenv("DUCKLAKE_PG_PORT", str(port))
+    monkeypatch.setenv("DUCKLAKE_PG_PORT", str(postgres.port))
     monkeypatch.setenv("DUCKLAKE_PG_DB", database)
     monkeypatch.setenv("DUCKLAKE_PG_PASSWORD", "pw")
     monkeypatch.setenv("DUCKLAKE_DATA_PATH", str(tmp_path / "lake"))

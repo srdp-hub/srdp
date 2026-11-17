@@ -12,12 +12,8 @@ global:
   # dagster.dagster-user-deployments.imagePullSecrets, the latter also
   # reaches run pods through includeConfigInLaunchedRuns.
 
-# No credentials in this file. Create the Secrets listed in values.yaml
-# (srdp-postgres, srdp-zitadel, srdp-oauth2-proxy, srdp-dagster-postgresql,
-# srdp-marquez) before installing, e.g. with External Secrets. srdp-postgres
-# also needs replication-password here, because of architecture: replication.
-# DuckLake runs on S3 below, so also create srdp-ducklake-s3-writer and
-# srdp-ducklake-s3-reader, each with DUCKLAKE_S3_KEY_ID and DUCKLAKE_S3_SECRET.
+# Create the Secrets in deploy/secrets.toml before you install.
+# srdp-postgres also needs replication-password, because of architecture: replication.
 
 # DuckLake's Parquet files in object storage. A ReadWriteOnce data volume would
 # pin every DuckLake pod to one node, so there is none: the Dagster code
@@ -229,7 +225,7 @@ dagster:
           - name: PGPASSWORD
             valueFrom:
               secretKeyRef:
-                name: srdp-dagster-postgresql
+                name: srdp-dagster
                 key: postgresql-password
   dagsterDaemon:
     extraPrependedInitContainers: *wait-for-dagster-db-prod
@@ -273,14 +269,14 @@ dagster:
               - name: PGHOST
                 value: db-postgresql-primary
               - name: PGUSER
-                value: postgres
+                value: ducklake_writer
               - name: PGDATABASE
                 value: ducklake
               - name: PGPASSWORD
                 valueFrom:
                   secretKeyRef:
-                    name: srdp-postgres
-                    key: postgres-password
+                    name: srdp-ducklake-pg-writer
+                    key: password
           - name: wait-for-ducklake-bucket
             # Same container as srdp.waitForDucklakeBucket in templates/_helpers.tpl,
             # with the writer key. includeConfigInLaunchedRuns copies it into
@@ -301,13 +297,13 @@ dagster:
                 valueFrom:
                   secretKeyRef:
                     name: srdp-ducklake-s3-writer
-                    key: DUCKLAKE_S3_KEY_ID
+                    key: key-id
                     optional: true
               - name: DUCKLAKE_S3_SECRET
                 valueFrom:
                   secretKeyRef:
                     name: srdp-ducklake-s3-writer
-                    key: DUCKLAKE_S3_SECRET
+                    key: secret
                     optional: true
             command:
               - sh
@@ -381,12 +377,12 @@ dagster:
           - name: DUCKLAKE_PG_HOST
             value: db-postgresql-primary
           - name: DUCKLAKE_PG_USER
-            value: postgres
+            value: ducklake_writer
           - name: DUCKLAKE_PG_PASSWORD
             valueFrom:
               secretKeyRef:
-                name: srdp-postgres
-                key: postgres-password
+                name: srdp-ducklake-pg-writer
+                key: password
           - name: DUCKLAKE_PG_DB
             value: ducklake
           - name: DUCKLAKE_DATA_PATH
@@ -398,11 +394,11 @@ dagster:
             valueFrom:
               secretKeyRef:
                 name: srdp-ducklake-s3-writer
-                key: DUCKLAKE_S3_KEY_ID
+                key: key-id
                 optional: true
           - name: DUCKLAKE_S3_SECRET
             valueFrom:
               secretKeyRef:
                 name: srdp-ducklake-s3-writer
-                key: DUCKLAKE_S3_SECRET
+                key: secret
                 optional: true
