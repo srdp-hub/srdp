@@ -283,7 +283,7 @@ def bootstrap_databases(settings: SetupSettings | None = None) -> None:
             config file if not provided.
     """
     if settings is None:
-        settings = SetupSettings()  # ty: ignore[missing-argument]
+        settings = SetupSettings()
 
     conn = _connect_with_retry(settings)
     conn.autocommit = True

@@ -255,7 +255,7 @@ def get_storage_backend(settings: DuckLakeSettings) -> StorageBackend:
         pydantic.ValidationError: If ``s3`` is selected and its settings are incomplete.
     """
     if settings.storage_backend == "s3":
-        return S3StorageBackend(S3StorageSettings())  # ty: ignore[missing-argument]
+        return S3StorageBackend(S3StorageSettings())
     return LocalStorageBackend(settings.data_path)
 
 
@@ -328,7 +328,7 @@ def setup_ducklake(
         A ready-to-use DuckDB connection with the ``ducklake`` catalog attached.
     """
     if settings is None:
-        settings = DuckLakeSettings()  # ty: ignore[missing-argument]
+        settings = DuckLakeSettings()
     return create_connection(settings, get_storage_backend(settings))
 
 
@@ -372,7 +372,7 @@ def catalog_data_path(settings: DuckLakeSettings) -> str:
     if settings.storage_backend == "s3":
         # Only the bucket and prefix make the path, so the key is a placeholder.
         unused = "unused"
-        return S3StorageBackend(S3StorageSettings(key_id=unused, secret=unused)).get_base_path()  # ty: ignore[missing-argument, invalid-argument-type]
+        return S3StorageBackend(S3StorageSettings(key_id=unused, secret=unused)).get_base_path()
     return str(Path(settings.data_path).resolve())
 
 
@@ -608,7 +608,7 @@ def ducklake_io_manager(_init_context: InitResourceContext) -> DuckLakeIOManager
     Register under the ``"io_manager"`` key, not a custom one, so it's every
     asset's default rather than an opt-in.
     """
-    settings = DuckLakeSettings()  # ty: ignore[missing-argument]
+    settings = DuckLakeSettings()
     conn = setup_ducklake(settings)
     _apply_tuning_options(conn, settings)
     return DuckLakeIOManager(conn)

@@ -23,7 +23,7 @@ def main() -> None:
     """Validate the setup config, then run the database bootstrap, the catalog step and the Garage step if enabled."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     try:
-        settings = SetupSettings()  # ty: ignore[missing-argument]
+        settings = SetupSettings()
         check_catalogs(settings)
     except ValidationError as exc:
         # Pydantic's default message echoes the raw input, which holds the

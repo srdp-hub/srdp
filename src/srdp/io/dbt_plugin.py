@@ -34,4 +34,4 @@ class Plugin(BasePlugin):
         Args:
             conn: The connection dbt-duckdb just opened.
         """
-        attach_catalog(conn, DuckLakeSettings())  # ty: ignore[missing-argument]
+        attach_catalog(conn, DuckLakeSettings())
