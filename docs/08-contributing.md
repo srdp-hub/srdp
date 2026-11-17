@@ -82,6 +82,7 @@ After the first publish, set each package to public in its settings. The `public
 A few repository secrets keep the automation running.
 Set each one with `gh secret set <name> --repo srdp-hub/srdp`, or in the repository settings under Secrets and variables, Actions.
 The command asks for the value, so it stays out of your shell history.
+A workflow on a Dependabot pull request reads only Dependabot secrets, so also set `DHI_USERNAME` and `DHI_TOKEN` with `gh secret set <name> --app dependabot --repo srdp-hub/srdp`.
 
 | Secret | Used by | What it holds |
 |:---|:---|:---|
@@ -90,7 +91,7 @@ The command asks for the value, so it stays out of your shell history.
 | `DHI_TOKEN` | `images.yml`, `renovate.yml` | A Docker access token with the Public Repo Read-only permission and an expiry date. |
 
 The `DHI_TOKEN` token belongs to a maintainer's Docker account for now.
-When it expires, image builds and Renovate fail at the login step, so replace the secret before the expiry date.
+When it expires, image builds, Renovate and Dependabot pull requests fail at the login step, so replace both copies before the expiry date.
 Pull requests from forks cannot read these secrets, so their image builds fail.
 
 ## Architectural Decision Records (ADRs)
