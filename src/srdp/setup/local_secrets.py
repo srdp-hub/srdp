@@ -4,22 +4,25 @@ Compose reads them from ``deploy/docker/.env``, and kind from Secrets with the f
 operator creates on any other cluster. ``deploy/secrets.toml`` is the one list of both. A value that
 exists is never replaced, so a redeploy keeps the passwords that the databases already hold.
 
-Run through ``just``: ``docker-secrets``, ``local-secrets`` and ``local-oidc-client``.
+Run through ``just``: ``docker-secrets``, ``local-secrets`` and ``local-oidc``.
 """
 
 import base64
-import getpass
 import json
 import logging
 import os
 import re
 import secrets
 import shutil
+import ssl
 import string
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
+import urllib.error
+import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -81,7 +84,9 @@ class LocalSecret:
         return _generator(self.format, self.env)()
 
 
-SECRETS_FILE = Path(__file__).resolve().parents[3] / "deploy" / "secrets.toml"
+REPO_ROOT = Path(__file__).resolve().parents[3]
+SECRETS_FILE = REPO_ROOT / "deploy" / "secrets.toml"
+TRAEFIK_ROUTES = REPO_ROOT / "config" / "traefik" / "dynamic" / "srdp.yml"
 
 
 def load_secrets(path: Path = SECRETS_FILE) -> tuple[LocalSecret, ...]:
@@ -127,12 +132,7 @@ def fill_env(text: str, specs: tuple[LocalSecret, ...]) -> tuple[str, list[str]]
     """
     wanted = {s.env: s for s in specs}
     lines = text.splitlines()
-    # Compose uses the last line of a name, so only that line counts.
-    last: dict[str, tuple[int, re.Match[str]]] = {}
-    for i, line in enumerate(lines):
-        match = _ENV_LINE.match(line)
-        if match and match["name"] in wanted:
-            last[match["name"]] = (i, match)
+    last = _last_env_lines(lines)
     filled: list[str] = []
     for name, spec in wanted.items():
         if name not in last:
@@ -140,12 +140,27 @@ def fill_env(text: str, specs: tuple[LocalSecret, ...]) -> tuple[str, list[str]]
             filled.append(name)
             continue
         i, match = last[name]
-        # Compose reads " #" as a comment, and a "#" inside a value as part of it.
-        value = re.split(r"\s#", match["value"], maxsplit=1)[0].strip()
-        if value in {"", '""', "''"}:
+        if not _env_scalar(match["value"]):
             lines[i] = f"{match['prefix']}{name}={spec.make()}"
             filled.append(name)
     return "\n".join(lines) + "\n", filled
+
+
+def _last_env_lines(lines: list[str]) -> dict[str, tuple[int, re.Match[str]]]:
+    """Map each variable to its last line, because Compose uses the last line of a name."""
+    last: dict[str, tuple[int, re.Match[str]]] = {}
+    for i, line in enumerate(lines):
+        if match := _ENV_LINE.match(line):
+            last[match["name"]] = (i, match)
+    return last
+
+
+def _env_scalar(raw: str) -> str:
+    """Return a ``.env`` value as Compose reads it, without a `` #`` comment and surrounding quotes."""
+    value = re.split(r"\s#", raw, maxsplit=1)[0].strip()
+    if len(value) > 1 and value[0] in "\"'" and value.endswith(value[0]):
+        return value[1:-1]
+    return value
 
 
 def write_env(env_path: Path, example_path: Path, specs: tuple[LocalSecret, ...]) -> None:
@@ -164,12 +179,36 @@ def write_env(env_path: Path, example_path: Path, specs: tuple[LocalSecret, ...]
         env_path.chmod(0o600)
         logger.info("%s already holds every credential.", env_path)
         return
+    _replace_env(env_path, new)
+    logger.info("Generated %s in %s.", ", ".join(filled), env_path)
+
+
+def _replace_env(env_path: Path, text: str) -> None:
+    """Replace ``env_path`` in one step with mode 0600, so a crash cannot leave half a file."""
     fd, tmp = tempfile.mkstemp(dir=env_path.parent, prefix=".env.")
     with os.fdopen(fd, "w") as f:
-        f.write(new)
+        f.write(text)
     Path(tmp).chmod(0o600)
     Path(tmp).replace(env_path)
-    logger.info("Generated %s in %s.", ", ".join(filled), env_path)
+
+
+def env_value(text: str, name: str) -> str | None:
+    """Return the value of the last ``name`` line in ``.env`` text, as Compose reads it."""
+    last = _last_env_lines(text.splitlines()).get(name)
+    return _env_scalar(last[1]["value"]) if last else None
+
+
+def set_env(text: str, values: dict[str, str]) -> str:
+    """Set each variable on its last line in ``.env`` text, or add it at the end."""
+    lines = text.splitlines()
+    last = _last_env_lines(lines)
+    for name, value in values.items():
+        if name in last:
+            i, match = last[name]
+            lines[i] = f"{match['prefix']}{name}={value}"
+        else:
+            lines.append(f"{name}={value}")
+    return "\n".join(lines) + "\n"
 
 
 def _kubectl(*args: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -241,13 +280,257 @@ def ensure_kind_secrets(namespace: str, specs: tuple[LocalSecret, ...]) -> None:
         logger.info("Secret %s: generated %s.", name, ", ".join(missing) or "nothing, marked keep")
 
 
-def store_oidc_client(namespace: str, client_id: str, client_secret: str) -> None:
-    """Put the OIDC client that Zitadel created into ``srdp-oauth2-proxy`` and restart oauth2-proxy.
+OIDC_PROJECT = "srdp"
+OIDC_APP = "oauth2-proxy"
+# oauth2-proxy accepts a user's token as a Bearer token (--skip-jwt-bearer-tokens) only when it is a JWT.
+OIDC_ACCESS_FORMAT = "OIDC_TOKEN_TYPE_JWT"
+ZITADEL_WAIT_SECONDS = 300
+
+ZitadelApi = Callable[[str, str, dict | None], dict]
+
+# The fields that the oidc_config PUT of the management API accepts.
+_OIDC_CONFIG_FIELDS = (
+    "responseTypes",
+    "grantTypes",
+    "appType",
+    "authMethodType",
+    "postLogoutRedirectUris",
+    "version",
+    "devMode",
+    "accessTokenType",
+    "accessTokenRoleAssertion",
+    "idTokenRoleAssertion",
+    "idTokenUserinfoAssertion",
+    "clockSkew",
+    "additionalOrigins",
+    "skipNativeAppSuccessPage",
+    "backChannelLogoutUri",
+    "loginVersion",
+)
+
+
+def _zitadel_api(auth_url: str, token: str) -> ZitadelApi:
+    """Return a caller for the Zitadel management API that raises on an HTTP error."""
+
+    def call(method: str, path: str, body: dict | None = None) -> dict:
+        request = urllib.request.Request(  # noqa: S310  # https URL built from the configured domain
+            f"{auth_url}/management/v1/{path}",
+            method=method,
+            data=json.dumps(body or {}).encode() if method != "GET" else None,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
+                return json.load(response)
+        except urllib.error.HTTPError as err:
+            msg = f"Zitadel {method} {path}: HTTP {err.code} {err.read().decode(errors='replace')}"
+            raise RuntimeError(msg) from err
+
+    return call
+
+
+def _find_by_name(api: ZitadelApi, path: str, name: str) -> str | None:
+    """Return the ID of the first project or app with exactly this name."""
+    query = {"queries": [{"nameQuery": {"name": name, "method": "TEXT_QUERY_METHOD_EQUALS"}}]}
+    result = api("POST", path, query).get("result") or []
+    return result[0]["id"] if result else None
+
+
+def _ensure_project(api: ZitadelApi) -> str:
+    """Return the ID of the SRDP project, created when it is missing."""
+    project_id = _find_by_name(api, "projects/_search", OIDC_PROJECT)
+    if project_id is None:
+        project_id = api("POST", "projects", {"name": OIDC_PROJECT})["id"]
+        logger.info("Created Zitadel project %s.", OIDC_PROJECT)
+    return project_id
+
+
+def _ensure_app(api: ZitadelApi, project_id: str) -> tuple[str, str | None]:
+    """Return the app ID and, only for a new app, its client secret."""
+    app_id = _find_by_name(api, f"projects/{project_id}/apps/_search", OIDC_APP)
+    if app_id is not None:
+        return app_id, None
+    created = api(
+        "POST",
+        f"projects/{project_id}/apps/oidc",
+        {
+            "name": OIDC_APP,
+            "responseTypes": ["OIDC_RESPONSE_TYPE_CODE"],
+            "grantTypes": ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
+            "appType": "OIDC_APP_TYPE_WEB",
+            "authMethodType": "OIDC_AUTH_METHOD_TYPE_BASIC",
+            "accessTokenType": OIDC_ACCESS_FORMAT,
+        },
+    )
+    logger.info("Created Zitadel app %s.", OIDC_APP)
+    return created["appId"], created["clientSecret"]
+
+
+def _sync_app_config(api: ZitadelApi, project_id: str, app_id: str, hosts: list[str]) -> str:
+    """Add a callback for every gated host, make the access tokens JWTs, and return the client ID.
+
+    The callbacks the app has stay.
+    """
+    config = api("GET", f"projects/{project_id}/apps/{app_id}", None)["app"]["oidcConfig"]
+    have = set(config.get("redirectUris") or [])
+    want = have | {f"https://{host}/oauth2/callback" for host in hosts}
+    if want != have or config.get("accessTokenType") != OIDC_ACCESS_FORMAT:
+        # The PUT replaces the whole config, so every other setting it accepts goes back unchanged.
+        kept = {key: config[key] for key in _OIDC_CONFIG_FIELDS if key in config}
+        body = {**kept, "redirectUris": sorted(want), "accessTokenType": OIDC_ACCESS_FORMAT}
+        api("PUT", f"projects/{project_id}/apps/{app_id}/oidc_config", body)
+        logger.info(
+            "Updated the Zitadel app %s, new redirect URIs: %s.", OIDC_APP, ", ".join(sorted(want - have)) or "none"
+        )
+    return config["clientId"]
+
+
+def provision_oidc(api: ZitadelApi, hosts: list[str], stored_client_id: str | None) -> tuple[str, str] | None:
+    """Create or update the oauth2-proxy app in Zitadel.
+
+    Args:
+        api: A caller for the Zitadel management API with an admin token.
+        hosts: Every hostname behind the login.
+        stored_client_id: The client ID that oauth2-proxy has now, if any.
+
+    Returns:
+        The client ID and a secret to store, or ``None`` when oauth2-proxy already has this app.
+    """
+    project_id = _ensure_project(api)
+    app_id, secret = _ensure_app(api, project_id)
+    client_id = _sync_app_config(api, project_id, app_id, hosts)
+    if secret is None and client_id == stored_client_id:
+        return None
+    if secret is None:
+        path = f"projects/{project_id}/apps/{app_id}/oidc_config/_generate_client_secret"
+        secret = api("POST", path, {})["clientSecret"]
+    return client_id, secret
+
+
+def _secret_value(namespace: str, name: str, key: str) -> str | None:
+    """Return one decoded value of a Secret, or ``None`` when the Secret or key is missing."""
+    existing = _read_secret(namespace, name)
+    value = (existing or {}).get("data", {}).get(key)
+    return base64.b64decode(value).decode() if value else None
+
+
+def _gated_hosts(namespace: str) -> list[str]:
+    """Return the hosts of the chart's oauth2-proxy routes, the hosts behind the login."""
+    result = _kubectl("get", "ingress", "auth-routes-ingress", "--namespace", namespace, "--output", "json")
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip())
+    return [rule["host"] for rule in json.loads(result.stdout)["spec"]["rules"]]
+
+
+def _zitadel_ready(auth_url: str) -> bool:
+    """Return whether Zitadel answers its health check, which it does only after its setup."""
+    try:
+        with urllib.request.urlopen(f"{auth_url}/debug/healthz", timeout=10) as response:  # noqa: S310
+            return response.status == 200  # noqa: PLR2004
+    except ssl.SSLCertVerificationError:
+        raise
+    except OSError:
+        return False
+
+
+def _zitadel_admin(read_token: Callable[[], str | None], missing: str, domain: str) -> ZitadelApi:
+    """Return the management API with the admin token, once Zitadel accepts it.
+
+    The token is read again on every try, because Zitadel replaces it when it starts on a new database.
+    A TLS error stops at once, because waiting does not fix a missing CA.
+    """
+    auth_url = f"https://auth.{domain}"
+    deadline = time.monotonic() + ZITADEL_WAIT_SECONDS
+    while True:
+        token = (read_token() or "").strip()
+        if token:
+            api = _zitadel_api(auth_url, token)
+            try:
+                api("GET", "orgs/me", None)
+            except ssl.SSLCertVerificationError:
+                raise
+            except (RuntimeError, OSError) as err:
+                problem = f"Zitadel did not accept the admin token: {err}"
+            else:
+                return api
+        elif _zitadel_ready(auth_url):
+            # Zitadel writes the token during its setup, so a running Zitadel without it never writes it.
+            raise RuntimeError(missing)
+        else:
+            problem = missing
+        if time.monotonic() > deadline:
+            raise RuntimeError(problem)
+        time.sleep(5)
+
+
+def compose_gated_hosts(routes: str, domain: str) -> list[str]:
+    """Return the hosts of the Compose oauth2-proxy router, the hosts behind the login, without Zitadel's."""
+    rule = re.search(r"^ {4}oauth2-proxy:\n(?: {6}.*\n)*? {6}rule: (.*)$", routes, re.MULTILINE)
+    if rule is None:
+        msg = "no oauth2-proxy router rule in the Traefik routes"
+        raise RuntimeError(msg)
+    hosts = [h.replace('{{ env "SRDP_DOMAIN" }}', domain) for h in re.findall(r"Host\(`([^`]*)`\)", rule[1])]
+    return [h for h in hosts if h != f"auth.{domain}"]
+
+
+def _read_private(path: Path) -> str | None:
+    """Return the content of a token file and make it readable only by the user, or ``None`` when it is missing."""
+    if not path.exists():
+        return None
+    path.chmod(0o600)
+    return path.read_text()
+
+
+def ensure_compose_oidc(env_path: Path, domain: str) -> None:
+    """Create or update the oauth2-proxy app and save its client in ``.env``.
+
+    Args:
+        env_path: The Compose ``.env`` file. Zitadel writes ``admin.pat`` to ``deploy/zitadel-admin`` next to its folder.
+        domain: The base domain from ``srdp.toml``, so Zitadel is ``auth.<domain>``.
+    """
+    # Outside the Compose folder, because zitadel-login mounts that folder and file modes do not hold on every Docker host.
+    pat = env_path.parent.parent / "zitadel-admin" / "admin.pat"
+    missing = f"{pat} not found. Zitadel writes it only on its first start, so start a new stack."
+    api = _zitadel_admin(lambda: _read_private(pat), missing, domain)
+    text = env_path.read_text()
+    hosts = compose_gated_hosts(TRAEFIK_ROUTES.read_text(), domain)
+    client = provision_oidc(api, hosts, env_value(text, "OAUTH2_PROXY_CLIENT_ID"))
+    if client is None:
+        logger.info("oauth2-proxy already has the Zitadel app.")
+        return
+    client_id, client_secret = client
+    _replace_env(
+        env_path, set_env(text, {"OAUTH2_PROXY_CLIENT_ID": client_id, "OAUTH2_PROXY_CLIENT_SECRET": client_secret})
+    )
+    logger.info("Saved the OIDC client in %s.", env_path)
+
+
+def ensure_kind_oidc(namespace: str, domain: str) -> None:
+    """Create or update the oauth2-proxy app, store its client in ``srdp-oauth2-proxy`` and restart oauth2-proxy.
 
     Args:
         namespace: The namespace of the release.
-        client_id: The client ID from the Zitadel console.
-        client_secret: The client secret from the Zitadel console.
+        domain: The base domain from ``srdp.toml``, so Zitadel is ``auth.<domain>``.
+    """
+    api = _zitadel_admin(
+        lambda: _secret_value(namespace, "iam-admin-pat", "pat"),
+        "Secret iam-admin-pat not found, is Zitadel deployed?",
+        domain,
+    )
+    client = provision_oidc(api, _gated_hosts(namespace), _secret_value(namespace, "srdp-oauth2-proxy", "client-id"))
+    if client is None:
+        logger.info("oauth2-proxy already has the Zitadel app.")
+        return
+    store_oidc_client(namespace, *client)
+
+
+def store_oidc_client(namespace: str, client_id: str, client_secret: str) -> None:
+    """Put the OIDC client into ``srdp-oauth2-proxy`` and restart oauth2-proxy.
+
+    Args:
+        namespace: The namespace of the release.
+        client_id: The client ID of the Zitadel app.
+        client_secret: The client secret of the Zitadel app.
     """
     name = "srdp-oauth2-proxy"
     existing = _read_secret(namespace, name)
@@ -264,21 +547,22 @@ def store_oidc_client(namespace: str, client_id: str, client_secret: str) -> Non
 
 
 def main(argv: list[str]) -> None:
-    """Run ``compose <env> <example>``, ``kind <namespace>`` or ``oidc <namespace>``."""
+    """Run one step for a local stack, as the usage message lists."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     match argv:
         case ["compose", env_path, example_path]:
             write_env(Path(env_path), Path(example_path), load_secrets())
         case ["kind", namespace]:
             ensure_kind_secrets(namespace, load_secrets())
-        case ["oidc", namespace]:
-            client_id = input("Client ID: ").strip()
-            client_secret = getpass.getpass("Client secret: ").strip()
-            if not client_id or not client_secret:
-                sys.exit("Both the client ID and the client secret are needed.")
-            store_oidc_client(namespace, client_id, client_secret)
+        case ["oidc-compose", env_path, domain]:
+            ensure_compose_oidc(Path(env_path), domain)
+        case ["oidc-kind", namespace, domain]:
+            ensure_kind_oidc(namespace, domain)
         case _:
-            sys.exit("usage: local_secrets.py compose <env> <example> | kind <namespace> | oidc <namespace>")
+            sys.exit(
+                "usage: local_secrets.py compose <env> <example> | kind <namespace>"
+                " | oidc-compose <env> <domain> | oidc-kind <namespace> <domain>"
+            )
 
 
 if __name__ == "__main__":

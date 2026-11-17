@@ -65,7 +65,6 @@ The extensions are fixed when you build the image, and a deployment only pulls t
 The published `ghcr.io/srdp-hub/duckdb-ui` image has the default extensions only.
 For a cluster, build the image with `docker build --build-arg DUCKDB_EXTENSIONS="spatial excel" -f services/duckdb-ui/Dockerfile .`.
 Push it to your registry and set the image in your chart values.
-`just build-and-push` does not build this image.
 A name can contain only lowercase letters, digits and underscores, and the build fails for any other name.
 This argument installs core extensions only.
 The Python images of a project bake extensions in their own Dockerfile, with `python -m srdp.io.extensions /opt/duckdb/extensions <name> ...`.

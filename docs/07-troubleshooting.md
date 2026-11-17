@@ -32,7 +32,8 @@ icon: lucide/life-buoy
 ### OAuth login loops or 401s
 
 - Ensure `global.domain`, `zitadel.zitadel.configmapConfig.ExternalDomain`, and the `oauth2-proxy.extraArgs` cookie/whitelist domains all match the URL you are using.
-- Re-check the Zitadel client ID/secret and redirect URIs.
+- Run `just docker-oidc` or `just local-oidc` again.
+  It adds missing redirect URIs and gives OAuth2-Proxy the client of the Zitadel app.
 
 ### Browser rejects the self-signed cert
 

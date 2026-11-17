@@ -20,7 +20,7 @@ domain := `uv run --no-project python -c 'import sys, tomllib; sys.stdout.write(
 # Helm patches the list items in place because values.yaml defines the lists.
 # The Zitadel login config is a single string in values-local.yaml, so it is
 # set as a JSON string to keep its newlines.
-domain_args := "--set-string 'global.domain=" + domain + "' --set-string 'zitadel.zitadel.configmapConfig.ExternalDomain=auth." + domain + "' --set-string 'oauth2-proxy.extraArgs.cookie-domain=." + domain + "' --set-string 'oauth2-proxy.extraArgs.whitelist-domain=." + domain + "' --set-string 'oauth2-proxy.extraArgs.oidc-issuer-url=https://auth." + domain + "' --set-string 'oauth2-proxy.customRequestHeaders[0]=Host:auth." + domain + "' --set-string 'oauth2-proxy.hostAliases[0].hostnames[0]=auth." + domain + "'"
+domain_args := "--set-string 'global.domain=" + domain + "' --set-string 'zitadel.zitadel.configmapConfig.ExternalDomain=auth." + domain + "' --set-string 'oauth2-proxy.extraArgs.cookie-domain=." + domain + "' --set-string 'oauth2-proxy.extraArgs.whitelist-domain=." + domain + "' --set-string 'oauth2-proxy.extraArgs.oidc-issuer-url=https://auth." + domain + "' --set-string 'oauth2-proxy.extraArgs.extra-jwt-issuers=https://auth." + domain + "=$(OAUTH2_PROXY_CLIENT_ID)' --set-string 'oauth2-proxy.customRequestHeaders[0]=Host:auth." + domain + "' --set-string 'oauth2-proxy.hostAliases[0].hostnames[0]=auth." + domain + "'"
 local_domain_args := domain_args + " --set-json 'zitadel.login.customConfigmapConfig=\"ZITADEL_SERVICE_USER_TOKEN_FILE=\\\"/login-client/pat\\\"\\nZITADEL_API_URL=\\\"http://srdp-zitadel:8080\\\"\\nCUSTOM_REQUEST_HEADERS=\\\"Host:auth." + domain + ",X-Zitadel-Public-Host:auth." + domain + "\\\"\\n\"'"
 # Every hostname the stack serves, for the mkcert certificates. The wildcard
 # also covers a client project's own hostnames under the domain.
@@ -106,10 +106,10 @@ local-secrets: kind-up
 	kubectl create namespace {{namespace}} --dry-run=client -o yaml | kubectl apply -f -
 	uv run --no-project python src/srdp/setup/local_secrets.py kind {{namespace}}
 
-# Store the OIDC client from the Zitadel console in the kind stack and restart oauth2-proxy
-local-oidc-client:
+# Create or update the oauth2-proxy app in the kind Zitadel and store its client. srdp-setup takes this over in #60.
+local-oidc:
 	kubectl config use-context kind-srdp
-	uv run --no-project python src/srdp/setup/local_secrets.py oidc {{namespace}}
+	SSL_CERT_FILE="$(mkcert -CAROOT)/rootCA.pem" uv run --no-project python src/srdp/setup/local_secrets.py oidc-kind {{namespace}} '{{domain}}'
 
 # Print the generated password of the Zitadel admin in the kind stack
 local-admin-password:
@@ -123,6 +123,7 @@ local-deploy *args: kind-load-images chart-deps local-tls local-secrets
 	@TRAEFIK_IP=$(kubectl get svc srdp-traefik -n {{namespace}} -o jsonpath='{.spec.clusterIP}'); \
 	echo "Traefik ClusterIP: $TRAEFIK_IP"; \
 	cd deploy/kubernetes && helm upgrade srdp srdp-chart --namespace {{namespace}} -f srdp-chart/values.yaml -f srdp-chart/values-local.yaml {{registry_args}} {{local_domain_args}} {{args}} --set-string "oauth2-proxy.hostAliases[0].ip=$TRAEFIK_IP"
+	just local-oidc
 
 # Uninstall the local Helm release and its PVCs
 local-delete:
@@ -137,6 +138,7 @@ local-delete:
 # Generate the empty credentials in deploy/docker/.env, once. Values you set stay.
 docker-secrets:
 	uv run --no-project python src/srdp/setup/local_secrets.py compose deploy/docker/.env deploy/docker/.env.example
+	mkdir -p -m 700 deploy/zitadel-admin
 
 # Start the Docker Compose stack (local dev). Attached by default; pass -d to detach.
 # Builds from source and tags the platform images dev, whatever SRDP_VERSION says.
@@ -144,9 +146,14 @@ docker-up *args: docker-tls docker-secrets
 	cd deploy/docker && SRDP_UID=$(id -u) SRDP_GID=$(id -g) SRDP_DOMAIN='{{domain}}' SRDP_VERSION=dev SRDP_DEV_PASSWORD_CHANGE_REQUIRED=false docker compose up --build {{args}}
 
 # Start the Docker Compose stack with the published platform images of a release, e.g. `just docker-up-release 0.4.0 -d`.
-docker-up-release version *args: docker-secrets
+docker-up-release version *args: docker-tls docker-secrets
 	cd deploy/docker && SRDP_DOMAIN='{{domain}}' SRDP_VERSION='{{version}}' docker compose pull srdp-setup dagster-webserver dagster-daemon duckdb-ui hub
 	cd deploy/docker && SRDP_UID=$(id -u) SRDP_GID=$(id -g) SRDP_DOMAIN='{{domain}}' SRDP_VERSION='{{version}}' docker compose up {{args}}
+
+# Create or update the oauth2-proxy app in the Compose Zitadel and recreate oauth2-proxy. srdp-setup takes this over in #60.
+docker-oidc:
+	SSL_CERT_FILE="$(mkcert -CAROOT)/rootCA.pem" uv run --no-project python src/srdp/setup/local_secrets.py oidc-compose deploy/docker/.env '{{domain}}'
+	cd deploy/docker && SRDP_DOMAIN='{{domain}}' docker compose up -d --no-deps oauth2-proxy
 
 # Stop the Docker Compose stack
 docker-down:
@@ -205,12 +212,6 @@ prod-uninstall:
 		helm uninstall srdp -n {{namespace}} || true && \
 		kubectl delete jobs --all -n {{namespace}} --ignore-not-found && \
 		kubectl delete pvc --all -n {{namespace}} --ignore-not-found
-
-# ─── Images ───────────────────────────────────────────────────────────────────
-
-# Build and push images to the Scaleway registry
-build-and-push:
-	source deploy/opentofu/scaleway/secrets.sh && REGISTRY='{{registry}}' bash deploy/opentofu/scaleway/build-and-push.sh
 
 # ─── Development ──────────────────────────────────────────────────────────────
 

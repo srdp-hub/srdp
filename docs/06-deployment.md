@@ -28,15 +28,12 @@ PostgreSQL runs **in-cluster** via the Bitnami Helm chart (not as a Scaleway man
   source ./secrets.sh
   ```
 
-## 2) Build and push container images
+## 2) Container images
 
-Run the build recipe from the repository root. It sources `deploy/opentofu/scaleway/secrets.sh` for the credentials and logs into the registry:
-```bash
-just build-and-push
-```
-This builds and pushes Marimo, cbs-example (Dagster user code), the API and Streamlit to the registry in `srdp.toml` under `[deploy] registry`, tagged with the version in `pyproject.toml`.
-The platform images, including `srdp-setup`, come from `ghcr.io/srdp-hub` and need no push.
-Quarto is disabled by default (`quarto.enabled: false`).
+Every release publishes the platform images and the example project images to `ghcr.io/srdp-hub`, the default registry, so you build and push nothing.
+For your own project or your own changes, build the images in your own CI and push them to your registry.
+Use the Dockerfiles in the `kind-load-images` recipe of the `Justfile`, and set `[deploy] registry` in `srdp.toml` to your registry.
+Quarto is disabled by default (`quarto.enabled: false`) and has no published image.
 `docs/03-configuration.md` explains why.
 
 ## 3) Provision infrastructure with OpenTofu
@@ -139,12 +136,16 @@ The `srdp-setup` Job runs from this step on, because it creates Zitadel's databa
 just prod-auth-only
 ```
 
-### D. Configure Zitadel apps
+### D. Configure the Zitadel app
 
-- In Zitadel (`https://auth.<LB_IP>.nip.io/`), create OIDC apps for Marimo and Dagster with redirect URIs:
-  - `https://marimo.<LB_IP>.nip.io/oauth2/callback`
-  - `https://dagster.<LB_IP>.nip.io/oauth2/callback`
-- Copy the client ID/secret into `values-prod.yaml` (oauth2-proxy config section).
+Production has no recipe for this step yet.
+#60 moves it into `srdp-setup`.
+
+1. In the Zitadel console (`https://auth.<LB_IP>.nip.io/`), create a project and an application of type **Web** with the **Code** flow.
+2. Add a redirect URI `https://<host>/oauth2/callback` for each host of the `auth-routes-ingress` Ingress.
+   `kubectl get ingress auth-routes-ingress -n srdp` lists them.
+3. Put the client ID and the secret in the `srdp-oauth2-proxy` Secret, as the keys `client-id` and `client-secret`.
+4. Restart OAuth2-Proxy with `kubectl rollout restart deployment/srdp-oauth2-proxy -n srdp`.
 
 ### E. Final deploy with all apps enabled
 
@@ -158,25 +159,23 @@ just prod-full
 # 1. Prepare (first time only, from deploy/opentofu/scaleway/)
 cd deploy/opentofu/scaleway && source ./secrets.sh && tofu init -upgrade
 
-# 2. Build and push container images (from repo root)
-just build-and-push
-
-# 3. Provision infrastructure (from repo root)
+# 2. Provision infrastructure (from repo root)
 just prod-apply
 just prod-use-kubeconfig
 
-# 4. Staged Helm rollout (from repo root)
+# 3. Staged Helm rollout (from repo root)
 just prod-traefik-only
 just prod-get-values                    # note the LOAD_BALANCER_IP
 # → Update values-prod.yaml with LB IP in domain fields + secrets
 just prod-auth-only
-# → Configure Zitadel OIDC apps + copy client ID/secret into values-prod.yaml
+# → Create the Zitadel app and store its client in the srdp-oauth2-proxy Secret (step D)
 just prod-full
 ```
 
 ## Verifying published images
 
 From the first release that includes the images workflow, every release publishes SRDP's platform images (`srdp-setup`, `dagster-webserver`, `duckdb-ui` and `hub`) to `ghcr.io/srdp-hub/<image>:<version>`.
+From v0.4.0, it also publishes the example project images (`cbs-example`, `srdp-api`, `marimo` and `streamlit`) there, so the chart's defaults work without your own registry.
 Each image is scanned for critical vulnerabilities before it gets a version tag, signed with cosign through GitHub's OIDC identity, and carries a build provenance attestation and an SBOM.
 Each image gets its exact version as a tag, which never moves, and `latest` points at the newest stable release.
 Use `latest` for trying SRDP out, and pin the exact version (or the digest) in a deployment, so it only changes when you change it.

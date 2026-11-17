@@ -6,6 +6,8 @@
 
 # Environment variables
 .env
+.env.*
+!.env.example
 secrets.sh
 .secrets/
 
@@ -16,6 +18,7 @@ deploy/opentofu/**/*.tfvars
 # Local certificates and PAT for Zitadel
 certs/
 login-client.pat
+zitadel-admin/
 
 # Let's Encrypt account and certificate keys (docker-compose.prod.yml)
 letsencrypt/

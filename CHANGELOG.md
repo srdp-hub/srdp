@@ -9,15 +9,22 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 - The local stacks generate their own credentials, so no password lives in a tracked file.
   `just docker-up` fills every empty credential in `deploy/docker/.env` once, and `just local-deploy` creates the kind Secrets once. Values that exist stay.
   `deploy/secrets.toml` lists every credential with its Secret, key, `.env` variable and format, so a new component adds its entries there.
-  The chart no longer renders `localSecrets`. On an existing kind cluster, `just local-deploy` keeps the old Secrets and their values.
+  The chart no longer renders `localSecrets`.
+  On an existing kind cluster, `just local-deploy` keeps each Secret whose name and key did not change.
+  The renamed ones are in the table under Changed.
   A `.env` variable is now the Secret name without `srdp-` plus the key, so Compose and Kubernetes use one name for each credential.
 
 ### Changed
 
 - The example project's code location and image are called `cbs-example` instead of `srdp-etl`.
-  The default registry in `srdp.toml` and the chart is `ghcr.io/srdp-hub`, where CI publishes the images.
-  The Dagster code location is renamed too, from `srdp-dagster-code:3030` on Compose and `srdp-etl` on Kubernetes. Runs of an existing install keep the old location name.
-- `just docker-up` and `just local-deploy` create the local TLS certificate. Before, a new kind cluster served Traefik's default certificate.
+  The default registry in `srdp.toml` and the chart is `ghcr.io/srdp-hub`.
+  Every release now publishes the example images there too (`cbs-example`, `srdp-api`, `marimo` and `streamlit`), so a fresh install from the defaults pulls every image.
+  The Dagster code location is renamed too, from `srdp-dagster-code:3030` on Compose and `srdp-etl` on Kubernetes.
+  Runs of an existing install keep the old location name.
+  Dagster stores the state of schedules and sensors per location.
+  If you turned on `etl_schedule` before, turn it on again in the Dagster UI after the upgrade.
+- `just docker-up` and `just local-deploy` create the local TLS certificate.
+  Before, a new kind cluster served Traefik's default certificate.
 - Credential names are the same on both targets. Rename these before you upgrade.
 
   | Before | Now |
@@ -36,7 +43,7 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 - The Compose project is now named `srdp` in `docker-compose.yml`, and `COMPOSE_PROJECT_NAME` is gone from `.env`.
   Volumes and networks keep their names, so no data moves.
   Before you upgrade, stop the old stack with `docker compose -p local down` in `deploy/docker`, and remove `COMPOSE_PROJECT_NAME` from your `.env`.
-  `just local-admin-password` prints the Zitadel admin password, and `just local-oidc-client` stores the OIDC client from the Zitadel console.
+  `just local-admin-password` prints the Zitadel admin password.
 - A `LICENSE` file with the Mozilla Public License 2.0, and a `CODEOWNERS` file that asks the core maintainers to review every change.
   SRDP moves from Apache-2.0 to MPL-2.0. A changed MPL file that someone distributes must stay open, and code next to it can keep its own license.
 - Hardened images for everything SRDP builds, including the example project's code location, API, marimo and streamlit images. They build on Docker Hardened Images, run as uid 65532 and scan clean in the Images workflow.
@@ -48,8 +55,6 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
   `srdp-setup` checks this before it changes anything and prints the `chown` command that fixes it, so no data is lost.
   The production overlay starts `traefik-acme-init`, which gives `./letsencrypt` to uid 65532 and keeps `acme.json` at mode 0600.
   The local stack runs Traefik as your own user, because the mkcert key is private to you.
-- `deploy/docker/provision-oidc.sh` creates the `srdp` project and the `oauth2-proxy` application in Zitadel when they are missing, and saves their client ID and secret in `.env`.
-  It replaces an admin token that a reset Zitadel no longer accepts, reads the gated hostnames from `config/traefik/dynamic/srdp.yml`, and is executable.
 - `DHI_USERNAME` and `DHI_TOKEN` repository secrets, for the Images and Renovate workflows to pull the base images.
 - Actions and pre-commit hooks are pinned by commit SHA, chart images by digest, and the Dockerfiles use `uv sync --locked`. Tests in `tests/deploy` fail on an unpinned image, Action or hook.
 - Signed platform images: every release builds `srdp-setup`, `dagster-webserver`, `duckdb-ui` and `hub` for amd64 and arm64, scans them for critical vulnerabilities, signs them with cosign, attests their provenance and publishes them to `ghcr.io/srdp-hub` once all four pass, tagged with the exact version (which never moves) and `latest` for the newest stable release. Pull requests and pushes to `main` that touch the images build and scan them without publishing. See "Verifying published images" in the deployment docs.
@@ -124,10 +129,8 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 - The new `mirror.yml` workflow copies the third-party images in `deploy/mirror.yaml` (Traefik and oauth2-proxy) from `dhi.io` to `ghcr.io/srdp-hub` with their attestations, after it scanned them.
   Renovate bumps the list in the weekly PR. Compose and the chart still pull from `dhi.io` until the first copy exists.
 - The chart holds no passwords or keys.
-  Every consumer reads a fixed-name Secret (`srdp-postgres`, `srdp-zitadel`, `srdp-oauth2-proxy`, `srdp-dagster-postgresql`, `srdp-marquez`).
-  In kind, `templates/local-secrets.yaml` creates them from `values-local.yaml`.
+  Every consumer reads a fixed-name Secret (`srdp-postgres`, `srdp-zitadel`, `srdp-oauth2-proxy`, `srdp-dagster`, `srdp-marquez`).
   Existing `values-prod.yaml` files must drop their password values and create these Secrets instead.
-  In kind, every pod that reads one of them restarts when `values-local.yaml` changes, through a `checksum/local-secrets` pod annotation.
 - Image `repository` values of the chart's own apps are bare names such as `marimo`, prefixed by `global.srdpRegistry`.
   Existing `values-prod.yaml` files that set a full repository path must shorten it.
 - The chart's `srdp-setup` Job may run for up to 15 minutes (`setup.activeDeadlineSeconds: 900`), long enough for the database wait and the Garage step on a cold install.
@@ -185,10 +188,27 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 
 - `deploy/docker/initdb/` and the chart's `zitadel-db.primary.initdb.scripts`.
   The `srdp-setup` service replaces both.
+- `just build-and-push` and `deploy/opentofu/scaleway/build-and-push.sh`.
+  Every release publishes the example images to `ghcr.io/srdp-hub`, so a deployment from the defaults builds nothing.
+  Build your own project's images in your own CI and set `[deploy] registry` in `srdp.toml`.
 
 ### Fixed
 
 - `/ingest/income` works on Kubernetes, because the API and the chart use the same code location name (#103).
+- On Kubernetes the apps get the signed-in user, email and access token, as on Compose.
+  Before, oauth2-proxy set no identity headers there, and the API's `/token` page stayed empty.
+- The token on the API's `/token` page works as a `Bearer` token, as that page says.
+  The Zitadel app now issues JWT access tokens, because OAuth2-Proxy accepts only a JWT as a `Bearer` token.
+  `just docker-oidc` and `just local-oidc` switch an existing app.
+- `srdp-setup` loads `httpfs` before it creates a catalog on S3, so it no longer depends on DuckDB autoloading it.
+- The local stacks create the Zitadel OIDC application themselves, so the console step is gone.
+  `just local-deploy` does it on kind, and `just docker-oidc` on Compose after the start.
+  Both run one flow in `local_secrets.py` with the token of Zitadel's first admin machine user, `iam-admin`.
+  It replaces `deploy/docker/provision-oidc.sh` and `just local-oidc-client`.
+  On Compose, Zitadel writes that token to `deploy/zitadel-admin/admin.pat` only on its first start, and only in local development (`docker-compose.override.yml`).
+  A local stack from before has no such token, so it needs a new start, which deletes its local data.
+- After sign-in, the user lands on the page they asked for.
+  Before, every app opened at `/`, and the API showed `Not Found` there.
 - The `ducklake` database is now created at startup, before any consumer connects (#57).
 - `docker-compose.prod.yml` serves HTTPS with Let's Encrypt certificates and keeps the Traefik dashboard off (#92).
   It gives Traefik a static configuration of its own, because Traefik ignored the flags it used to pass.

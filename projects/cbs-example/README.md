@@ -58,16 +58,14 @@ just docker-up
 
 `*.srdp.localhost` resolves to `127.0.0.1` automatically, since it's under the reserved `.localhost` TLD, so no `/etc/hosts` edit is needed.
 
-### First login: creating the OIDC application
+### First login
 
-Zitadel doesn't know about `oauth2-proxy` until you tell it. On a fresh stack:
+Run `just docker-oidc` once the stack is up.
+It creates the OIDC application of `oauth2-proxy` in Zitadel and gives `oauth2-proxy` the client.
+On kind, `just local-deploy` does this step itself.
 
-1. Open `https://auth.srdp.localhost`, sign in as the first-instance admin (see `docs/03-configuration.md` for the default login name/password).
-2. Create a project and a **Web** app with the **Code** auth flow, redirect URIs for each service (`https://dagster.srdp.localhost/oauth2/callback`, `.../marimo...`, `.../streamlit...`, `.../srdp.localhost/oauth2/callback` for the hub; see `docs/03-configuration.md` for the full list).
-3. Copy the generated client ID/secret into `deploy/docker/.env` (`OAUTH2_PROXY_CLIENT_ID`, `OAUTH2_PROXY_CLIENT_SECRET`), then `docker compose up -d --force-recreate oauth2-proxy`.
-
-This is the known, documented bootstrap gap (tracked as issue #35).
-It is not specific to this project: every service behind the shared SSO gate needs it done once per fresh Zitadel instance.
+Then open `https://srdp.localhost` and sign in as the first-instance admin.
+`docs/03-configuration.md` gives the login name and the password.
 
 ## Running the pipeline
 
@@ -133,7 +131,7 @@ Copy this directory, rename it, and update:
 - `projects/<new>/dbt/`: your dbt project (or delete it if you're not using dbt)
 - `projects/<new>/Dockerfile`: replace `projects/cbs-example` in the `COPY` and `PYTHONPATH` lines with the new name
 - `deploy/docker/docker-compose.yml`: point the `dockerfile` of `dagster-code` at the new Dockerfile (the build context stays the repo root)
-- Kubernetes: the chart's code location deployment is `cbs-example`, built by the `kind-load-images` recipe in the `Justfile` and by `deploy/opentofu/scaleway/build-and-push.sh`, so point the Dockerfile path in both at the new project
+- Kubernetes: the chart's code location deployment is `cbs-example`, built by the `kind-load-images` recipe in the `Justfile` and published by `.github/workflows/images.yml`, so point the Dockerfile path in both at the new project
 
 The module name `etl` and the names `dagster-code` and `cbs-example` are hardcoded in several places, so keep them for now. A second project next to this one is not supported yet.
 

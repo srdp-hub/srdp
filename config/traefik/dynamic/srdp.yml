@@ -158,7 +158,7 @@ http:
         statusRewrites:
           "401": 302
         service: "oauth2-proxy"
-        query: "/oauth2/sign_in"
+        query: "/oauth2/sign_in?rd={url}"
   serversTransports:
     zitadel:
       insecureSkipVerify: true

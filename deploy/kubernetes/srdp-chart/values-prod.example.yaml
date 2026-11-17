@@ -174,7 +174,7 @@ oauth2-proxy:
     cookie-domain: ".LOAD_BALANCER_IP.nip.io" # CHANGE THIS
     whitelist-domain: ".LOAD_BALANCER_IP.nip.io" # CHANGE THIS
     oidc-issuer-url: "https://auth.LOAD_BALANCER_IP.nip.io" # CHANGE THIS
-    cookie-secure: "false"
+    extra-jwt-issuers: "https://auth.LOAD_BALANCER_IP.nip.io=$(OAUTH2_PROXY_CLIENT_ID)" # CHANGE THIS
 
   customRequestHeaders:
     - "Host:auth.LOAD_BALANCER_IP.nip.io"

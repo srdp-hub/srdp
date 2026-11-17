@@ -142,6 +142,7 @@ class FakeConnection:
         self.cursor_ = FakeCursor()
         self.committed = False
         self.closed = False
+        self.autocommit = False
 
     def __enter__(self) -> Self:  # noqa: D105
         return self
@@ -168,4 +169,4 @@ def test_grants_run_in_one_transaction(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert conn.committed
     assert conn.closed
-    assert not getattr(conn, "autocommit", False)
+    assert not conn.autocommit

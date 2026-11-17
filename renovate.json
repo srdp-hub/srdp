@@ -106,8 +106,7 @@
     {
       "description": "SRDP's own images are versioned by the release script, not by Renovate.",
       "matchPackageNames": [
-        "/^ghcr\\.io/srdp-hub//",
-        "/srdp-registry//"
+        "/^ghcr\\.io/srdp-hub//"
       ],
       "enabled": false
     }

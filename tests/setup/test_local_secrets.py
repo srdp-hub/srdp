@@ -238,3 +238,153 @@ def test_hash_inside_a_value_counts_as_set() -> None:
     env = _env(fill_env("POSTGRES_PASSWORD=#abc\nMARQUEZ_DB_PASSWORD= # empty\n", SECRETS)[0])
     assert env["POSTGRES_PASSWORD"] == "#abc"  # noqa: S105  # throwaway test value
     assert env["MARQUEZ_DB_PASSWORD"]
+
+
+class FakeZitadel:
+    """Answers the management API calls of ``provision_oidc`` from an in-memory project and app."""
+
+    def __init__(  # noqa: D107
+        self, *, app: bool, redirect_uris: tuple[str, ...] = (), access_format: str = "OIDC_TOKEN_TYPE_JWT"
+    ) -> None:
+        self.app = app
+        self.redirect_uris = list(redirect_uris)
+        self.access_format = access_format
+        self.calls: list[tuple[str, str]] = []
+
+    def __call__(self, method: str, path: str, body: dict | None) -> dict:
+        """Record the call and answer it."""
+        self.calls.append((method, path))
+        if path == "projects/_search":
+            return {"result": [{"id": "p1"}]}
+        if path == "projects/p1/apps/_search":
+            return {"result": [{"id": "a1"}]} if self.app else {}
+        if path == "projects/p1/apps/oidc":
+            self.app = True
+            self.access_format = (body or {})["accessTokenType"]
+            return {"appId": "a1", "clientId": "c1", "clientSecret": "new-app-secret"}
+        if method == "GET":
+            config = {
+                "clientId": "c1",
+                "redirectUris": self.redirect_uris,
+                "accessTokenType": self.access_format,
+                "complianceProblems": [],
+            }
+            return {"app": {"oidcConfig": config}}
+        if path.endswith("/oidc_config"):
+            self.put = body or {}
+            self.redirect_uris = self.put["redirectUris"]
+            self.access_format = self.put["accessTokenType"]
+            return {}
+        if path.endswith("/_generate_client_secret"):
+            return {"clientSecret": "regenerated"}
+        raise AssertionError(path)
+
+
+HOSTS = ["srdp.localhost", "api.srdp.localhost"]
+CALLBACKS = ["https://api.srdp.localhost/oauth2/callback", "https://srdp.localhost/oauth2/callback"]
+
+
+def test_new_app_gets_every_callback() -> None:
+    """A fresh Zitadel gets the app with a callback per gated host, and oauth2-proxy its first secret."""
+    zitadel = FakeZitadel(app=False)
+
+    assert local_secrets.provision_oidc(zitadel, HOSTS, "CHANGE_ME_OAUTH2_PROXY_CLIENT_ID") == ("c1", "new-app-secret")
+    assert zitadel.redirect_uris == CALLBACKS
+    assert zitadel.access_format == "OIDC_TOKEN_TYPE_JWT"
+
+
+def test_opaque_tokens_become_jwts() -> None:
+    """An app with opaque access tokens and every callback gets JWT access tokens."""
+    zitadel = FakeZitadel(app=True, redirect_uris=tuple(CALLBACKS), access_format="OIDC_TOKEN_TYPE_BEARER")
+
+    assert local_secrets.provision_oidc(zitadel, HOSTS, "c1") is None
+    assert zitadel.access_format == "OIDC_TOKEN_TYPE_JWT"
+    assert zitadel.redirect_uris == CALLBACKS
+
+
+def test_rerun_changes_nothing() -> None:
+    """A second run finds the app and the stored client, and changes neither."""
+    zitadel = FakeZitadel(app=True, redirect_uris=tuple(CALLBACKS))
+
+    assert local_secrets.provision_oidc(zitadel, HOSTS, "c1") is None
+    assert all(method == "GET" or path.endswith("_search") for method, path in zitadel.calls)
+
+
+def test_other_client_gets_a_new_secret() -> None:
+    """oauth2-proxy with another client ID gets this app's ID and a new secret, and extra URIs stay."""
+    zitadel = FakeZitadel(app=True, redirect_uris=("https://own.example/oauth2/callback",))
+
+    assert local_secrets.provision_oidc(zitadel, HOSTS, "CHANGE_ME_OAUTH2_PROXY_CLIENT_ID") == ("c1", "regenerated")
+    assert zitadel.redirect_uris == sorted([*CALLBACKS, "https://own.example/oauth2/callback"])
+
+
+def test_sync_keeps_the_app_settings() -> None:
+    """Adding a callback sends the other settings back, so the PUT resets none of them."""
+    zitadel = FakeZitadel(app=True)
+
+    local_secrets.provision_oidc(zitadel, HOSTS, "c1")
+
+    assert zitadel.put["accessTokenType"] == "OIDC_TOKEN_TYPE_JWT"
+    assert "complianceProblems" not in zitadel.put
+    assert "clientId" not in zitadel.put
+
+
+def test_quoted_client_id_counts_as_set() -> None:
+    """Compose strips quotes, so a quoted client ID matches the app and gets no new secret."""
+    text = "OAUTH2_PROXY_CLIENT_ID=\"c1\" # from Zitadel\nOAUTH2_PROXY_CLIENT_SECRET=''\n"
+
+    assert local_secrets.env_value(text, "OAUTH2_PROXY_CLIENT_ID") == "c1"
+    assert local_secrets.env_value(text, "OAUTH2_PROXY_CLIENT_SECRET") == ""
+
+
+def test_new_token_on_disk_is_used(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stale token is read again on the next try, so the new token of a reset Zitadel is used."""
+    tokens = iter(["stale", "fresh"])
+    seen: list[str] = []
+
+    def api_for(_url: str, token: str) -> local_secrets.ZitadelApi:
+        def call(_method: str, _path: str, _body: dict | None) -> dict:
+            seen.append(token)
+            if token == "stale":  # noqa: S105  # test value
+                msg = "HTTP 401"
+                raise RuntimeError(msg)
+            return {}
+
+        return call
+
+    monkeypatch.setattr(local_secrets, "_zitadel_api", api_for)
+    monkeypatch.setattr(local_secrets.time, "sleep", lambda _s: None)
+
+    local_secrets._zitadel_admin(lambda: next(tokens), "missing", "example.test")
+
+    assert seen == ["stale", "fresh"]
+
+
+def test_running_zitadel_without_token_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Zitadel writes the token during setup, so a healthy Zitadel without it stops the step at once."""
+    monkeypatch.setattr(local_secrets, "_zitadel_ready", lambda _url: True)
+    monkeypatch.setattr(local_secrets.time, "sleep", lambda _s: pytest.fail("waited"))
+
+    with pytest.raises(RuntimeError, match="start a new stack"):
+        local_secrets._zitadel_admin(lambda: None, "admin.pat not found, start a new stack", "example.test")
+
+
+def test_compose_hosts_come_from_the_routes() -> None:
+    """The Compose login gate lists the same hosts as the chart's auth Ingress, without Zitadel's."""
+    routes = local_secrets.TRAEFIK_ROUTES.read_text()
+
+    hosts = local_secrets.compose_gated_hosts(routes, "example.test")
+
+    assert "api.example.test" in hosts
+    assert "example.test" in hosts
+    assert "auth.example.test" not in hosts
+
+
+def test_set_env_keeps_the_rest() -> None:
+    """The client replaces the last line of its name, and every other line stays."""
+    text = "A=1\nOAUTH2_PROXY_CLIENT_ID=old\n# note\nOAUTH2_PROXY_CLIENT_ID=older # x\n"
+
+    new = local_secrets.set_env(text, {"OAUTH2_PROXY_CLIENT_ID": "c1", "OAUTH2_PROXY_CLIENT_SECRET": "s1"})
+
+    assert local_secrets.env_value(text, "OAUTH2_PROXY_CLIENT_ID") == "older"
+    assert new == "A=1\nOAUTH2_PROXY_CLIENT_ID=old\n# note\nOAUTH2_PROXY_CLIENT_ID=c1\nOAUTH2_PROXY_CLIENT_SECRET=s1\n"

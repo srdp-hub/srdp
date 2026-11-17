@@ -329,6 +329,25 @@ def test_initialize_catalog_attaches_once(monkeypatch: pytest.MonkeyPatch) -> No
     assert conn.closed
 
 
+def test_an_s3_catalog_loads_httpfs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """DuckLake checks an s3:// data path at attach, which needs httpfs loaded without autoload."""
+    conn = _RecordingConnection(autoinstall=False)
+    monkeypatch.setattr(duckdb, "connect", lambda: conn)
+    for name, value in (
+        ("bucket", "lake"),
+        ("endpoint", "s3.nl-ams.scw.cloud"),
+        ("url_style", "path"),
+        ("region", "nl-ams"),
+    ):
+        monkeypatch.setenv(f"DUCKLAKE_S3_{name.upper()}", value)
+
+    initialize_catalog(_settings(storage_backend="s3"))
+
+    assert conn.statements.index("LOAD httpfs") < next(
+        i for i, s in enumerate(conn.statements) if s.startswith("ATTACH")
+    )
+
+
 def test_password_is_quoted_for_libpq() -> None:
     """A space, quote or backslash in the password stays inside its libpq value."""
     settings = DuckLakeSettings(_env_file=None, pg_password="a b'c\\d")  # noqa: S106  # throwaway test value

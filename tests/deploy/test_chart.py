@@ -13,10 +13,9 @@ from typing import Any
 import pytest
 import yaml
 
-from srdp.api.main import DAGSTER_REPOSITORY_LOCATION
 from srdp.setup.bootstrap import DATABASE_WAIT_SECONDS, DatabaseTarget
 from srdp.setup.garage import GARAGE_WAIT_SECONDS
-from srdp.setup.local_secrets import load_secrets
+from srdp.setup.local_secrets import compose_gated_hosts, load_secrets
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CHART_DIR = REPO_ROOT / "deploy" / "kubernetes" / "srdp-chart"
@@ -352,6 +351,16 @@ def test_chart_registry_defaults_match_srdp_toml(values_file: str) -> None:
         assert values["global"]["srdpRegistry"] == registry
     deployments = values["dagster"]["dagster-user-deployments"]["deployments"]
     assert [d["image"]["repository"] for d in deployments] == [f"{registry}/cbs-example"]
+
+
+def test_default_registry_images_are_published() -> None:
+    """With the default registry, a release publishes every image the chart pulls from it."""
+    jobs = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "images.yml").read_text())["jobs"]
+    published = {entry["name"] for entry in jobs["build"]["strategy"]["matrix"]["include"]}
+    images = manifest_images(render("values.yaml", "values-prod.example.yaml"))
+    pulled = {image_name(i) for i in images if i.startswith((f"{DEFAULT_REGISTRY}/", f"{PLATFORM_REGISTRY}/"))}
+    assert pulled
+    assert pulled <= published, pulled - published
 
 
 def just_args(variable: str, *overrides: str) -> tuple[str, ...]:
@@ -1184,4 +1193,65 @@ def test_one_code_location_name_everywhere(local: list[Manifest]) -> None:
     api_env = pod_env(local, "Deployment", "api")
     assert workspace["load_from"][0]["grpc_server"]["location_name"] == chart_name
     assert api_env["DAGSTER_REPOSITORY_LOCATION"]["value"] == chart_name
-    assert chart_name == DAGSTER_REPOSITORY_LOCATION
+    # The API needs its extras, so only this test skips without them.
+    api_main = pytest.importorskip("srdp.api.main")
+    assert chart_name == api_main.DAGSTER_REPOSITORY_LOCATION
+
+
+# Flags that differ for a reason: the subchart's own ports and config file, oauth2-proxy
+# defaults that Compose spells out, and values that Compose and the chart each fill in.
+OAUTH2_PROXY_FLAGS_PER_TARGET = {
+    "config",
+    "https-address",
+    "metrics-address",
+    "cookie-expire",
+    "cookie-name",
+    "pass-authorization-header",
+    "pass-host-header",
+    "proxy-prefix",
+    "cookie-domain",
+    "whitelist-domain",
+    "oidc-issuer-url",
+    "extra-jwt-issuers",
+}
+
+
+def _flags(args: list[str]) -> dict[str, str]:
+    """Map each ``--flag=value`` to its value, with ``true`` for a bare ``--flag``."""
+    pairs = (arg.removeprefix("--").partition("=") for arg in args)
+    return {name: value or "true" for name, _, value in pairs if name not in OAUTH2_PROXY_FLAGS_PER_TARGET}
+
+
+def test_oauth2_proxy_flags_match_compose(local: list[Manifest]) -> None:
+    """oauth2-proxy runs with the same flags on both targets, apart from the listed ones."""
+    compose = yaml.safe_load((REPO_ROOT / "deploy" / "docker" / "docker-compose.yml").read_text())["services"]
+    proxy = find(local, "Deployment", "srdp-oauth2-proxy")["spec"]["template"]["spec"]["containers"][0]
+
+    assert _flags(proxy["args"]) == _flags(compose["oauth2-proxy"]["command"])
+    assert "--extra-jwt-issuers=https://auth.srdp.localhost=$(OAUTH2_PROXY_CLIENT_ID)" in proxy["args"]
+    assert "OAUTH2_PROXY_CLIENT_ID" in {env["name"] for env in proxy["env"]}
+
+
+def test_sign_in_returns_to_the_page(local: list[Manifest]) -> None:
+    """After sign-in the user lands on the page they asked for, on both targets."""
+    routes = yaml.safe_load((REPO_ROOT / "config" / "traefik" / "dynamic" / "srdp.yml").read_text())
+
+    assert routes["http"]["middlewares"]["zitadel-errors"]["errors"]["query"] == "/oauth2/sign_in?rd={url}"
+    assert find(local, "Middleware", "oauth-errors")["spec"]["errors"]["query"] == "/oauth2/sign_in?rd={url}"
+
+
+def test_identity_headers_match_compose(local: list[Manifest]) -> None:
+    """Traefik passes the same identity headers to the apps on both targets."""
+    routes = yaml.safe_load((REPO_ROOT / "config" / "traefik" / "dynamic" / "srdp.yml").read_text())
+    compose_headers = routes["http"]["middlewares"]["zitadel-auth"]["forwardAuth"]["authResponseHeaders"]
+    chart_headers = find(local, "Middleware", "oauth-auth")["spec"]["forwardAuth"]["authResponseHeaders"]
+    assert chart_headers == compose_headers
+
+
+def test_gated_hosts_match_compose(local: list[Manifest]) -> None:
+    """The OIDC step gets the same hosts behind the login on both targets."""
+    routes = (REPO_ROOT / "config" / "traefik" / "dynamic" / "srdp.yml").read_text()
+    ingress = find(local, "Ingress", "auth-routes-ingress")
+
+    chart_hosts = {rule["host"] for rule in ingress["spec"]["rules"]}
+    assert chart_hosts == set(compose_gated_hosts(routes, "srdp.localhost"))
