@@ -2,20 +2,30 @@ version: 2
 updates:
   # Workflow actions are pinned by commit SHA, Dependabot keeps them current.
   # A new release waits 7 days. Security updates skip the wait.
+  # Minor and patch bumps come in one PR per week, a major gets its own PR.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+        update-types: [minor, patch]
 
   # Renovate owns the Dagster packages, together with the Dagster chart.
+  # Minor and patch bumps come in one PR per week, a major gets its own PR.
   - package-ecosystem: uv
     directory: /
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
+    groups:
+      python:
+        patterns: ["*"]
+        update-types: [minor, patch]
     ignore:
       - dependency-name: "dagster*"
 
