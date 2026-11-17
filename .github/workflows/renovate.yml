@@ -1,10 +1,10 @@
 name: Renovate
 
-# Opens the weekly PR for images, charts and Dagster (renovate.json). Needs a
+# Opens the monthly PR for images, charts and Dagster (renovate.json). Needs a
 # RENOVATE_TOKEN secret (App token or PAT), since GITHUB_TOKEN PRs don't run CI.
 on:
   schedule:
-    - cron: "0 3 * * 1"
+    - cron: "0 3 1 * *"
   workflow_dispatch:
 
 permissions:

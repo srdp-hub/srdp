@@ -14,12 +14,12 @@
     "pre-commit"
   ],
   "schedule": [
-    "before 6am on monday"
+    "before 6am on the first day of the month"
   ],
   "minimumReleaseAge": "7 days",
   "packageRules": [
     {
-      "description": "One PR per week for all container image and chart bumps.",
+      "description": "One PR per month for all container image and chart bumps.",
       "matchManagers": [
         "dockerfile",
         "docker-compose",
@@ -61,7 +61,7 @@
       "enabled": false
     },
     {
-      "description": "A uv minor can change behavior while uv is on 0.x, so it gets its own PR instead of joining the weekly one. CI builds every image with it, and all Dockerfiles move together.",
+      "description": "A uv minor can change behavior while uv is on 0.x, so it gets its own PR instead of joining the monthly one. CI builds every image with it, and all Dockerfiles move together.",
       "matchPackageNames": [
         "ghcr.io/astral-sh/uv"
       ],
