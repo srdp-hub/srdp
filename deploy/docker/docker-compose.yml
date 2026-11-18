@@ -354,6 +354,7 @@ services:
       - /app/config/dagster:uid=65532,gid=65532
       - /app/projects/cbs-example/dbt/target:uid=65532,gid=65532
       - /app/projects/cbs-example/dbt/logs:uid=65532,gid=65532
+    image: ${SRDP_REGISTRY:-ghcr.io/srdp-hub}/cbs-example:${SRDP_VERSION:-dev}
     build:
       context: ../../
       dockerfile: projects/cbs-example/Dockerfile
@@ -400,6 +401,7 @@ services:
   # ---------------------------------------------
   marimo:
     <<: [*ducklake-depends, *hardened]
+    image: ${SRDP_REGISTRY:-ghcr.io/srdp-hub}/marimo:${SRDP_VERSION:-dev}
     build:
       context: ../../
       dockerfile: projects/cbs-example/notebooks/Dockerfile
@@ -422,6 +424,7 @@ services:
   # ---------------------------------------------
   streamlit:
     <<: [*ducklake-depends, *hardened]
+    image: ${SRDP_REGISTRY:-ghcr.io/srdp-hub}/streamlit:${SRDP_VERSION:-dev}
     build:
       context: ../../
       dockerfile: projects/cbs-example/streamlit/Dockerfile
@@ -444,6 +447,7 @@ services:
   # ---------------------------------------------
   api:
     <<: [*ducklake-depends, *hardened]
+    image: ${SRDP_REGISTRY:-ghcr.io/srdp-hub}/srdp-api:${SRDP_VERSION:-dev}
     build:
       context: ../../
       dockerfile: projects/cbs-example/api/Dockerfile

@@ -9,7 +9,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SKIPPED_DIRS = {".venv", "node_modules", ".git", ".claude", "site", "charts"}
 DIGEST = re.compile(r"@sha256:[0-9a-f]{64}")
 # The images SRDP builds are tagged with the release version or dev, never by digest.
-OWN_IMAGE = re.compile(r"\$\{SRDP_PLATFORM_REGISTRY|^local-|^ghcr\.io/srdp-hub/")
+OWN_IMAGE = re.compile(r"\$\{SRDP_(PLATFORM_)?REGISTRY|^local-|^ghcr\.io/srdp-hub/")
 
 
 # Structured chart images that SRDP builds, which follow the release version.

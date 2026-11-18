@@ -142,10 +142,14 @@ Production has no recipe for this step yet.
 #60 moves it into `srdp-setup`.
 
 1. In the Zitadel console (`https://auth.<LB_IP>.nip.io/`), create a project and an application of type **Web** with the **Code** flow.
-2. Add a redirect URI `https://<host>/oauth2/callback` for each host of the `auth-routes-ingress` Ingress.
-   `kubectl get ingress auth-routes-ingress -n srdp` lists them.
-3. Put the client ID and the secret in the `srdp-oauth2-proxy` Secret, as the keys `client-id` and `client-secret`.
-4. Restart OAuth2-Proxy with `kubectl rollout restart deployment/srdp-oauth2-proxy -n srdp`.
+2. In the token settings of the application, set the auth token type to **JWT**.
+   OAuth2-Proxy accepts a user's token as a `Bearer` token only when it is a JWT.
+3. Add a redirect URI `https://<host>/oauth2/callback` for each app host that `values-prod.yaml` enables.
+   The hosts are `<domain>` for the hub, and `api`, `dagster`, `duckdb`, `marimo`, `marquez`, `streamlit` and `quarto` in front of `<domain>`.
+   In this step the apps are still off, so `kubectl get ingress auth-routes-ingress -n srdp` lists the hub only.
+   After step E, it lists every host, so compare it with the redirect URIs.
+4. Put the client ID and the secret in the `srdp-oauth2-proxy` Secret, as the keys `client-id` and `client-secret`.
+5. Restart OAuth2-Proxy with `kubectl rollout restart deployment/srdp-oauth2-proxy -n srdp`.
 
 ### E. Final deploy with all apps enabled
 
@@ -180,7 +184,7 @@ Each image is scanned for critical vulnerabilities before it gets a version tag,
 Each image gets its exact version as a tag, which never moves, and `latest` points at the newest stable release.
 Use `latest` for trying SRDP out, and pin the exact version (or the digest) in a deployment, so it only changes when you change it.
 The Helm chart pulls these images from `ghcr.io/srdp-hub` at its `appVersion`, which is the release version, and the Dagster webserver and daemon run the same `dagster-webserver` image.
-`just docker-up-release <version>` starts Compose with a published release of them, and `just docker-up` builds them from source and tags them `dev`.
+`just docker-up-release <version>` starts Compose with the published images of that release, the example project images included, and `just docker-up` builds them all from source and tags them `dev`.
 The images of your own project still come from your registry, which is set by `[deploy] registry` in `srdp.toml`.
 
 Check an image before you deploy it, with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) and the [GitHub CLI](https://cli.github.com/):

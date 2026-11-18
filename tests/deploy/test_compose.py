@@ -144,3 +144,12 @@ def test_first_admin_must_change_password(tmp_path: Path, env: dict[str, str], r
     """Compose forces the change at first login, and only the dev recipe turns it off."""
     zitadel = render(tmp_path, env)["zitadel"]["environment"]
     assert zitadel["ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED"] == required
+
+
+def test_built_images_follow_the_version(tmp_path: Path) -> None:
+    """Every service Compose builds names its image with SRDP_VERSION, so a pull gets one release for all of them."""
+    services = render(tmp_path, {"SRDP_VERSION": "9.9.9"})
+    built = [name for name, service in services.items() if "build" in service]
+
+    assert built
+    assert all(services[name]["image"].endswith(":9.9.9") for name in built)

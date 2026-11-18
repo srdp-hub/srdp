@@ -1240,12 +1240,36 @@ def test_sign_in_returns_to_the_page(local: list[Manifest]) -> None:
     assert find(local, "Middleware", "oauth-errors")["spec"]["errors"]["query"] == "/oauth2/sign_in?rd={url}"
 
 
-def test_identity_headers_match_compose(local: list[Manifest]) -> None:
+@pytest.mark.parametrize(
+    ("compose", "chart"), [("zitadel-auth", "oauth-auth"), ("zitadel-auth-token", "oauth-auth-token")]
+)
+def test_identity_headers_match_compose(local: list[Manifest], compose: str, chart: str) -> None:
     """Traefik passes the same identity headers to the apps on both targets."""
     routes = yaml.safe_load((REPO_ROOT / "config" / "traefik" / "dynamic" / "srdp.yml").read_text())
-    compose_headers = routes["http"]["middlewares"]["zitadel-auth"]["forwardAuth"]["authResponseHeaders"]
-    chart_headers = find(local, "Middleware", "oauth-auth")["spec"]["forwardAuth"]["authResponseHeaders"]
+    compose_headers = routes["http"]["middlewares"][compose]["forwardAuth"]["authResponseHeaders"]
+    chart_headers = find(local, "Middleware", chart)["spec"]["forwardAuth"]["authResponseHeaders"]
     assert chart_headers == compose_headers
+
+
+def test_only_the_api_gets_the_token(local: list[Manifest]) -> None:
+    """The user's access token reaches the API and no other app, on both targets."""
+    header = "X-Auth-Request-Access-Token"
+    routes = yaml.safe_load((REPO_ROOT / "config" / "traefik" / "dynamic" / "srdp.yml").read_text())["http"]
+    with_token = {
+        name
+        for name, m in routes["middlewares"].items()
+        if header in m.get("forwardAuth", {}).get("authResponseHeaders", [])
+    }
+    compose = {name for name, r in routes["routers"].items() if with_token & set(r.get("middlewares", []))}
+    chart = {
+        m["metadata"]["name"]
+        for m in local
+        if m["kind"] == "Ingress"
+        and "oauth-auth-token@"
+        in m["metadata"].get("annotations", {}).get("traefik.ingress.kubernetes.io/router.middlewares", "")
+    }
+    assert compose == {"api"}
+    assert chart == {"api-ingress"}
 
 
 def test_gated_hosts_match_compose(local: list[Manifest]) -> None:

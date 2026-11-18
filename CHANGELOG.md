@@ -19,6 +19,7 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
 - The example project's code location and image are called `cbs-example` instead of `srdp-etl`.
   The default registry in `srdp.toml` and the chart is `ghcr.io/srdp-hub`.
   Every release now publishes the example images there too (`cbs-example`, `srdp-api`, `marimo` and `streamlit`), so a fresh install from the defaults pulls every image.
+  Compose names these images like the platform images, with `SRDP_REGISTRY` and `SRDP_VERSION`, so `just docker-up-release` runs one release for every image.
   The Dagster code location is renamed too, from `srdp-dagster-code:3030` on Compose and `srdp-etl` on Kubernetes.
   Runs of an existing install keep the old location name.
   Dagster stores the state of schedules and sensors per location.
@@ -206,7 +207,9 @@ All notable changes to SRDP are documented here. The format follows [Keep a Chan
   Both run one flow in `local_secrets.py` with the token of Zitadel's first admin machine user, `iam-admin`.
   It replaces `deploy/docker/provision-oidc.sh` and `just local-oidc-client`.
   On Compose, Zitadel writes that token to `deploy/zitadel-admin/admin.pat` only on its first start, and only in local development (`docker-compose.override.yml`).
-  A local stack from before has no such token, so it needs a new start, which deletes its local data.
+  A local stack from before has no such file, but `provision-oidc.sh` saved an admin token in `deploy/docker/.env` as `ZITADEL_ADMIN_PAT`.
+  Copy that value into `deploy/zitadel-admin/admin.pat` and remove the line from `.env`, so the stack and its data stay.
+  Only a stack without that value needs a new start.
 - After sign-in, the user lands on the page they asked for.
   Before, every app opened at `/`, and the API showed `Not Found` there.
 - The `ducklake` database is now created at startup, before any consumer connects (#57).

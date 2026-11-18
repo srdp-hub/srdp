@@ -141,14 +141,15 @@ docker-secrets:
 	mkdir -p -m 700 deploy/zitadel-admin
 
 # Start the Docker Compose stack (local dev). Attached by default; pass -d to detach.
-# Builds from source and tags the platform images dev, whatever SRDP_VERSION says.
+# Builds from source and tags the platform and project images dev, whatever SRDP_VERSION says.
 docker-up *args: docker-tls docker-secrets
-	cd deploy/docker && SRDP_UID=$(id -u) SRDP_GID=$(id -g) SRDP_DOMAIN='{{domain}}' SRDP_VERSION=dev SRDP_DEV_PASSWORD_CHANGE_REQUIRED=false docker compose up --build {{args}}
+	cd deploy/docker && SRDP_UID=$(id -u) SRDP_GID=$(id -g) SRDP_DOMAIN='{{domain}}' SRDP_REGISTRY='{{registry}}' SRDP_VERSION=dev SRDP_DEV_PASSWORD_CHANGE_REQUIRED=false docker compose up --build {{args}}
 
-# Start the Docker Compose stack with the published platform images of a release, e.g. `just docker-up-release 0.4.0 -d`.
+# Start the Docker Compose stack with the published images of a release, e.g. `just docker-up-release 0.4.0 -d`.
+# The project images come from [deploy] registry in srdp.toml, at the same version.
 docker-up-release version *args: docker-tls docker-secrets
-	cd deploy/docker && SRDP_DOMAIN='{{domain}}' SRDP_VERSION='{{version}}' docker compose pull srdp-setup dagster-webserver dagster-daemon duckdb-ui hub
-	cd deploy/docker && SRDP_UID=$(id -u) SRDP_GID=$(id -g) SRDP_DOMAIN='{{domain}}' SRDP_VERSION='{{version}}' docker compose up {{args}}
+	cd deploy/docker && SRDP_DOMAIN='{{domain}}' SRDP_REGISTRY='{{registry}}' SRDP_VERSION='{{version}}' docker compose pull
+	cd deploy/docker && SRDP_UID=$(id -u) SRDP_GID=$(id -g) SRDP_DOMAIN='{{domain}}' SRDP_REGISTRY='{{registry}}' SRDP_VERSION='{{version}}' docker compose up {{args}}
 
 # Create or update the oauth2-proxy app in the Compose Zitadel and recreate oauth2-proxy. srdp-setup takes this over in #60.
 docker-oidc:

@@ -8,6 +8,7 @@ Run through ``just``: ``docker-secrets``, ``local-secrets`` and ``local-oidc``.
 """
 
 import base64
+import hashlib
 import json
 import logging
 import os
@@ -284,6 +285,8 @@ OIDC_PROJECT = "srdp"
 OIDC_APP = "oauth2-proxy"
 # oauth2-proxy accepts a user's token as a Bearer token (--skip-jwt-bearer-tokens) only when it is a JWT.
 OIDC_ACCESS_FORMAT = "OIDC_TOKEN_TYPE_JWT"
+# A hash of the stored client on the oauth2-proxy pods, so a new client restarts them.
+OIDC_CLIENT_ANNOTATION = "checksum/oidc-client"
 ZITADEL_WAIT_SECONDS = 300
 
 ZitadelApi = Callable[[str, str, dict | None], dict]
@@ -385,13 +388,23 @@ def _sync_app_config(api: ZitadelApi, project_id: str, app_id: str, hosts: list[
     return config["clientId"]
 
 
+def usable_client_id(client_id: str | None, client_secret: str | None) -> str | None:
+    """Return the stored client ID when its secret can sign in, or ``None``.
+
+    A missing, empty or ``CHANGE_ME_`` secret cannot, so provisioning then makes a new one.
+    """
+    if not client_secret or client_secret.startswith("CHANGE_ME_"):
+        return None
+    return client_id
+
+
 def provision_oidc(api: ZitadelApi, hosts: list[str], stored_client_id: str | None) -> tuple[str, str] | None:
     """Create or update the oauth2-proxy app in Zitadel.
 
     Args:
         api: A caller for the Zitadel management API with an admin token.
         hosts: Every hostname behind the login.
-        stored_client_id: The client ID that oauth2-proxy has now, if any.
+        stored_client_id: The client ID that oauth2-proxy has now with a usable secret, if any.
 
     Returns:
         The client ID and a secret to store, or ``None`` when oauth2-proxy already has this app.
@@ -494,7 +507,8 @@ def ensure_compose_oidc(env_path: Path, domain: str) -> None:
     api = _zitadel_admin(lambda: _read_private(pat), missing, domain)
     text = env_path.read_text()
     hosts = compose_gated_hosts(TRAEFIK_ROUTES.read_text(), domain)
-    client = provision_oidc(api, hosts, env_value(text, "OAUTH2_PROXY_CLIENT_ID"))
+    stored = usable_client_id(env_value(text, "OAUTH2_PROXY_CLIENT_ID"), env_value(text, "OAUTH2_PROXY_CLIENT_SECRET"))
+    client = provision_oidc(api, hosts, stored)
     if client is None:
         logger.info("oauth2-proxy already has the Zitadel app.")
         return
@@ -512,20 +526,29 @@ def ensure_kind_oidc(namespace: str, domain: str) -> None:
         namespace: The namespace of the release.
         domain: The base domain from ``srdp.toml``, so Zitadel is ``auth.<domain>``.
     """
+    # Check where the client goes first, because a new secret in Zitadel invalidates the old one.
+    if _read_secret(namespace, "srdp-oauth2-proxy") is None:
+        msg = "Secret srdp-oauth2-proxy not found, run `just local-deploy` first"
+        raise RuntimeError(msg)
     api = _zitadel_admin(
         lambda: _secret_value(namespace, "iam-admin-pat", "pat"),
         "Secret iam-admin-pat not found, is Zitadel deployed?",
         domain,
     )
-    client = provision_oidc(api, _gated_hosts(namespace), _secret_value(namespace, "srdp-oauth2-proxy", "client-id"))
-    if client is None:
+    client_id = _secret_value(namespace, "srdp-oauth2-proxy", "client-id")
+    client_secret = _secret_value(namespace, "srdp-oauth2-proxy", "client-secret")
+    client = provision_oidc(api, _gated_hosts(namespace), usable_client_id(client_id, client_secret))
+    if client is None and client_id and client_secret:
         logger.info("oauth2-proxy already has the Zitadel app.")
-        return
-    store_oidc_client(namespace, *client)
+        client = (client_id, client_secret)
+    elif client is not None:
+        store_oidc_client(namespace, *client)
+    if client is not None:
+        roll_oauth2_proxy(namespace, *client)
 
 
 def store_oidc_client(namespace: str, client_id: str, client_secret: str) -> None:
-    """Put the OIDC client into ``srdp-oauth2-proxy`` and restart oauth2-proxy.
+    """Put the OIDC client into ``srdp-oauth2-proxy``.
 
     Args:
         namespace: The namespace of the release.
@@ -540,10 +563,35 @@ def store_oidc_client(namespace: str, client_id: str, client_secret: str) -> Non
     manifest = secret_manifest(name, namespace, existing, {"client-id": client_id, "client-secret": client_secret})
     if manifest is not None:
         _apply(manifest)
-    result = _kubectl("rollout", "restart", "deployment/srdp-oauth2-proxy", "--namespace", namespace)
+        logger.info("Stored the OIDC client in %s.", name)
+
+
+def roll_oauth2_proxy(namespace: str, client_id: str, client_secret: str) -> None:
+    """Restart oauth2-proxy once for each OIDC client, so a rerun retries a restart that failed.
+
+    The pod template carries a hash of the client. The same hash changes nothing, a new one rolls the pods.
+
+    Args:
+        namespace: The namespace of the release.
+        client_id: The client ID in ``srdp-oauth2-proxy``.
+        client_secret: The client secret in ``srdp-oauth2-proxy``.
+    """
+    digest = hashlib.sha256(f"{client_id}:{client_secret}".encode()).hexdigest()[:16]
+    patch = {"spec": {"template": {"metadata": {"annotations": {OIDC_CLIENT_ANNOTATION: digest}}}}}
+    result = _kubectl(
+        "patch",
+        "deployment",
+        "srdp-oauth2-proxy",
+        "--namespace",
+        namespace,
+        "--type",
+        "merge",
+        "--patch",
+        json.dumps(patch),
+    )
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip())
-    logger.info("Stored the OIDC client and restarted oauth2-proxy.")
+    logger.info("oauth2-proxy runs with the stored OIDC client.")
 
 
 def main(argv: list[str]) -> None:

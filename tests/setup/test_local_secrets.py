@@ -1,6 +1,7 @@
 """Tests for the generated credentials of the local stacks."""
 
 import base64
+import json
 import re
 import stat
 from pathlib import Path
@@ -327,6 +328,53 @@ def test_sync_keeps_the_app_settings() -> None:
     assert zitadel.put["accessTokenType"] == "OIDC_TOKEN_TYPE_JWT"
     assert "complianceProblems" not in zitadel.put
     assert "clientId" not in zitadel.put
+
+
+@pytest.mark.parametrize("secret", [None, "", "CHANGE_ME_OAUTH2_PROXY_CLIENT_SECRET"])
+def test_unusable_secret_counts_as_no_client(secret: str | None) -> None:
+    """A client ID whose secret is missing or a placeholder gets a new secret from provisioning."""
+    assert local_secrets.usable_client_id("c1", secret) is None
+    assert local_secrets.usable_client_id("c1", "s3cret") == "c1"
+
+
+def test_proxy_restart_is_keyed_to_the_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The same client gives the same pod annotation, so only a new client rolls oauth2-proxy."""
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(local_secrets, "_kubectl", lambda *a, **_k: calls.append(a) or _Done())
+
+    local_secrets.roll_oauth2_proxy("srdp", "c1", "s1")
+    local_secrets.roll_oauth2_proxy("srdp", "c1", "s1")
+    local_secrets.roll_oauth2_proxy("srdp", "c1", "s2")
+
+    patches = [json.loads(call[-1]) for call in calls]
+    assert patches[0] == patches[1] != patches[2]
+    assert all(call[:2] == ("patch", "deployment") for call in calls)
+
+
+def test_kind_checks_the_secret_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without the srdp-oauth2-proxy Secret, kind stops before Zitadel makes a new client secret."""
+    monkeypatch.setattr(local_secrets, "_read_secret", lambda _ns, _name: None)
+    monkeypatch.setattr(local_secrets, "_zitadel_admin", lambda *_a: pytest.fail("Zitadel was called"))
+
+    with pytest.raises(RuntimeError, match="srdp-oauth2-proxy not found"):
+        local_secrets.ensure_kind_oidc("srdp", "srdp.localhost")
+
+
+def test_kind_rerun_retries_the_restart(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A rerun with the client already stored still rolls oauth2-proxy, so a failed restart recovers."""
+    stored = {"client-id": "c1", "client-secret": "s1"}
+    rolled: list[tuple[str, ...]] = []
+    monkeypatch.setattr(local_secrets, "_read_secret", lambda _ns, _name: {"data": {}})
+    monkeypatch.setattr(local_secrets, "_zitadel_admin", lambda *_a: None)
+    monkeypatch.setattr(local_secrets, "_gated_hosts", lambda _ns: HOSTS)
+    monkeypatch.setattr(local_secrets, "_secret_value", lambda _ns, _name, key: stored.get(key))
+    monkeypatch.setattr(local_secrets, "provision_oidc", lambda *_a: None)
+    monkeypatch.setattr(local_secrets, "store_oidc_client", lambda *_a: pytest.fail("stored again"))
+    monkeypatch.setattr(local_secrets, "roll_oauth2_proxy", lambda *a: rolled.append(a))
+
+    local_secrets.ensure_kind_oidc("srdp", "srdp.localhost")
+
+    assert rolled == [("srdp", "c1", "s1")]
 
 
 def test_quoted_client_id_counts_as_set() -> None:
