@@ -15,12 +15,6 @@ repos:
       - id: check-merge-conflict
       - id: detect-private-key
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: 0470f7c8a653e950f7cc5a653204ceb3fde4c02a  # frozen: v0.15.0
-    hooks:
-      - id: ruff
-      - id: ruff-format
-
   # Terraform (Scaleway landing zone). Scoped to deploy/scaleway so the
   # superseded deploy/opentofu tree doesn't fail hooks it never ran under.
   - repo: https://github.com/antonbabenko/pre-commit-terraform
@@ -47,6 +41,18 @@ repos:
 
   - repo: local
     hooks:
+      # ruff from uv.lock, so pre-commit, CI and `just lint` run one version.
+      - id: ruff
+        name: ruff
+        entry: uv run ruff check --force-exclude
+        language: system
+        types_or: [python, pyi]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+
       - id: ty
         name: ty check
         entry: uv run ty check src/srdp
