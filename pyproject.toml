@@ -114,6 +114,7 @@ ignore = [
     "TRY003",  # Long messages outside exception class
     "SIM102",  # Nested if statements
     "SIM108",  # Ternary operator
+    "CPY001",  # Copyright notice per file, LICENSE covers the repository
 ]
 fixable = ["ALL"]
 
@@ -131,6 +132,7 @@ strict = true
 
 [tool.ruff.lint.per-file-ignores]
 "scripts/*.py" = ["INP001"]  # standalone scripts, not a package
+"projects/*/notebooks/*.py" = ["PLR0917"]  # marimo passes a cell its dependencies as positional arguments
 "tests/**/*.py" = [
     "S101",    # assert in tests
     "S608",    # SQL in test assertions
