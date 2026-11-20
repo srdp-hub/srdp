@@ -31,6 +31,10 @@ nav = [
     { "Data-plane access: credential materialization" = "adr/0009-data-plane-credential-materialization.md" },
     { "Project onboarding and extension" = "adr/0011-project-onboarding-and-extension.md" },
     { "dlt alongside Dagster" = "adr/0012-dlt-alongside-dagster.md" },
+    { "Network topology on Scaleway" = "adr/0013-scaleway-network-topology.md" },
+    { "Ingress on Scaleway" = "adr/0014-ingress-on-scaleway.md" },
+    { "Operator access on Scaleway" = "adr/0015-operator-access-on-scaleway.md" },
+    { "GitOps with Flux for cloud environments" = "adr/0016-gitops-with-flux.md" },
   ] },
 ]
 
