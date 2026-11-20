@@ -60,7 +60,7 @@ http:
       rule: 'Host(`api.{{ env "SRDP_DOMAIN" }}`)'
       middlewares:
         - "zitadel-errors"
-        - "zitadel-auth"
+        - "zitadel-auth-token"
     duckdb-ui:
       service: "duckdb-ui"
       rule: 'Host(`duckdb.{{ env "SRDP_DOMAIN" }}`)'
@@ -148,6 +148,14 @@ http:
         authResponseHeaders:
           - "X-Auth-Request-User"
           - "X-Auth-Request-Email"
+    # The API alone gets the user's access token, for its /token page.
+    zitadel-auth-token:
+      forwardAuth:
+        address: "http://oauth2-proxy:4180/oauth2/auth"
+        trustForwardHeader: true
+        authResponseHeaders:
+          - "X-Auth-Request-User"
+          - "X-Auth-Request-Email"
           - "X-Auth-Request-Access-Token"
     zitadel-errors:
       errors:
@@ -158,7 +166,7 @@ http:
         statusRewrites:
           "401": 302
         service: "oauth2-proxy"
-        query: "/oauth2/sign_in"
+        query: "/oauth2/sign_in?rd={url}"
   serversTransports:
     zitadel:
       insecureSkipVerify: true

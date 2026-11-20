@@ -364,7 +364,12 @@ class _CatalogPath(StorageBackend):
         return self._base_path
 
     def configure_duckdb(self, conn: duckdb.DuckDBPyConnection) -> None:
-        """Do nothing, because ``ATTACH`` does not read the data files."""
+        """Load ``httpfs`` for an S3 path, because DuckLake checks the path scheme at ``ATTACH``.
+
+        ``ATTACH`` reads no data files, so no S3 key is needed.
+        """
+        if self._base_path.startswith("s3://"):
+            load_extension(conn, "httpfs")
 
 
 def catalog_data_path(settings: DuckLakeSettings) -> str:
@@ -392,9 +397,9 @@ def initialize_catalog(settings: DuckLakeSettings) -> None:
     try:
         _configure_extension_directory(conn, settings)
         load_extension(conn, "ducklake")
-        _attach_with_retry(
-            conn, _attach_sql(settings, _CatalogPath(catalog_data_path(settings))), secret=settings.pg_password
-        )
+        backend = _CatalogPath(catalog_data_path(settings))
+        backend.configure_duckdb(conn)
+        _attach_with_retry(conn, _attach_sql(settings, backend), secret=settings.pg_password)
     finally:
         conn.close()
     logger.info("DuckLake catalog '%s' is initialized.", settings.pg_db)

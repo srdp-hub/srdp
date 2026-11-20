@@ -14,6 +14,19 @@ services:
       - "./certs/selfsigned.key:/etc/certs/selfsigned.key:ro"
       - "../../config/traefik/dynamic/local-tls.yml:/etc/traefik/dynamic/local-tls.yml:ro"
 
+  # Dev only. An admin machine user whose token `just docker-oidc` uses, the
+  # same as the chart's iam-admin. Production gets no such token on the host.
+  # Its folder is outside deploy/docker, so zitadel-login cannot read it
+  # through /current-dir. just docker-up creates it with mode 0700.
+  zitadel:
+    environment:
+      ZITADEL_FIRSTINSTANCE_PATPATH: /zitadel-admin/admin.pat
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: iam-admin
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: Automatically Initialized IAM admin Client
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PAT_EXPIRATIONDATE: '2029-01-01T00:00:00Z'
+    volumes:
+      - ../zitadel-admin:/zitadel-admin:rw
+
   # Dev only. cryptography 47+ crashes in OpenSSL's ARM probe on Colima on an
   # M4 (exit 132), and this skips the probe. Production keeps it on.
   dagster-daemon:

@@ -49,7 +49,7 @@ This document holds references to the sources used in the creation of this proje
 ## Data Orchestration
 
 - **[Dagster Documentation](https://docs.dagster.io/)**
-    - The official Dagster documentation was the primary reference for setting up the data orchestration layer. It covers the asset-based programming model (used for the srdp-etl pipeline), the webserver/daemon architecture, user code deployments via gRPC, and Helm-based deployment on Kubernetes with external PostgreSQL and the K8sRunLauncher.
+    - The official Dagster documentation was the primary reference for setting up the data orchestration layer. It covers the asset-based programming model (used for the cbs-example pipeline), the webserver/daemon architecture, user code deployments via gRPC, and Helm-based deployment on Kubernetes with external PostgreSQL and the K8sRunLauncher.
 
 - **[Customizing your Kubernetes deployment | Dagster Docs](https://docs.dagster.io/deployment/oss/deployment-options/kubernetes/customizing-your-deployment#per-job-kubernetes-configuration)**
     - This Dagster guide documents how `dagster-k8s/config` can be applied at deployment, code location, job, and step scope. It was used to understand how per-job Kubernetes configuration works with the `K8sRunLauncher`, including resource requests and limits, labels, and precedence and merge behavior across configuration layers.

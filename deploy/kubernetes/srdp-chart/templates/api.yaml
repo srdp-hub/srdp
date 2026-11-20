@@ -33,6 +33,8 @@ spec:
             {{- include "srdp.ducklakeEnv" . | nindent 12 }}
             - name: DAGSTER_GRAPHQL_URL
               value: "http://{{ .Release.Name }}-dagster-webserver.{{ .Release.Namespace }}.svc.cluster.local:80/graphql"
+            - name: DAGSTER_REPOSITORY_LOCATION
+              value: {{ (index (index .Values.dagster "dagster-user-deployments" "deployments") 0).name | quote }}
           {{- include "srdp.ducklakeVolumeMounts" . | nindent 10 }}
       {{- include "srdp.ducklakeVolumes" . | nindent 6 }}
 ---

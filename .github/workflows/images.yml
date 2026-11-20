@@ -1,6 +1,6 @@
 name: Images
 
-# Builds SRDP's platform images. On a pull request and on every push to
+# Builds SRDP's platform images and the example project images. On a pull request and on every push to
 # main it builds and scans without pushing, so main stays buildable. A pull
 # request fails on a critical CVE. On main and in the daily run a new CVE is
 # a finding in the Security tab and Dependabot opens the fix, it does not
@@ -55,8 +55,7 @@ jobs:
       security-events: write
     strategy:
       fail-fast: false
-      # The platform images, which a release publishes, and the images of the example
-      # project, which are built and scanned here and published to the project registry.
+      # Every image that a release publishes, plus quarto, which no release publishes yet.
       matrix:
         include:
           - name: srdp-setup
@@ -74,7 +73,7 @@ jobs:
           - name: quarto
             context: services/quarto
             dockerfile: services/quarto/Dockerfile
-          - name: srdp-etl
+          - name: cbs-example
             context: .
             dockerfile: projects/cbs-example/Dockerfile
           - name: srdp-api
@@ -235,7 +234,8 @@ jobs:
       attestations: write
     strategy:
       fail-fast: true
-      # The platform images only, a test checks they are in the check matrix too.
+      # The platform images and the example project images, which the chart pulls from
+      # its default registry. A test checks they are in the check matrix too.
       matrix:
         include:
           - name: srdp-setup
@@ -250,6 +250,18 @@ jobs:
           - name: hub
             context: services/hub
             dockerfile: services/hub/Dockerfile
+          - name: cbs-example
+            context: .
+            dockerfile: projects/cbs-example/Dockerfile
+          - name: srdp-api
+            context: .
+            dockerfile: projects/cbs-example/api/Dockerfile
+          - name: marimo
+            context: .
+            dockerfile: projects/cbs-example/notebooks/Dockerfile
+          - name: streamlit
+            context: .
+            dockerfile: projects/cbs-example/streamlit/Dockerfile
     env:
       IMAGE: ghcr.io/srdp-hub/${{ matrix.name }}
     steps:

@@ -8,7 +8,7 @@ global:
   # deploy recipes override this value and the Dagster code location
   # repository below, a subchart value the chart cannot template. This
   # default must match srdp.toml, tests/deploy checks it.
-  srdpRegistry: "rg.nl-ams.scw.cloud/srdp-registry"
+  srdpRegistry: "ghcr.io/srdp-hub"
   # Registry of the platform images SRDP publishes (srdp-setup, dagster-webserver,
   # duckdb-ui, hub). Images marked `platform: true` come from here.
   platformRegistry: "ghcr.io/srdp-hub"
@@ -129,7 +129,8 @@ zitadel:
       FirstInstance:
         Org:
           Human:
-            PasswordChangeRequired: false
+            # values-local.yaml sets this to false.
+            PasswordChangeRequired: true
       Database:
         Postgres:
           Host: db-postgresql
@@ -254,7 +255,7 @@ oauth2-proxy:
   extraArgs:
     skip-provider-button: "true"
     http-address: "0.0.0.0:4180"
-    cookie-secure: "false"
+    cookie-secure: "true"
     cookie-domain: ".srdp.localhost"
     whitelist-domain: ".srdp.localhost"
     cookie-samesite: "lax"
@@ -267,6 +268,13 @@ oauth2-proxy:
     email-domain: "*"
     upstream: "file:///dev/null"
     reverse-proxy: "true"
+    # Identity headers for the apps, the same as Compose. Traefik passes them on (templates/ingress-auth.yaml).
+    set-xauthrequest: "true"
+    pass-access-token: "true"
+    # A request with the user's own Zitadel access token as Bearer skips the login redirect.
+    # Kubernetes fills in $(OAUTH2_PROXY_CLIENT_ID) from the container env, which reads srdp-oauth2-proxy.
+    skip-jwt-bearer-tokens: "true"
+    extra-jwt-issuers: "https://auth.srdp.localhost=$(OAUTH2_PROXY_CLIENT_ID)"
 
   customRequestHeaders:
     - "Host:auth.srdp.localhost"
@@ -439,10 +447,10 @@ dagster:
     enabled: true
     enableSubchart: true
     deployments:
-      - name: srdp-etl
+      - name: cbs-example
         image:
-          # <srdp.toml [deploy].registry>/srdp-etl, the Justfile overrides it.
-          repository: rg.nl-ams.scw.cloud/srdp-registry/srdp-etl
+          # <srdp.toml [deploy].registry>/cbs-example, the Justfile overrides it.
+          repository: ghcr.io/srdp-hub/cbs-example
           # The chart's appVersion, a test checks. The release script keeps it.
           tag: "0.3.1" # release-tag
           pullPolicy: IfNotPresent

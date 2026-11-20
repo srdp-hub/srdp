@@ -54,7 +54,7 @@ cp deploy/docker/.env.example deploy/docker/.env
 
 `just docker-up` generates every empty password, key and token in `deploy/docker/.env` once.
 A value you set yourself stays.
-You will need to update `OAUTH2_PROXY_CLIENT_ID` and `OAUTH2_PROXY_CLIENT_SECRET` after you create the OIDC application in Zitadel; see [First boot: create the Zitadel OIDC application](#first-boot-create-the-zitadel-oidc-application) below.
+`just docker-oidc` fills in `OAUTH2_PROXY_CLIENT_ID` and `OAUTH2_PROXY_CLIENT_SECRET` after the first start, as [First boot: the Zitadel OIDC application](#first-boot-the-zitadel-oidc-application) describes.
 
 DuckLake keeps its Parquet files in the `ducklake-data` volume by default.
 To keep them in an S3 bucket on the bundled Garage server instead, set these in `.env`:
@@ -75,6 +75,7 @@ just docker-up
 
 This builds the local images and starts every service defined in `deploy/docker/docker-compose.yml`.
 The first run takes a few minutes while images are pulled and built.
+When the stack is up, run `just docker-oidc` in a second terminal, as [First boot](#first-boot-the-zitadel-oidc-application) describes.
 
 Quarto is disabled by default, because it has no current use.
 The chart can run it with `quarto.enabled: true`. Its image builds from `services/quarto/` on a Docker Hardened Image, runs as uid 65532 and listens on 8080.
@@ -145,33 +146,32 @@ The Bitnami subchart's `auth.*` fields create `zitadel`, and the `srdp-setup` Jo
 
 ---
 
-## First boot: create the Zitadel OIDC application
+## First boot: the Zitadel OIDC application
 
-OAuth2-Proxy needs an OIDC client registered in Zitadel. Zitadel creates its first instance and admin user automatically on first start, but the OIDC application is created manually through the Zitadel console. Do this once, after the stack is up, for either deployment option.
+OAuth2-Proxy needs an OIDC application in Zitadel.
+A `just` recipe creates it with an admin token that Zitadel makes on its first start.
+It also adds a redirect URI for every host behind the login, and gives OAuth2-Proxy the client ID and secret.
+A rerun changes nothing when the application is up to date.
 
-### 1) Sign in to the Zitadel console
+- **Docker Compose**: run `just docker-oidc` after the stack is up.
+  It saves the client in `deploy/docker/.env` and recreates OAuth2-Proxy.
+- **Kubernetes**: `just local-deploy` runs `just local-oidc` as its last step.
+  It saves the client in the `srdp-oauth2-proxy` Secret and restarts OAuth2-Proxy.
 
-Open `https://auth.srdp.localhost` and sign in as the first-instance admin. Zitadel derives the default admin login name from the configured `ExternalDomain`, so for the local stack it is:
+### Sign in
+
+Open `https://srdp.localhost` and sign in as the first-instance admin.
+Zitadel derives the default admin login name from the configured `ExternalDomain`, so for the local stack it is:
 
 - Login name: `zitadel-admin@zitadel.auth.srdp.localhost`
 - Password: for the Kubernetes chart, run `just local-admin-password`.
   For the Docker Compose stack, it is `ZITADEL_ADMIN_PASSWORD` in `deploy/docker/.env`.
   Zitadel's own complexity rule applies, so the password needs an uppercase letter, a lowercase letter, a digit, and a symbol.
 
-If the login name differs, check it under **Users** in the Zitadel console.
+If the login name differs, check it under **Users** in the Zitadel console at `https://auth.srdp.localhost`.
 
-### 2) Create the OIDC application
-
-1. Create (or open) a project, then add an application of type **Web**.
-2. Use the **Code** authentication flow (client ID + secret).
-3. Add a redirect URI `https://<host>/oauth2/callback` for each host that OAuth2-Proxy protects.
-   The host list is the `oauth2-proxy` router rule in `config/traefik/dynamic/srdp.yml`.
-
-Zitadel then shows a **Client ID** and **Client Secret**.
-
-### 3) Apply the credentials
-
-- **Docker Compose**: set `OAUTH2_PROXY_CLIENT_ID` and `OAUTH2_PROXY_CLIENT_SECRET` in `deploy/docker/.env`, then run `just docker-up` to recreate OAuth2-Proxy with the new values.
-- **Kubernetes**: run `just local-oidc-client`. It asks for the client ID and the secret, stores them in the `srdp-oauth2-proxy` Secret and restarts OAuth2-Proxy.
+Outside local development, Zitadel asks the first admin to choose a new password at the first sign-in.
+`just docker-up` and `just local-deploy` turn this off, so the generated password keeps working locally.
+Zitadel applies the setting only when it creates its database, so an existing install keeps its admin as it is.
 
 **Congratulations! The local environment should now be up and running.** Proceed to the next section, **Usage & Verification**, to confirm that everything is working correctly.

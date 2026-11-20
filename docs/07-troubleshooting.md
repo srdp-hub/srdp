@@ -32,7 +32,8 @@ icon: lucide/life-buoy
 ### OAuth login loops or 401s
 
 - Ensure `global.domain`, `zitadel.zitadel.configmapConfig.ExternalDomain`, and the `oauth2-proxy.extraArgs` cookie/whitelist domains all match the URL you are using.
-- Re-check the Zitadel client ID/secret and redirect URIs.
+- Run `just docker-oidc` or `just local-oidc` again.
+  It adds missing redirect URIs and gives OAuth2-Proxy the client of the Zitadel app.
 
 ### Browser rejects the self-signed cert
 
@@ -61,7 +62,7 @@ icon: lucide/life-buoy
   A missing `SETUP_PASSWORDS__<ROLE>` fails the Job before it touches Postgres.
 - Fix: rerun `helm upgrade` (or `just local-deploy`).
   The Job creates any missing role or database and resets every configured role's password, keeping existing data.
-- If the pods don't recover on their own, run `kubectl -n srdp rollout restart deploy/srdp-dagster-webserver deploy/srdp-dagster-webserver-read-only deploy/srdp-dagster-daemon deploy/srdp-dagster-user-deployments-srdp-etl`.
+- If the pods don't recover on their own, run `kubectl -n srdp rollout restart deploy/srdp-dagster-webserver deploy/srdp-dagster-webserver-read-only deploy/srdp-dagster-daemon deploy/srdp-dagster-user-deployments-cbs-example`.
 
 ### An app fails with `permission denied for table ducklake_metadata`
 

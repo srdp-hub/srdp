@@ -28,15 +28,12 @@ PostgreSQL runs **in-cluster** via the Bitnami Helm chart (not as a Scaleway man
   source ./secrets.sh
   ```
 
-## 2) Build and push container images
+## 2) Container images
 
-Run the build recipe from the repository root. It sources `deploy/opentofu/scaleway/secrets.sh` for the credentials and logs into the registry:
-```bash
-just build-and-push
-```
-This builds and pushes Marimo, srdp-etl (Dagster user code), the API and Streamlit to the registry in `srdp.toml` under `[deploy] registry`, tagged with the version in `pyproject.toml`.
-The platform images, including `srdp-setup`, come from `ghcr.io/srdp-hub` and need no push.
-Quarto is disabled by default (`quarto.enabled: false`).
+Every release publishes the platform images and the example project images to `ghcr.io/srdp-hub`, the default registry, so you build and push nothing.
+For your own project or your own changes, build the images in your own CI and push them to your registry.
+Use the Dockerfiles in the `kind-load-images` recipe of the `Justfile`, and set `[deploy] registry` in `srdp.toml` to your registry.
+Quarto is disabled by default (`quarto.enabled: false`) and has no published image.
 `docs/03-configuration.md` explains why.
 
 ## 3) Provision infrastructure with OpenTofu
@@ -63,7 +60,7 @@ just prod-use-kubeconfig   # from repo root
   A machine that isn't reachable can still use Let's Encrypt through a DNS challenge, if the organisation controls the public DNS of a real domain.
   A machine with only an internal name needs the organisation's own certificate.
 - Set the registry in `srdp.toml` under `[deploy] registry`.
-  The `prod-*` recipes pass it to the chart as `global.srdpRegistry` and as the `srdp-etl` repository.
+  The `prod-*` recipes pass it to the chart as `global.srdpRegistry` and as the `cbs-example` repository.
 - The values files hold no passwords or keys.
   Before you install, create these Secrets in the `srdp` namespace, for example with External Secrets.
   Every consumer reads them by these fixed names.
@@ -101,7 +98,7 @@ just prod-use-kubeconfig   # from repo root
   Add `ALTER DEFAULT PRIVILEGES FOR ROLE ducklake_writer IN SCHEMA public GRANT SELECT ON TABLES TO ducklake_reader`, because DuckLake creates tables at run time.
 - **Changing an internal password**: these are service-to-service credentials, so change one only as a deliberate rotation.
   Change the value in its Secret, run `helm upgrade`, then restart the services that use it.
-  Marquez restarts by itself. For Dagster, run `kubectl -n srdp rollout restart deploy/srdp-dagster-webserver deploy/srdp-dagster-webserver-read-only deploy/srdp-dagster-daemon deploy/srdp-dagster-user-deployments-srdp-etl`.
+  Marquez restarts by itself. For Dagster, run `kubectl -n srdp rollout restart deploy/srdp-dagster-webserver deploy/srdp-dagster-webserver-read-only deploy/srdp-dagster-daemon deploy/srdp-dagster-user-deployments-cbs-example`.
   For Zitadel, run `kubectl -n srdp rollout restart deploy/srdp-zitadel`, because a running pod keeps the old password.
   The new pod waits in an init container until its new password works.
 - **Master key format**: ZITADEL expects a 32-character master key string. Generate one, for example, with `tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32`.
@@ -139,12 +136,20 @@ The `srdp-setup` Job runs from this step on, because it creates Zitadel's databa
 just prod-auth-only
 ```
 
-### D. Configure Zitadel apps
+### D. Configure the Zitadel app
 
-- In Zitadel (`https://auth.<LB_IP>.nip.io/`), create OIDC apps for Marimo and Dagster with redirect URIs:
-  - `https://marimo.<LB_IP>.nip.io/oauth2/callback`
-  - `https://dagster.<LB_IP>.nip.io/oauth2/callback`
-- Copy the client ID/secret into `values-prod.yaml` (oauth2-proxy config section).
+Production has no recipe for this step yet.
+#60 moves it into `srdp-setup`.
+
+1. In the Zitadel console (`https://auth.<LB_IP>.nip.io/`), create a project and an application of type **Web** with the **Code** flow.
+2. In the token settings of the application, set the auth token type to **JWT**.
+   OAuth2-Proxy accepts a user's token as a `Bearer` token only when it is a JWT.
+3. Add a redirect URI `https://<host>/oauth2/callback` for each app host that `values-prod.yaml` enables.
+   The hosts are `<domain>` for the hub, and `api`, `dagster`, `duckdb`, `marimo`, `marquez`, `streamlit` and `quarto` in front of `<domain>`.
+   In this step the apps are still off, so `kubectl get ingress auth-routes-ingress -n srdp` lists the hub only.
+   After step E, it lists every host, so compare it with the redirect URIs.
+4. Put the client ID and the secret in the `srdp-oauth2-proxy` Secret, as the keys `client-id` and `client-secret`.
+5. Restart OAuth2-Proxy with `kubectl rollout restart deployment/srdp-oauth2-proxy -n srdp`.
 
 ### E. Final deploy with all apps enabled
 
@@ -158,30 +163,28 @@ just prod-full
 # 1. Prepare (first time only, from deploy/opentofu/scaleway/)
 cd deploy/opentofu/scaleway && source ./secrets.sh && tofu init -upgrade
 
-# 2. Build and push container images (from repo root)
-just build-and-push
-
-# 3. Provision infrastructure (from repo root)
+# 2. Provision infrastructure (from repo root)
 just prod-apply
 just prod-use-kubeconfig
 
-# 4. Staged Helm rollout (from repo root)
+# 3. Staged Helm rollout (from repo root)
 just prod-traefik-only
 just prod-get-values                    # note the LOAD_BALANCER_IP
 # → Update values-prod.yaml with LB IP in domain fields + secrets
 just prod-auth-only
-# → Configure Zitadel OIDC apps + copy client ID/secret into values-prod.yaml
+# → Create the Zitadel app and store its client in the srdp-oauth2-proxy Secret (step D)
 just prod-full
 ```
 
 ## Verifying published images
 
 From the first release that includes the images workflow, every release publishes SRDP's platform images (`srdp-setup`, `dagster-webserver`, `duckdb-ui` and `hub`) to `ghcr.io/srdp-hub/<image>:<version>`.
+From v0.4.0, it also publishes the example project images (`cbs-example`, `srdp-api`, `marimo` and `streamlit`) there, so the chart's defaults work without your own registry.
 Each image is scanned for critical vulnerabilities before it gets a version tag, signed with cosign through GitHub's OIDC identity, and carries a build provenance attestation and an SBOM.
 Each image gets its exact version as a tag, which never moves, and `latest` points at the newest stable release.
 Use `latest` for trying SRDP out, and pin the exact version (or the digest) in a deployment, so it only changes when you change it.
 The Helm chart pulls these images from `ghcr.io/srdp-hub` at its `appVersion`, which is the release version, and the Dagster webserver and daemon run the same `dagster-webserver` image.
-`just docker-up-release <version>` starts Compose with a published release of them, and `just docker-up` builds them from source and tags them `dev`.
+`just docker-up-release <version>` starts Compose with the published images of that release, the example project images included, and `just docker-up` builds them all from source and tags them `dev`.
 The images of your own project still come from your registry, which is set by `[deploy] registry` in `srdp.toml`.
 
 Check an image before you deploy it, with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) and the [GitHub CLI](https://cli.github.com/):

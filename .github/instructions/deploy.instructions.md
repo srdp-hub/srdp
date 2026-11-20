@@ -43,7 +43,7 @@ The Justfile passes it to builds and to the chart, so never hardcode it elsewher
 
 The images and their Dockerfiles are listed in the `kind-load-images` recipe in the `Justfile`.
 Images that are built from the repo root (the Python ones copy `pyproject.toml`, `uv.lock`, `src/` and `projects/`) need the repo root as build context.
-`just build-and-push` pushes to that registry, and CI publishes the platform images to ghcr.io (`.github/workflows/images.yml`).
+Every release publishes the platform images and the example project images to ghcr.io (`.github/workflows/images.yml`).
 In a Dockerfile, run `uv sync` with explicit extras (`--extra x`). Never use `--all-extras`, because it adds dev dependencies.
 Use `*.srdp.localhost` for local domains, because `.localhost` resolves to loopback without `/etc/hosts` edits.
 
